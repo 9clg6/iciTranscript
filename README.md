@@ -22,6 +22,9 @@ IciTranscript captures your microphone and system audio simultaneously, transcri
 - **Keyboard shortcuts** — start/stop recording from anywhere on your system
 - **Clean, native macOS UI** — built with Flutter, feels at home on macOS 13+
 
+<img width="1251" height="874" alt="image" src="https://github.com/user-attachments/assets/bcbf05cb-2c82-4c6c-8aed-7aae80824bbb" />
+
+
 ---
 
 ## Minimum Requirements
