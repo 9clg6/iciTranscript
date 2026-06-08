@@ -18,6 +18,7 @@ import 'package:ici_transcript/core/providers/services/ollama.service.provider.d
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/translation.service.provider.dart';
+import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -29,6 +30,7 @@ part 'live_transcription.view_model.g.dart';
 class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   final Log _log = Log.named('LiveTranscriptionViewModel');
   Timer? _durationTimer;
+  Timer? _translateDebounce;
   LiveTranscriptionService? _liveService;
   bool _subscribed = false;
 
@@ -127,14 +129,19 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     }
   }
 
-  /// Arrete la session, sauvegarde la transcription et génère un résumé si activé.
-  Future<void> stopSession() async {
+  /// Arrete la session et sauvegarde la transcription.
+  ///
+  /// Renvoie l'ID de session (pour naviguer vers la fiche). Le post-traitement
+  /// lourd (coach + diarization) tourne EN ARRIÈRE-PLAN : la navigation est
+  /// immédiate, et la fiche détail est rafraîchie quand le traitement se
+  /// termine.
+  Future<String?> stopSession() async {
     _durationTimer?.cancel();
     _durationTimer = null;
 
     // Capturer l'ID de session avant d'arrêter
-    final String? sessionId =
-        _liveService?.currentSessionStream.value?.id;
+    final String? sessionId = _liveService?.currentSessionStream.value?.id;
+    final bool coachEnabled = state.isCoachEnabled;
 
     await _liveService?.stopTranscription();
 
@@ -153,30 +160,48 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     // Rafraichir la liste des sessions dans la sidebar
     await ref.read(sessionHistoryServiceProvider).loadSessions();
 
-    // Libérer le GPU/RAM du serveur de transcription (Voxtral MLX) avant les
-    // traitements lourds. Sinon voxmlx-serve + voxmlx (diarization) + ollama
-    // tournent en même temps sur la mémoire unifiée → crash machine.
+    // Post-traitement en arrière-plan (ne bloque pas la navigation vers la
+    // fiche). Met à jour la fiche détail à la fin via invalidation.
+    if (sessionId != null) {
+      unawaited(_postProcess(
+        sessionId: sessionId,
+        segments: segments,
+        coachEnabled: coachEnabled,
+      ));
+    }
+    return sessionId;
+  }
+
+  /// Post-traitement séquentiel : libère le GPU, lance le coach (rapide) puis
+  /// la diarization (peut télécharger un modèle au 1er lancement), et rafraîchit
+  /// la fiche détail. Séquentiel pour éviter plusieurs modèles Metal en
+  /// simultané (crash) et les écritures concurrentes de l'enveloppe.
+  Future<void> _postProcess({
+    required String sessionId,
+    required List<TranscriptSegmentEntity> segments,
+    required bool coachEnabled,
+  }) async {
+    // Libérer le GPU/RAM du serveur de transcription (Voxtral MLX).
     try {
       await ref.read(processManagerServiceProvider).stopServer();
     } catch (e) {
-      _log.warning('Arrêt serveur transcription avant post-traitement: $e');
+      _log.warning('Arrêt serveur avant post-traitement: $e');
     }
 
-    // Passe post-session : transcription propre du micro (MOI) + diarization
-    // du flux système (interlocuteurs). Auto à la fin de session.
-    final String? micText = await _diarizeAndStore(sessionId);
-
-    // Analyser l'anglais si l'option est activée — sur le micro UNIQUEMENT.
-    if (state.isCoachEnabled) {
-      final String transcript = micText ??
-          segments
-              .where(
-                (TranscriptSegmentEntity s) => s.source == AudioSource.input,
-              )
-              .map((TranscriptSegmentEntity s) => s.text)
-              .join('\n');
+    // Coach d'abord (mistral, rapide) → trigger immédiat si activé.
+    if (coachEnabled) {
+      final String transcript = segments
+          .where((TranscriptSegmentEntity s) => s.source == AudioSource.input)
+          .map((TranscriptSegmentEntity s) => s.text)
+          .join('\n');
       await _analyzeEnglish(transcript, sessionId: sessionId);
     }
+
+    // Diarization + transcription propre (peut être longue la 1re fois).
+    await _diarizeAndStore(sessionId);
+
+    // Rafraîchir la fiche détail si elle est ouverte.
+    ref.invalidate(sessionDetailViewModelProvider(sessionId: sessionId));
   }
 
   /// Lance la passe post-session (diarization + transcription propre) et
@@ -238,10 +263,11 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     if (!state.isTranslationEnabled) return;
     final String from = state.translationFrom;
     final String to = state.translationTo;
+
+    // Phrases finalisées : traduire une fois, clé = id du segment.
     for (final TranscriptSegmentEntity s in segments) {
-      if (s.id.startsWith('current_')) continue; // phrase en cours
+      if (s.id.startsWith('current_')) continue;
       if (state.translations.containsKey(s.id)) continue;
-      // Réserver l'entrée pour éviter les requêtes dupliquées.
       state = state.copyWith(
         translations: <String, String>{...state.translations, s.id: ''},
       );
@@ -253,6 +279,26 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         state = state.copyWith(
           translations: <String, String>{...state.translations, s.id: t},
         );
+      });
+    }
+
+    // Phrase EN COURS (segment `current_`) : traduire en direct (debounce) pour
+    // afficher le sous-titre pendant qu'on parle, sans attendre la fin de phrase.
+    final TranscriptSegmentEntity? last =
+        segments.isNotEmpty ? segments.last : null;
+    if (last != null && last.id.startsWith('current_')) {
+      final String text = last.text;
+      _translateDebounce?.cancel();
+      _translateDebounce = Timer(const Duration(milliseconds: 600), () {
+        ref
+            .read(translationServiceProvider)
+            .translate(text: text, from: from, to: to)
+            .then((String t) {
+          if (t.isEmpty || !state.isTranslationEnabled) return;
+          state = state.copyWith(
+            translations: <String, String>{...state.translations, 'current': t},
+          );
+        });
       });
     }
   }

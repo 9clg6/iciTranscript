@@ -111,9 +111,13 @@ class TranslationService {
       'to': to,
       'text': text,
     }));
+    // IMPORTANT : sans flush, la ligne reste bufferisée et le serveur Python
+    // ne la reçoit jamais → timeout → traduction vide.
+    await proc.stdin.flush();
 
     return completer.future.timeout(
-      const Duration(seconds: 30),
+      // Large : le 1er appel d'une paire télécharge le modèle de langue.
+      const Duration(seconds: 120),
       onTimeout: () {
         _pending.remove(id);
         return '';
