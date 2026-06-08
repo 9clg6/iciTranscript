@@ -1,6 +1,6 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
-import 'package:ici_transcript/foundation/routing/app_router.dart';
+import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -422,12 +422,15 @@ class _LiveTranscriptionScreenState
                 .read(liveTranscriptionViewModelProvider.notifier)
                 .resumeSession(),
             onStop: () async {
-              final StackRouter router = AutoRouter.of(context);
               final String? sessionId = await ref
                   .read(liveTranscriptionViewModelProvider.notifier)
                   .stopSession();
-              if (sessionId != null && mounted) {
-                await router.push(SessionDetailRoute(sessionId: sessionId));
+              if (sessionId != null) {
+                // Ouvrir la fiche via l'overlay du shell (back fonctionnel),
+                // pas via router.push (qui ouvrirait hors shell, back mort).
+                ref
+                    .read(sessionListViewModelProvider.notifier)
+                    .selectSession(sessionId);
               }
             },
           ),
