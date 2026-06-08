@@ -47,7 +47,7 @@ class _RootAppWidgetState extends ConsumerState<RootAppWidget> {
       ),
       data: (_) {
         // Afficher l'onboarding si uvx n'est pas disponible
-        final bool uvxAvailable = uvxState.valueOrNull ?? true;
+        final bool uvxAvailable = uvxState.value ?? true;
         if (!uvxAvailable) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
@@ -100,7 +100,7 @@ class _RootAppWidgetState extends ConsumerState<RootAppWidget> {
 
         return MaterialApp.router(
           debugShowCheckedModeBanner: false,
-          title: 'IciTranscript',
+          title: 'iciTranscript',
           localizationsDelegates: context.localizationDelegates,
           supportedLocales: context.supportedLocales,
           locale: context.locale,

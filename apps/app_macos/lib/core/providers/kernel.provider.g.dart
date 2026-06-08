@@ -6,28 +6,54 @@ part of 'kernel.provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$kernelHash() => r'482defeffe9277afae93a00eee75b12229f2d9bd';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// Initialise les dependances au demarrage de l'application.
+///
+/// Le serveur ML (voxmlx-serve) est demarre par [LiveTranscriptionService]
+/// au moment ou l'utilisateur lance un enregistrement.
+/// Ollama est initialise separement par [OllamaSetupViewModel].
+
+@ProviderFor(kernel)
+const kernelProvider = KernelProvider._();
 
 /// Initialise les dependances au demarrage de l'application.
 ///
 /// Le serveur ML (voxmlx-serve) est demarre par [LiveTranscriptionService]
 /// au moment ou l'utilisateur lance un enregistrement.
 /// Ollama est initialise separement par [OllamaSetupViewModel].
-///
-/// Copied from [kernel].
-@ProviderFor(kernel)
-final kernelProvider = FutureProvider<void>.internal(
-  kernel,
-  name: r'kernelProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$kernelHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef KernelRef = FutureProviderRef<void>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class KernelProvider
+    extends $FunctionalProvider<AsyncValue<void>, void, FutureOr<void>>
+    with $FutureModifier<void>, $FutureProvider<void> {
+  /// Initialise les dependances au demarrage de l'application.
+  ///
+  /// Le serveur ML (voxmlx-serve) est demarre par [LiveTranscriptionService]
+  /// au moment ou l'utilisateur lance un enregistrement.
+  /// Ollama est initialise separement par [OllamaSetupViewModel].
+  const KernelProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'kernelProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$kernelHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<void> $createElement($ProviderPointer pointer) =>
+      $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<void> create(Ref ref) {
+    return kernel(ref);
+  }
+}
+
+String _$kernelHash() => r'482defeffe9277afae93a00eee75b12229f2d9bd';

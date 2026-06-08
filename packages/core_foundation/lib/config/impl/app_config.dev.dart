@@ -6,7 +6,7 @@ final class AppConfigDev extends AppConfig {
   /// Cree une instance de [AppConfigDev].
   const AppConfigDev()
     : super(
-        appName: 'IciTranscript Dev',
+        appName: 'iciTranscript Dev',
         baseUrl: 'https://api-dev.icitranscript.fr',
         env: Environment.development,
       );

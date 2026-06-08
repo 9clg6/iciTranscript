@@ -6,27 +6,59 @@ part of 'database.provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$databaseHash() => r'97c015c5193abfdeb84060115b5521ee968166b8';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// Provider singleton pour [AppDatabase] (Drift/SQLite).
+///
+/// Base PERSISTANTE sur disque (sinon les sessions disparaissent au
+/// redémarrage). Fichier dans le dossier de l'app.
+
+@ProviderFor(database)
+const databaseProvider = DatabaseProvider._();
 
 /// Provider singleton pour [AppDatabase] (Drift/SQLite).
 ///
-/// Initialise la base de donnees locale avec NativeDatabase
-/// et la maintient ouverte pendant toute la duree de vie de l'app.
-///
-/// Copied from [database].
-@ProviderFor(database)
-final databaseProvider = Provider<AppDatabase>.internal(
-  database,
-  name: r'databaseProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$databaseHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
+/// Base PERSISTANTE sur disque (sinon les sessions disparaissent au
+/// redémarrage). Fichier dans le dossier de l'app.
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef DatabaseRef = ProviderRef<AppDatabase>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class DatabaseProvider
+    extends $FunctionalProvider<AppDatabase, AppDatabase, AppDatabase>
+    with $Provider<AppDatabase> {
+  /// Provider singleton pour [AppDatabase] (Drift/SQLite).
+  ///
+  /// Base PERSISTANTE sur disque (sinon les sessions disparaissent au
+  /// redémarrage). Fichier dans le dossier de l'app.
+  const DatabaseProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'databaseProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$databaseHash();
+
+  @$internal
+  @override
+  $ProviderElement<AppDatabase> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  AppDatabase create(Ref ref) {
+    return database(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(AppDatabase value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<AppDatabase>(value),
+    );
+  }
+}
+
+String _$databaseHash() => r'a1d4f0fb1f6202aa238a230f0e7ba935025643f9';

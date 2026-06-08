@@ -6,28 +6,63 @@ part of 'start_session.use_case.provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$startSessionUseCaseHash() =>
-    r'adb3a25c5e7656410c7ca20f5043fc1eec001db3';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// Provider pour [StartSessionUseCase].
+///
+/// Cree une nouvelle session de transcription active.
+
+@ProviderFor(startSessionUseCase)
+const startSessionUseCaseProvider = StartSessionUseCaseProvider._();
 
 /// Provider pour [StartSessionUseCase].
 ///
 /// Cree une nouvelle session de transcription active.
-///
-/// Copied from [startSessionUseCase].
-@ProviderFor(startSessionUseCase)
-final startSessionUseCaseProvider =
-    AutoDisposeProvider<StartSessionUseCase>.internal(
-      startSessionUseCase,
-      name: r'startSessionUseCaseProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$startSessionUseCaseHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef StartSessionUseCaseRef = AutoDisposeProviderRef<StartSessionUseCase>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class StartSessionUseCaseProvider
+    extends
+        $FunctionalProvider<
+          StartSessionUseCase,
+          StartSessionUseCase,
+          StartSessionUseCase
+        >
+    with $Provider<StartSessionUseCase> {
+  /// Provider pour [StartSessionUseCase].
+  ///
+  /// Cree une nouvelle session de transcription active.
+  const StartSessionUseCaseProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'startSessionUseCaseProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$startSessionUseCaseHash();
+
+  @$internal
+  @override
+  $ProviderElement<StartSessionUseCase> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  StartSessionUseCase create(Ref ref) {
+    return startSessionUseCase(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(StartSessionUseCase value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<StartSessionUseCase>(value),
+    );
+  }
+}
+
+String _$startSessionUseCaseHash() =>
+    r'adb3a25c5e7656410c7ca20f5043fc1eec001db3';

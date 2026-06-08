@@ -6,28 +6,66 @@ part of 'audio_capture.provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$audioCaptureChannelHash() =>
-    r'2a24a25010546af10c0df13d3b83e3c5e78c6f61';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// Provider singleton pour [AudioCaptureChannel].
+///
+/// Fournit le pont vers la couche plateforme Swift pour la capture audio
+/// (microphone et audio systeme via ScreenCaptureKit).
+
+@ProviderFor(audioCaptureChannel)
+const audioCaptureChannelProvider = AudioCaptureChannelProvider._();
 
 /// Provider singleton pour [AudioCaptureChannel].
 ///
 /// Fournit le pont vers la couche plateforme Swift pour la capture audio
 /// (microphone et audio systeme via ScreenCaptureKit).
-///
-/// Copied from [audioCaptureChannel].
-@ProviderFor(audioCaptureChannel)
-final audioCaptureChannelProvider = Provider<AudioCaptureChannel>.internal(
-  audioCaptureChannel,
-  name: r'audioCaptureChannelProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$audioCaptureChannelHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef AudioCaptureChannelRef = ProviderRef<AudioCaptureChannel>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class AudioCaptureChannelProvider
+    extends
+        $FunctionalProvider<
+          AudioCaptureChannel,
+          AudioCaptureChannel,
+          AudioCaptureChannel
+        >
+    with $Provider<AudioCaptureChannel> {
+  /// Provider singleton pour [AudioCaptureChannel].
+  ///
+  /// Fournit le pont vers la couche plateforme Swift pour la capture audio
+  /// (microphone et audio systeme via ScreenCaptureKit).
+  const AudioCaptureChannelProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'audioCaptureChannelProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$audioCaptureChannelHash();
+
+  @$internal
+  @override
+  $ProviderElement<AudioCaptureChannel> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  AudioCaptureChannel create(Ref ref) {
+    return audioCaptureChannel(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(AudioCaptureChannel value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<AudioCaptureChannel>(value),
+    );
+  }
+}
+
+String _$audioCaptureChannelHash() =>
+    r'2a24a25010546af10c0df13d3b83e3c5e78c6f61';

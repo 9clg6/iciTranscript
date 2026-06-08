@@ -1,7 +1,6 @@
 import 'package:core_data/datasources/local/transcript.local.data_source.dart';
 import 'package:core_data/repositories/transcript.repository.impl.dart';
 import 'package:core_domain/domain/repositories/transcript.repository.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/data/datasource/transcript.local.data_source.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

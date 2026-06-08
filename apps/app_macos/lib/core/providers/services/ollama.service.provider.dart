@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

@@ -1,4 +1,3 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/platform/process_manager.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

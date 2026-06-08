@@ -11,15 +11,21 @@ final class SummaryService {
   final Log _log = Log.named('SummaryService');
 
   /// Sauvegarde un résumé pour une session.
+  ///
+  /// Une seule ligne par session : on purge les éventuelles lignes existantes
+  /// (y compris d'anciens formats) puis on insère avec `id == sessionId`.
+  /// `getBySessionId` utilise `getSingleOrNull` qui lèverait sinon en présence
+  /// de doublons.
   Future<void> saveSummary({
     required String sessionId,
     required String content,
     String model = 'mistral',
   }) async {
     _log.info('Sauvegarde résumé pour session $sessionId');
+    await _dao.deleteBySessionId(sessionId);
     await _dao.insertSummary(
       SummariesCompanion.insert(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: sessionId,
         sessionId: sessionId,
         content: content,
         model: model,

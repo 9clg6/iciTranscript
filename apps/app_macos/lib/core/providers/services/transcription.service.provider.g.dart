@@ -6,29 +6,69 @@ part of 'transcription.service.provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$transcriptionServiceHash() =>
-    r'8d205d12e856b9f6bea2bb3928c1f8ecba6a8c48';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// Provider singleton pour [TranscriptionService].
+///
+/// Orchestre le cycle de vie d'une session de transcription :
+/// demarrage, arret, sauvegarde des segments.
+/// Maintient un etat reactif via [BehaviorSubject].
+
+@ProviderFor(transcriptionService)
+const transcriptionServiceProvider = TranscriptionServiceProvider._();
 
 /// Provider singleton pour [TranscriptionService].
 ///
 /// Orchestre le cycle de vie d'une session de transcription :
 /// demarrage, arret, sauvegarde des segments.
 /// Maintient un etat reactif via [BehaviorSubject].
-///
-/// Copied from [transcriptionService].
-@ProviderFor(transcriptionService)
-final transcriptionServiceProvider = Provider<TranscriptionService>.internal(
-  transcriptionService,
-  name: r'transcriptionServiceProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$transcriptionServiceHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef TranscriptionServiceRef = ProviderRef<TranscriptionService>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class TranscriptionServiceProvider
+    extends
+        $FunctionalProvider<
+          TranscriptionService,
+          TranscriptionService,
+          TranscriptionService
+        >
+    with $Provider<TranscriptionService> {
+  /// Provider singleton pour [TranscriptionService].
+  ///
+  /// Orchestre le cycle de vie d'une session de transcription :
+  /// demarrage, arret, sauvegarde des segments.
+  /// Maintient un etat reactif via [BehaviorSubject].
+  const TranscriptionServiceProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'transcriptionServiceProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$transcriptionServiceHash();
+
+  @$internal
+  @override
+  $ProviderElement<TranscriptionService> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  TranscriptionService create(Ref ref) {
+    return transcriptionService(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(TranscriptionService value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<TranscriptionService>(value),
+    );
+  }
+}
+
+String _$transcriptionServiceHash() =>
+    r'8d205d12e856b9f6bea2bb3928c1f8ecba6a8c48';

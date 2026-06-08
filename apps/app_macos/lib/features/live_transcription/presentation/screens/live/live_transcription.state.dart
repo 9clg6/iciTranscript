@@ -1,3 +1,4 @@
+import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -36,14 +37,26 @@ abstract class LiveTranscriptionState with _$LiveTranscriptionState {
     /// Valeurs : "authorized", "denied", "notDetermined", "unknown".
     @Default('unknown') String screenRecordingPermission,
 
-    /// Indique si l'option résumé IA est activée.
-    @Default(false) bool isSummaryEnabled,
+    /// Indique si l'option coach d'anglais est activée.
+    @Default(false) bool isCoachEnabled,
 
-    /// Résumé IA de la session (null si pas encore généré).
-    String? summary,
+    /// Indique si la traduction temps réel est activée.
+    @Default(false) bool isTranslationEnabled,
 
-    /// Indique si le résumé est en cours de génération.
-    @Default(false) bool isSummaryLoading,
+    /// Langue source de la traduction (code ISO, ex: "en").
+    @Default('en') String translationFrom,
+
+    /// Langue cible de la traduction (code ISO, ex: "fr").
+    @Default('fr') String translationTo,
+
+    /// Traductions par segment (id segment → texte traduit).
+    @Default(<String, String>{}) Map<String, String> translations,
+
+    /// Retour du coach d'anglais (null si pas encore généré).
+    EnglishFeedbackEntity? feedback,
+
+    /// Indique si l'analyse de l'anglais est en cours.
+    @Default(false) bool isFeedbackLoading,
 
     /// Étape courante du setup Ollama.
     @Default(OllamaSetupStage.idle) OllamaSetupStage ollamaSetupStage,

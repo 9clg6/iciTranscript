@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:dio/dio.dart';
 
@@ -15,7 +16,7 @@ enum OllamaSetupStage {
   /// Démarrage du daemon ollama.
   startingServer,
 
-  /// Téléchargement du modèle Mistral (~4 GB).
+  /// Téléchargement du modèle Mistral Small 24B (~14 GB).
   downloadingModel,
 
   /// Setup terminé.
@@ -37,7 +38,17 @@ class OllamaService {
   final Log _log = Log.named('OllamaService');
 
   static const String _baseUrl = 'http://localhost:11434';
+  // Mistral 7B : ~3-5x plus rapide que mistral-small (24B) sur Mac, qualite
+  // suffisante pour le coaching et le resume.
   static const String _model = 'mistral';
+
+  /// Garde le modele charge en RAM 15 min entre deux requetes (evite le
+  /// rechargement a froid ~14s qui rend la 1re analyse tres lente).
+  static const String _keepAlive = '5m';
+
+  /// Borne la taille du transcript envoye au LLM pour limiter la latence.
+  /// On garde la fin (partie la plus recente de la reunion).
+  static const int _maxTranscriptChars = 8000;
   // Ollama pour macOS est distribué sous forme d'app bundle dans un zip.
   // Le binaire CLI se trouve à Ollama.app/Contents/Resources/ollama.
   static const String _ollamaZipUrl =
@@ -100,6 +111,102 @@ class OllamaService {
     return _isModelAvailable();
   }
 
+  /// Analyse l'anglais parlé d'un transcript et renvoie un retour structuré.
+  ///
+  /// Suppose qu'Ollama est déjà prêt ([ensureReady]).
+  Future<EnglishFeedbackEntity> analyzeEnglish(String transcript) async {
+    const String system =
+        'You are an English coach. The transcript below is the spoken English '
+        'of a non-native speaker during a meeting. Identify the most useful '
+        'mistakes and improvements. For each, give the original phrase, a '
+        'corrected/improved version, a category among "conjugation", '
+        '"vocabulary", "expression" or "grammar", and a SHORT explanation IN '
+        'FRENCH. Respond ONLY with a JSON object of the exact shape: '
+        '{"overall": string, "corrections": [{"original": string, '
+        '"corrected": string, "category": string, "explanation": string}]}. '
+        'The "overall" field is a short assessment of the level, in French. '
+        'Do not invent mistakes: if a sentence is correct, skip it.';
+
+    final String content = await _chat(
+      system: system,
+      user: 'Transcript:\n\n${_truncate(transcript)}',
+      json: true,
+    );
+    return _parseFeedback(content);
+  }
+
+  /// Génère un résumé en français du transcript fourni.
+  ///
+  /// Suppose qu'Ollama est déjà prêt ([ensureReady]).
+  Future<String> summarize(String transcript) async {
+    const String system =
+        'Tu es un assistant qui résume des réunions en français. Produis un '
+        'résumé clair et concis : 1 phrase de contexte, puis 4 à 8 puces '
+        '(points clés, décisions, actions). Réponds uniquement avec le résumé, '
+        'sans préambule.';
+
+    return _chat(
+      system: system,
+      user: 'Transcription de la réunion :\n\n${_truncate(transcript)}',
+    );
+  }
+
+  /// Appel générique à l'API /api/chat d'Ollama (non-stream).
+  Future<String> _chat({
+    required String system,
+    required String user,
+    bool json = false,
+  }) async {
+    final Dio dio = Dio()
+      ..options.receiveTimeout = const Duration(minutes: 5);
+    final Map<String, dynamic> payload = <String, dynamic>{
+      'model': _model,
+      'stream': false,
+      'keep_alive': _keepAlive,
+      // Contexte borné : le défaut 32768 alloue un KV cache de plusieurs Go
+      // (mémoire unifiée) et peut faire crasher la machine. Le transcript est
+      // tronqué à ~8000 car (~2-3k tokens), 4096 suffit largement.
+      'options': <String, dynamic>{'num_ctx': 4096},
+      'messages': <Map<String, String>>[
+        <String, String>{'role': 'system', 'content': system},
+        <String, String>{'role': 'user', 'content': user},
+      ],
+    };
+    if (json) payload['format'] = 'json';
+
+    final Response<Map<String, dynamic>> response =
+        await dio.post<Map<String, dynamic>>(
+      '$_baseUrl/api/chat',
+      data: payload,
+      options: Options(
+        headers: <String, String>{'content-type': 'application/json'},
+      ),
+    );
+    final Map<String, dynamic> message =
+        response.data?['message'] as Map<String, dynamic>? ??
+            <String, dynamic>{};
+    return message['content'] as String? ?? '';
+  }
+
+  String _truncate(String transcript) {
+    if (transcript.length <= _maxTranscriptChars) return transcript;
+    return transcript.substring(transcript.length - _maxTranscriptChars);
+  }
+
+  EnglishFeedbackEntity _parseFeedback(String content) {
+    try {
+      final Object? decoded = jsonDecode(content);
+      if (decoded is Map<String, dynamic>) {
+        return EnglishFeedbackEntity.fromJson(decoded);
+      }
+    } catch (e) {
+      _log.error('Parsing feedback JSON échoué: $e');
+    }
+    return const EnglishFeedbackEntity(
+      overall: 'Impossible de lire la réponse du modèle.',
+    );
+  }
+
   /// Arrête le daemon démarré par ce service.
   Future<void> dispose() async {
     _ollamaProcess?.kill(ProcessSignal.sigterm);
@@ -111,10 +218,16 @@ class OllamaService {
   // ---------------------------------------------------------------------------
 
   Future<bool> _isBinaryAvailable() async {
-    // D'abord dans le répertoire dédié de l'app
-    if (await File(_ollamaBin).exists()) return true;
-    // Fallback : ollama déjà installé sur le système
-    return await _resolveSystemOllamaPath() != null;
+    // Install système complète disponible → OK (chemin préféré, backends Metal).
+    if (await _resolveSystemOllamaPath() != null) return true;
+    // Copie locale : valable UNIQUEMENT si les backends ggml sont présents à
+    // côté (sinon CPU-only). Une ancienne copie binaire-seul est rejetée pour
+    // forcer un re-téléchargement complet.
+    if (await File(_ollamaBin).exists() &&
+        await File('$_binDir/libggml-base.dylib').exists()) {
+      return true;
+    }
+    return false;
   }
 
   Future<String?> _resolveSystemOllamaPath() async {
@@ -132,8 +245,12 @@ class OllamaService {
   }
 
   Future<String> _effectiveBinPath() async {
-    if (await File(_ollamaBin).exists()) return _ollamaBin;
-    return await _resolveSystemOllamaPath() ?? _ollamaBin;
+    // Préférer une install système COMPLÈTE (Ollama.app) : elle embarque les
+    // backends ggml/Metal (libggml-*.dylib, mlx_metal) à côté du binaire, sans
+    // lesquels ollama tourne en CPU-only → 7B sature le CPU et fige la machine.
+    final String? sys = await _resolveSystemOllamaPath();
+    if (sys != null) return sys;
+    return _ollamaBin;
   }
 
   Future<void> _downloadBinary({
@@ -167,15 +284,24 @@ class OllamaService {
         throw Exception('unzip échoué: ${unzip.stderr}');
       }
 
-      // 3. Copier le binaire CLI depuis l'app bundle
-      final String binaryInBundle =
-          '$extractDir/Ollama.app/Contents/Resources/ollama';
-      if (!await File(binaryInBundle).exists()) {
-        throw Exception('Binaire ollama introuvable dans le bundle: $binaryInBundle');
+      // 3. Copier TOUT le contenu de Resources (binaire CLI + backends
+      //    ggml/Metal). Copier seulement le binaire le ferait tourner en
+      //    CPU-only → 7B sature le CPU et fige la machine.
+      final String resourcesDir =
+          '$extractDir/Ollama.app/Contents/Resources';
+      if (!await File('$resourcesDir/ollama').exists()) {
+        throw Exception('Binaire ollama introuvable dans le bundle: '
+            '$resourcesDir/ollama');
       }
-      await File(binaryInBundle).copy(_ollamaBin);
+      final ProcessResult cp = await Process.run(
+        '/bin/sh',
+        <String>['-c', "cp -R '$resourcesDir/.' '$_binDir/'"],
+      );
+      if (cp.exitCode != 0) {
+        throw Exception('Copie des Resources ollama échouée: ${cp.stderr}');
+      }
       await Process.run('chmod', <String>['+x', _ollamaBin]);
-      _log.info('Binaire ollama extrait: $_ollamaBin');
+      _log.info('Ollama (binaire + backends) extrait dans: $_binDir');
     } finally {
       // Nettoyage même en cas d'erreur
       await File(zipPath).delete().catchError((_) => File(zipPath));
