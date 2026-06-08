@@ -1,6 +1,5 @@
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/platform/process_manager_channel.dart';
 import 'package:ici_transcript/core/providers/platform/process_manager.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';

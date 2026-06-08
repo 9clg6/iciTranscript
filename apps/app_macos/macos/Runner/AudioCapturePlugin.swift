@@ -545,7 +545,18 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
         guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: outputFrameCapacity) else { return }
 
         var error: NSError?
-        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
+        // Feed the rendered buffer EXACTLY ONCE. AVAudioConverter calls the
+        // input block repeatedly while doing sample-rate conversion; returning
+        // the same buffer with .haveData every time makes it reprocess the same
+        // audio (producing ~3x duplicated/overlapping output at 48k->16k),
+        // which garbles the transcription. Signal .noDataNow after one feed.
+        var fed = false
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            if fed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            fed = true
             outStatus.pointee = .haveData
             return renderBuffer
         }

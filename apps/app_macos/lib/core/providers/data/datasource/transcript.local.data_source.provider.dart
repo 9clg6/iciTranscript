@@ -2,7 +2,6 @@ import 'package:core_data/database/app_database.dart';
 import 'package:core_data/database/dao/transcript_segment.dao.dart';
 import 'package:core_data/datasources/local/impl/transcript.local.data_source.impl.dart';
 import 'package:core_data/datasources/local/transcript.local.data_source.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/data/database.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 

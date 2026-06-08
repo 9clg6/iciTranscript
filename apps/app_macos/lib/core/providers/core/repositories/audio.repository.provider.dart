@@ -1,6 +1,5 @@
 import 'package:core_data/repositories/audio.repository.impl.dart';
 import 'package:core_domain/domain/repositories/audio.repository.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';

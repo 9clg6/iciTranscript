@@ -5,7 +5,6 @@ import 'package:core_domain/domain/usecases/stop_session.use_case.dart';
 import 'package:ici_transcript/core/providers/core/usecases/save_transcript_segment.use_case.provider.dart';
 import 'package:ici_transcript/core/providers/core/usecases/start_session.use_case.provider.dart';
 import 'package:ici_transcript/core/providers/core/usecases/stop_session.use_case.provider.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'transcription.service.provider.g.dart';

@@ -3,7 +3,6 @@ import 'package:core_domain/domain/usecases/delete_session.use_case.dart';
 import 'package:core_domain/domain/usecases/get_session_detail.use_case.dart';
 import 'package:core_domain/domain/usecases/get_sessions.use_case.dart';
 import 'package:core_domain/domain/usecases/update_session_title.use_case.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/core/usecases/delete_session.use_case.provider.dart';
 import 'package:ici_transcript/core/providers/core/usecases/get_session_detail.use_case.provider.dart';
 import 'package:ici_transcript/core/providers/core/usecases/get_sessions.use_case.provider.dart';

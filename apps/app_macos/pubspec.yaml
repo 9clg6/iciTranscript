@@ -19,11 +19,11 @@ dependencies:
     path: ../../packages/core_data
   core_presentation:
     path: ../../packages/core_presentation
-  flutter_riverpod: ^2.6.1
-  riverpod_annotation: ^2.6.1
+  flutter_riverpod: ^3.0.0
+  riverpod_annotation: ^3.0.0
   freezed_annotation: ^3.0.0
   json_annotation: ^4.9.0
-  auto_route: ^9.2.2
+  auto_route: ^11.1.0
   easy_localization: ^3.0.7
   gap: ^3.0.1
   dio: ^5.7.0
@@ -40,8 +40,8 @@ dev_dependencies:
   build_runner: ^2.4.14
   freezed: ^3.0.4
   json_serializable: ^6.9.4
-  riverpod_generator: ^2.6.3
-  auto_route_generator: ^9.0.0
+  riverpod_generator: ^3.0.0
+  auto_route_generator: ^10.4.0
   flutter_gen_runner: ^5.8.0
   mockito: ^5.4.0
   patrol: ^3.13.0

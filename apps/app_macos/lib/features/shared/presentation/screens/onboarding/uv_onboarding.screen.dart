@@ -49,7 +49,7 @@ class _UvOnboardingScreenState extends ConsumerState<UvOnboardingScreen> {
         _step = _Step.error;
         _errorMessage =
             'uv a été installé mais uvx est introuvable.\n'
-            'Redémarrez IciTranscript ou ajoutez ~/.local/bin à votre PATH.';
+            'Redémarrez iciTranscript ou ajoutez ~/.local/bin à votre PATH.';
       });
     }
   }
@@ -84,7 +84,7 @@ class _UvOnboardingScreenState extends ConsumerState<UvOnboardingScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'IciTranscript utilise voxmlx pour la transcription vocale. '
+                  'iciTranscript utilise voxmlx pour la transcription vocale. '
                   'Ce moteur nécessite uv, un gestionnaire de paquets Python '
                   'ultra-rapide.',
                   style: textTheme.bodyMedium?.copyWith(

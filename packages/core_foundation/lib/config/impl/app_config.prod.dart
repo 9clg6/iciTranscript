@@ -6,7 +6,7 @@ final class AppConfigProd extends AppConfig {
   /// Cree une instance de [AppConfigProd].
   const AppConfigProd()
     : super(
-        appName: 'IciTranscript',
+        appName: 'iciTranscript',
         baseUrl: 'https://api.icitranscript.fr',
         env: Environment.production,
       );

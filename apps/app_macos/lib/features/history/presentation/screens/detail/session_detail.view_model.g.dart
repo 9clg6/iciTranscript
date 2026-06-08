@@ -6,205 +6,132 @@ part of 'session_detail.view_model.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$sessionDetailViewModelHash() =>
-    r'4756c77436d1503d0ae325ea1941a426173ade9d';
-
-/// Copied from Dart SDK
-class _SystemHash {
-  _SystemHash._();
-
-  static int combine(int hash, int value) {
-    // ignore: parameter_assignments
-    hash = 0x1fffffff & (hash + value);
-    // ignore: parameter_assignments
-    hash = 0x1fffffff & (hash + ((0x0007ffff & hash) << 10));
-    return hash ^ (hash >> 6);
-  }
-
-  static int finish(int hash) {
-    // ignore: parameter_assignments
-    hash = 0x1fffffff & (hash + ((0x03ffffff & hash) << 3));
-    // ignore: parameter_assignments
-    hash = hash ^ (hash >> 11);
-    return 0x1fffffff & (hash + ((0x00003fff & hash) << 15));
-  }
-}
-
-abstract class _$SessionDetailViewModel
-    extends BuildlessAutoDisposeAsyncNotifier<SessionDetailState> {
-  late final String sessionId;
-
-  FutureOr<SessionDetailState> build({required String sessionId});
-}
-
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
 /// ViewModel de l'ecran de detail d'une session.
 ///
 /// Charge la session et ses segments, gere l'edition du titre,
-/// la suppression, l'export et la copie du contenu.
-///
-/// Copied from [SessionDetailViewModel].
+/// la suppression, l'export, la copie, ainsi que la generation a la demande
+/// du resume IA et du retour du coach d'anglais.
+
 @ProviderFor(SessionDetailViewModel)
-const sessionDetailViewModelProvider = SessionDetailViewModelFamily();
+const sessionDetailViewModelProvider = SessionDetailViewModelFamily._();
 
 /// ViewModel de l'ecran de detail d'une session.
 ///
 /// Charge la session et ses segments, gere l'edition du titre,
-/// la suppression, l'export et la copie du contenu.
-///
-/// Copied from [SessionDetailViewModel].
-class SessionDetailViewModelFamily
-    extends Family<AsyncValue<SessionDetailState>> {
+/// la suppression, l'export, la copie, ainsi que la generation a la demande
+/// du resume IA et du retour du coach d'anglais.
+final class SessionDetailViewModelProvider
+    extends $AsyncNotifierProvider<SessionDetailViewModel, SessionDetailState> {
   /// ViewModel de l'ecran de detail d'une session.
   ///
   /// Charge la session et ses segments, gere l'edition du titre,
-  /// la suppression, l'export et la copie du contenu.
-  ///
-  /// Copied from [SessionDetailViewModel].
-  const SessionDetailViewModelFamily();
+  /// la suppression, l'export, la copie, ainsi que la generation a la demande
+  /// du resume IA et du retour du coach d'anglais.
+  const SessionDetailViewModelProvider._({
+    required SessionDetailViewModelFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'sessionDetailViewModelProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
 
-  /// ViewModel de l'ecran de detail d'une session.
-  ///
-  /// Charge la session et ses segments, gere l'edition du titre,
-  /// la suppression, l'export et la copie du contenu.
-  ///
-  /// Copied from [SessionDetailViewModel].
-  SessionDetailViewModelProvider call({required String sessionId}) {
-    return SessionDetailViewModelProvider(sessionId: sessionId);
+  @override
+  String debugGetCreateSourceHash() => _$sessionDetailViewModelHash();
+
+  @override
+  String toString() {
+    return r'sessionDetailViewModelProvider'
+        ''
+        '($argument)';
   }
 
+  @$internal
   @override
-  SessionDetailViewModelProvider getProviderOverride(
-    covariant SessionDetailViewModelProvider provider,
-  ) {
-    return call(sessionId: provider.sessionId);
-  }
-
-  static const Iterable<ProviderOrFamily>? _dependencies = null;
-
-  @override
-  Iterable<ProviderOrFamily>? get dependencies => _dependencies;
-
-  static const Iterable<ProviderOrFamily>? _allTransitiveDependencies = null;
-
-  @override
-  Iterable<ProviderOrFamily>? get allTransitiveDependencies =>
-      _allTransitiveDependencies;
-
-  @override
-  String? get name => r'sessionDetailViewModelProvider';
-}
-
-/// ViewModel de l'ecran de detail d'une session.
-///
-/// Charge la session et ses segments, gere l'edition du titre,
-/// la suppression, l'export et la copie du contenu.
-///
-/// Copied from [SessionDetailViewModel].
-class SessionDetailViewModelProvider
-    extends
-        AutoDisposeAsyncNotifierProviderImpl<
-          SessionDetailViewModel,
-          SessionDetailState
-        > {
-  /// ViewModel de l'ecran de detail d'une session.
-  ///
-  /// Charge la session et ses segments, gere l'edition du titre,
-  /// la suppression, l'export et la copie du contenu.
-  ///
-  /// Copied from [SessionDetailViewModel].
-  SessionDetailViewModelProvider({required String sessionId})
-    : this._internal(
-        () => SessionDetailViewModel()..sessionId = sessionId,
-        from: sessionDetailViewModelProvider,
-        name: r'sessionDetailViewModelProvider',
-        debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-            ? null
-            : _$sessionDetailViewModelHash,
-        dependencies: SessionDetailViewModelFamily._dependencies,
-        allTransitiveDependencies:
-            SessionDetailViewModelFamily._allTransitiveDependencies,
-        sessionId: sessionId,
-      );
-
-  SessionDetailViewModelProvider._internal(
-    super._createNotifier, {
-    required super.name,
-    required super.dependencies,
-    required super.allTransitiveDependencies,
-    required super.debugGetCreateSourceHash,
-    required super.from,
-    required this.sessionId,
-  }) : super.internal();
-
-  final String sessionId;
-
-  @override
-  FutureOr<SessionDetailState> runNotifierBuild(
-    covariant SessionDetailViewModel notifier,
-  ) {
-    return notifier.build(sessionId: sessionId);
-  }
-
-  @override
-  Override overrideWith(SessionDetailViewModel Function() create) {
-    return ProviderOverride(
-      origin: this,
-      override: SessionDetailViewModelProvider._internal(
-        () => create()..sessionId = sessionId,
-        from: from,
-        name: null,
-        dependencies: null,
-        allTransitiveDependencies: null,
-        debugGetCreateSourceHash: null,
-        sessionId: sessionId,
-      ),
-    );
-  }
-
-  @override
-  AutoDisposeAsyncNotifierProviderElement<
-    SessionDetailViewModel,
-    SessionDetailState
-  >
-  createElement() {
-    return _SessionDetailViewModelProviderElement(this);
-  }
+  SessionDetailViewModel create() => SessionDetailViewModel();
 
   @override
   bool operator ==(Object other) {
     return other is SessionDetailViewModelProvider &&
-        other.sessionId == sessionId;
+        other.argument == argument;
   }
 
   @override
   int get hashCode {
-    var hash = _SystemHash.combine(0, runtimeType.hashCode);
-    hash = _SystemHash.combine(hash, sessionId.hashCode);
-
-    return _SystemHash.finish(hash);
+    return argument.hashCode;
   }
 }
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-mixin SessionDetailViewModelRef
-    on AutoDisposeAsyncNotifierProviderRef<SessionDetailState> {
-  /// The parameter `sessionId` of this provider.
-  String get sessionId;
-}
+String _$sessionDetailViewModelHash() =>
+    r'70b88e342da19e4775a903ebb61bc87d5207a910';
 
-class _SessionDetailViewModelProviderElement
-    extends
-        AutoDisposeAsyncNotifierProviderElement<
+/// ViewModel de l'ecran de detail d'une session.
+///
+/// Charge la session et ses segments, gere l'edition du titre,
+/// la suppression, l'export, la copie, ainsi que la generation a la demande
+/// du resume IA et du retour du coach d'anglais.
+
+final class SessionDetailViewModelFamily extends $Family
+    with
+        $ClassFamilyOverride<
           SessionDetailViewModel,
-          SessionDetailState
-        >
-    with SessionDetailViewModelRef {
-  _SessionDetailViewModelProviderElement(super.provider);
+          AsyncValue<SessionDetailState>,
+          SessionDetailState,
+          FutureOr<SessionDetailState>,
+          String
+        > {
+  const SessionDetailViewModelFamily._()
+    : super(
+        retry: null,
+        name: r'sessionDetailViewModelProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// ViewModel de l'ecran de detail d'une session.
+  ///
+  /// Charge la session et ses segments, gere l'edition du titre,
+  /// la suppression, l'export, la copie, ainsi que la generation a la demande
+  /// du resume IA et du retour du coach d'anglais.
+
+  SessionDetailViewModelProvider call({required String sessionId}) =>
+      SessionDetailViewModelProvider._(argument: sessionId, from: this);
 
   @override
-  String get sessionId => (origin as SessionDetailViewModelProvider).sessionId;
+  String toString() => r'sessionDetailViewModelProvider';
 }
 
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+/// ViewModel de l'ecran de detail d'une session.
+///
+/// Charge la session et ses segments, gere l'edition du titre,
+/// la suppression, l'export, la copie, ainsi que la generation a la demande
+/// du resume IA et du retour du coach d'anglais.
+
+abstract class _$SessionDetailViewModel
+    extends $AsyncNotifier<SessionDetailState> {
+  late final _$args = ref.$arg as String;
+  String get sessionId => _$args;
+
+  FutureOr<SessionDetailState> build({required String sessionId});
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build(sessionId: _$args);
+    final ref =
+        this.ref as $Ref<AsyncValue<SessionDetailState>, SessionDetailState>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<AsyncValue<SessionDetailState>, SessionDetailState>,
+              AsyncValue<SessionDetailState>,
+              Object?,
+              Object?
+            >;
+    element.handleValue(ref, created);
+  }
+}

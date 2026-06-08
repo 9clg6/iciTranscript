@@ -170,7 +170,8 @@ class ProcessManagerChannel {
       return;
     }
 
-    _log.info('Envoi SIGTERM au serveur');
+    final int pid = process.pid;
+    _log.info('Envoi SIGTERM au serveur (pid $pid)');
     process.kill(ProcessSignal.sigterm);
 
     // Attendre 5s pour un arret propre
@@ -183,6 +184,12 @@ class ProcessManagerChannel {
       _log.warning('SIGTERM ignore, envoi SIGKILL');
       process.kill(ProcessSignal.sigkill);
     }
+
+    // On a lance `/bin/sh -c "uvx ..."`. Tuer le sh ne tue PAS les enfants
+    // uvx/python (reparentes a launchd → orphelins qui gardent le port 8000
+    // et bloquent le prochain demarrage). On nettoie donc tout voxmlx par
+    // pattern. (Pas de kill par PGID : l'enfant partage le PGID de l'app.)
+    await Process.run('/usr/bin/pkill', <String>['-9', '-f', 'voxmlx']);
 
     _serverProcess = null;
     _setState(ServerState.stopped);
@@ -270,19 +277,27 @@ class ProcessManagerChannel {
         <String>['-c', 'lsof -ti :$port'],
       );
       final String output = (result.stdout as String).trim();
-      if (output.isEmpty) return;
 
-      for (final String pid in output.split('\n')) {
-        final String trimmedPid = pid.trim();
-        if (trimmedPid.isEmpty) continue;
-        _log.warning(
-          'Port $port occupe par PID $trimmedPid, envoi SIGKILL',
-        );
-        await Process.run('/bin/kill', <String>['-9', trimmedPid]);
+      // Tuer le PID qui ecoute le port (l'enfant python qui detient le socket).
+      if (output.isNotEmpty) {
+        for (final String pid in output.split('\n')) {
+          final String trimmedPid = pid.trim();
+          if (trimmedPid.isEmpty) continue;
+          _log.warning('Port $port occupe par PID $trimmedPid, SIGKILL');
+          await Process.run('/bin/kill', <String>['-9', trimmedPid]);
+        }
       }
 
+      // `uvx` (`uv tool uvx`) est un superviseur : tuer seulement l'enfant
+      // python ne suffit pas, le parent relance le serveur et reprend le port.
+      // On tue donc tout processus voxmlx par pattern. NB : on ne peut PAS
+      // tuer par groupe de processus (kill -9 -PGID) car l'enfant partage le
+      // PGID de l'app Flutter → cela tuerait l'app elle-meme. Le pattern
+      // "voxmlx" ne matche jamais le binaire de l'app.
+      await Process.run('/usr/bin/pkill', <String>['-9', '-f', 'voxmlx']);
+
       // Laisser le temps au port de se liberer
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
     } on Exception catch (e) {
       _log.warning('Impossible de nettoyer le port $port: $e');
     }

@@ -6,30 +6,76 @@ part of 'session_list.view_model.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$sessionListViewModelHash() =>
-    r'd4b55e9c10867e43e8168cf2a4e10fb23687b88d';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// ViewModel de la liste des sessions (sidebar).
+///
+/// Ecoute le [SessionHistoryService] pour charger et filtrer
+/// les sessions, gerer la selection et la suppression.
+
+@ProviderFor(SessionListViewModel)
+const sessionListViewModelProvider = SessionListViewModelProvider._();
 
 /// ViewModel de la liste des sessions (sidebar).
 ///
 /// Ecoute le [SessionHistoryService] pour charger et filtrer
 /// les sessions, gerer la selection et la suppression.
-///
-/// Copied from [SessionListViewModel].
-@ProviderFor(SessionListViewModel)
-final sessionListViewModelProvider =
-    AutoDisposeNotifierProvider<
-      SessionListViewModel,
-      SessionListState
-    >.internal(
-      SessionListViewModel.new,
-      name: r'sessionListViewModelProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$sessionListViewModelHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
+final class SessionListViewModelProvider
+    extends $NotifierProvider<SessionListViewModel, SessionListState> {
+  /// ViewModel de la liste des sessions (sidebar).
+  ///
+  /// Ecoute le [SessionHistoryService] pour charger et filtrer
+  /// les sessions, gerer la selection et la suppression.
+  const SessionListViewModelProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'sessionListViewModelProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
 
-typedef _$SessionListViewModel = AutoDisposeNotifier<SessionListState>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+  @override
+  String debugGetCreateSourceHash() => _$sessionListViewModelHash();
+
+  @$internal
+  @override
+  SessionListViewModel create() => SessionListViewModel();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(SessionListState value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<SessionListState>(value),
+    );
+  }
+}
+
+String _$sessionListViewModelHash() =>
+    r'b019459d8b0d9554e3b5495a61937a988601b5f3';
+
+/// ViewModel de la liste des sessions (sidebar).
+///
+/// Ecoute le [SessionHistoryService] pour charger et filtrer
+/// les sessions, gerer la selection et la suppression.
+
+abstract class _$SessionListViewModel extends $Notifier<SessionListState> {
+  SessionListState build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build();
+    final ref = this.ref as $Ref<SessionListState, SessionListState>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<SessionListState, SessionListState>,
+              SessionListState,
+              Object?,
+              Object?
+            >;
+    element.handleValue(ref, created);
+  }
+}

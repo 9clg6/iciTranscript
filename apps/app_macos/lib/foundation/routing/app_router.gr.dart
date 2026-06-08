@@ -47,11 +47,16 @@ class MainShellRoute extends PageRouteInfo<void> {
 class SessionDetailRoute extends PageRouteInfo<SessionDetailRouteArgs> {
   SessionDetailRoute({
     required String sessionId,
+    VoidCallback? onClose,
     Key? key,
     List<PageRouteInfo>? children,
   }) : super(
          SessionDetailRoute.name,
-         args: SessionDetailRouteArgs(sessionId: sessionId, key: key),
+         args: SessionDetailRouteArgs(
+           sessionId: sessionId,
+           onClose: onClose,
+           key: key,
+         ),
          rawPathParams: {'sessionId': sessionId},
          initialChildren: children,
        );
@@ -67,22 +72,44 @@ class SessionDetailRoute extends PageRouteInfo<SessionDetailRouteArgs> {
           sessionId: pathParams.getString('sessionId'),
         ),
       );
-      return SessionDetailScreen(sessionId: args.sessionId, key: args.key);
+      return SessionDetailScreen(
+        sessionId: args.sessionId,
+        onClose: args.onClose,
+        key: args.key,
+      );
     },
   );
 }
 
 class SessionDetailRouteArgs {
-  const SessionDetailRouteArgs({required this.sessionId, this.key});
+  const SessionDetailRouteArgs({
+    required this.sessionId,
+    this.onClose,
+    this.key,
+  });
 
   final String sessionId;
+
+  final VoidCallback? onClose;
 
   final Key? key;
 
   @override
   String toString() {
-    return 'SessionDetailRouteArgs{sessionId: $sessionId, key: $key}';
+    return 'SessionDetailRouteArgs{sessionId: $sessionId, onClose: $onClose, key: $key}';
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! SessionDetailRouteArgs) return false;
+    return sessionId == other.sessionId &&
+        onClose == other.onClose &&
+        key == other.key;
+  }
+
+  @override
+  int get hashCode => sessionId.hashCode ^ onClose.hashCode ^ key.hashCode;
 }
 
 /// generated route for

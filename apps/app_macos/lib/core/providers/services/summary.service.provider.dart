@@ -1,6 +1,5 @@
 import 'package:core_data/database/app_database.dart';
 import 'package:core_data/database/dao/summary.dao.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/summary.service.dart';
 import 'package:ici_transcript/core/providers/data/database.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';

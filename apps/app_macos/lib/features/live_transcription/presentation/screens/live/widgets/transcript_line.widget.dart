@@ -11,10 +11,17 @@ import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 /// et le texte transcrit dans un conteneur style.
 class TranscriptLineWidget extends StatelessWidget {
   /// Cree une instance de [TranscriptLineWidget].
-  const TranscriptLineWidget({required this.segment, super.key});
+  const TranscriptLineWidget({
+    required this.segment,
+    this.translation,
+    super.key,
+  });
 
   /// Le segment de transcription a afficher.
   final TranscriptSegmentEntity segment;
+
+  /// Traduction du texte (sous-titre), null si absente/désactivée.
+  final String? translation;
 
   String _formatTimestamp(int timestampMs) {
     final Duration duration = Duration(milliseconds: timestampMs);
@@ -94,16 +101,46 @@ class TranscriptLineWidget extends StatelessWidget {
                     ),
                   ),
                 ),
-          child: Text(
-            segment.text,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: isInput
-                  ? colorScheme.onSurface
-                  : colorScheme.onSurfaceVariant,
-              height: 1.6,
-              fontSize: 15,
-              fontStyle: isInput ? FontStyle.normal : FontStyle.italic,
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                segment.text,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: isInput
+                      ? colorScheme.onSurface
+                      : colorScheme.onSurfaceVariant,
+                  height: 1.6,
+                  fontSize: 15,
+                  fontStyle: isInput ? FontStyle.normal : FontStyle.italic,
+                ),
+              ),
+              if (translation != null && translation!.trim().isNotEmpty) ...
+                  <Widget>[
+                const Gap(6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Icon(
+                      Icons.translate,
+                      size: 13,
+                      color: colorScheme.primary.withValues(alpha: 0.7),
+                    ),
+                    const Gap(6),
+                    Expanded(
+                      child: Text(
+                        translation!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.primary.withValues(alpha: 0.85),
+                          height: 1.4,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
           ),
         ),
       ],

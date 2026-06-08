@@ -29,8 +29,8 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>IciTranscript needs microphone access to transcribe your voice</string>
+	<string>iciTranscript needs microphone access to transcribe your voice</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>IciTranscript needs screen capture permission to capture system audio for transcription</string>
+	<string>iciTranscript needs screen capture permission to capture system audio for transcription</string>
 </dict>
 </plist>

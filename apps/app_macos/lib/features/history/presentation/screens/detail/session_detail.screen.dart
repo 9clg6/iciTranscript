@@ -8,7 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
+import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
+import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
 /// Ecran de detail d'une session de transcription.
@@ -106,10 +108,20 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
           height: 1,
           color: colorScheme.outlineVariant.withValues(alpha: 0.2),
         ),
-        // Summary panel (if available)
-        if (state.summary != null) ...<Widget>[
+        // Resume IA (genere a la demande)
+        if (state.isSummaryLoading || state.summary != null) ...<Widget>[
           const Gap(16),
           _buildSummaryPanel(state, colorScheme, textTheme),
+        ],
+        // Retour du coach d'anglais (genere a la demande)
+        if (state.isFeedbackLoading || state.feedback != null) ...<Widget>[
+          const Gap(16),
+          _buildCoachPanel(state, colorScheme, textTheme),
+        ],
+        // Interlocuteurs (diarization post-session)
+        if (state.speakers.isNotEmpty) ...<Widget>[
+          const Gap(16),
+          _buildSpeakersPanel(state, colorScheme, textTheme),
         ],
         // Transcript content
         Expanded(
@@ -125,6 +137,72 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCoachPanel(
+    SessionDetailState state,
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(48, 0, 48, 0),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: colorScheme.secondary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(
+                Icons.school_outlined,
+                size: 16,
+                color: colorScheme.secondary,
+              ),
+              const Gap(8),
+              Text(
+                'Coach d\'anglais',
+                style: textTheme.labelLarge?.copyWith(
+                  color: colorScheme.secondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              if (state.feedback != null)
+                IconButton(
+                  icon: Icon(
+                    Icons.delete_outline,
+                    size: 16,
+                    color: colorScheme.error.withValues(alpha: 0.7),
+                  ),
+                  tooltip: 'Supprimer le retour',
+                  onPressed: () {
+                    ref
+                        .read(
+                          sessionDetailViewModelProvider(
+                            sessionId: widget.sessionId,
+                          ).notifier,
+                        )
+                        .deleteFeedback();
+                  },
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+            ],
+          ),
+          const Gap(12),
+          if (state.isFeedbackLoading)
+            _loadingRow('Analyse de votre anglais...', colorScheme, textTheme)
+          else if (state.feedback != null)
+            CoachFeedbackView(feedback: state.feedback!),
+        ],
+      ),
     );
   }
 
@@ -162,37 +240,129 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                 ),
               ),
               const Spacer(),
-              IconButton(
-                icon: Icon(
-                  Icons.delete_outline,
-                  size: 16,
-                  color: colorScheme.error.withValues(alpha: 0.7),
+              if (state.summary != null)
+                IconButton(
+                  icon: Icon(
+                    Icons.delete_outline,
+                    size: 16,
+                    color: colorScheme.error.withValues(alpha: 0.7),
+                  ),
+                  tooltip: 'Supprimer le résumé',
+                  onPressed: () {
+                    ref
+                        .read(
+                          sessionDetailViewModelProvider(
+                            sessionId: widget.sessionId,
+                          ).notifier,
+                        )
+                        .deleteSummary();
+                  },
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
-                tooltip: 'Supprimer le résumé',
-                onPressed: () {
-                  ref
-                      .read(
-                        sessionDetailViewModelProvider(
-                          sessionId: widget.sessionId,
-                        ).notifier,
-                      )
-                      .deleteSummary();
-                },
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
+            ],
+          ),
+          const Gap(12),
+          if (state.isSummaryLoading)
+            _loadingRow('Génération du résumé...', colorScheme, textTheme)
+          else if (state.summary != null)
+            Text(
+              state.summary!,
+              style: textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface,
+                height: 1.6,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSpeakersPanel(
+    SessionDetailState state,
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(48, 0, 48, 0),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colorScheme.tertiaryContainer.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: colorScheme.tertiary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.groups_outlined, size: 16, color: colorScheme.tertiary),
+              const Gap(8),
+              Text(
+                'Interlocuteurs',
+                style: textTheme.labelLarge?.copyWith(
+                  color: colorScheme.tertiary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
           const Gap(12),
-          Text(
-            state.summary!,
-            style: textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurface,
-              height: 1.6,
+          for (final SpeakerTurn turn in state.speakers) ...<Widget>[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Interlocuteur ${turn.speaker + 1}',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: colorScheme.tertiary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Gap(2),
+                  Text(
+                    turn.text,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurface,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _loadingRow(
+    String label,
+    ColorScheme colorScheme,
+    TextTheme textTheme,
+  ) {
+    return Row(
+      children: <Widget>[
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: colorScheme.primary,
+          ),
+        ),
+        const Gap(8),
+        Text(
+          label,
+          style: textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 
@@ -331,12 +501,34 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
             colorScheme: colorScheme,
           ),
           const Gap(8),
-          // Summarize
+          // Resumer
           _ActionButton(
             icon: Icons.auto_awesome_outlined,
             label: LocaleKeys.history_detail_summarize.tr(),
             onPressed: () {
-              // TODO: Implement summarize feature.
+              ref
+                  .read(
+                    sessionDetailViewModelProvider(
+                      sessionId: widget.sessionId,
+                    ).notifier,
+                  )
+                  .generateSummary();
+            },
+            colorScheme: colorScheme,
+          ),
+          const Gap(8),
+          // Coach d'anglais
+          _ActionButton(
+            icon: Icons.school_outlined,
+            label: 'Coach d\'anglais',
+            onPressed: () {
+              ref
+                  .read(
+                    sessionDetailViewModelProvider(
+                      sessionId: widget.sessionId,
+                    ).notifier,
+                  )
+                  .analyzeEnglish();
             },
             colorScheme: colorScheme,
           ),

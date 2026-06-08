@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ici_transcript/features/transcription/presentation/screens/live/live_transcription.screen.dart';
-import 'package:ici_transcript/features/transcription/presentation/screens/live/widgets/session_controls.widget.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.screen.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/session_controls.widget.dart';
 
 import '../../helpers/test_helpers.dart';
 
+/// ViewModel factice qui renvoie un état fixe sans déclencher le cycle de vie
+/// réel (écoute des streams serveur/audio, vérification des permissions).
+class _FakeLiveTranscriptionViewModel extends LiveTranscriptionViewModel {
+  @override
+  LiveTranscriptionState build() => LiveTranscriptionState.initial();
+}
+
 void main() {
+  final List<Override> overrides = <Override>[
+    liveTranscriptionViewModelProvider.overrideWith(
+      _FakeLiveTranscriptionViewModel.new,
+    ),
+  ];
+
   /// Tests widget pour [LiveTranscriptionScreen].
   ///
   /// Verifie que l'ecran de transcription en direct affiche
@@ -18,6 +34,7 @@ void main() {
       await tester.pumpWidget(
         TestHelpers.createTestableWidget(
           child: const LiveTranscriptionScreen(),
+          overrides: overrides,
         ),
       );
       await tester.pump();
@@ -33,6 +50,7 @@ void main() {
       await tester.pumpWidget(
         TestHelpers.createTestableWidget(
           child: const LiveTranscriptionScreen(),
+          overrides: overrides,
         ),
       );
       await tester.pump();
@@ -48,6 +66,7 @@ void main() {
       await tester.pumpWidget(
         TestHelpers.createTestableWidget(
           child: const LiveTranscriptionScreen(),
+          overrides: overrides,
         ),
       );
       await tester.pump();
@@ -63,6 +82,7 @@ void main() {
       await tester.pumpWidget(
         TestHelpers.createTestableWidget(
           child: const LiveTranscriptionScreen(),
+          overrides: overrides,
         ),
       );
       await tester.pump();

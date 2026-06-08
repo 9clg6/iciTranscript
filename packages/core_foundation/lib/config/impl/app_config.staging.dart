@@ -6,7 +6,7 @@ final class AppConfigStaging extends AppConfig {
   /// Cree une instance de [AppConfigStaging].
   const AppConfigStaging()
     : super(
-        appName: 'IciTranscript Staging',
+        appName: 'iciTranscript Staging',
         baseUrl: 'https://api-staging.icitranscript.fr',
         env: Environment.staging,
       );

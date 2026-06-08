@@ -1,7 +1,6 @@
 import 'package:core_domain/domain/repositories/transcript.repository.dart';
 import 'package:core_domain/domain/usecases/save_transcript_segment.use_case.dart';
 import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'save_transcript_segment.use_case.provider.g.dart';

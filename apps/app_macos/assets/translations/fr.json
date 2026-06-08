@@ -25,8 +25,8 @@
     }
   },
   "app": {
-    "name": "IciTranscript",
-    "subtitle": "Transcription vocale"
+    "name": "iciTranscript",
+    "subtitle": "Coach d'anglais"
   },
   "transcription": {
     "title": "Transcription",
@@ -52,10 +52,10 @@
       "speaker_me": "MOI",
       "speaker_system": "SYSTEME",
       "no_session": "Appuyez sur Demarrer pour commencer",
-      "summary_option": "Résumé IA",
-      "summary_title": "Résumé de la session",
-      "summary_loading": "Génération du résumé...",
-      "summary_no_key": "Configurez ANTHROPIC_API_KEY pour activer le résumé"
+      "summary_option": "Coach d'anglais",
+      "summary_title": "Coach d'anglais",
+      "summary_loading": "Analyse de votre anglais...",
+      "summary_no_key": "Configurez ANTHROPIC_API_KEY pour activer le coach"
     },
     "status_bar": {
       "level": "Niveau",

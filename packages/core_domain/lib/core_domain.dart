@@ -2,6 +2,7 @@ library;
 
 // Domain Entities
 export 'domain/entities/audio_device.entity.dart';
+export 'domain/entities/english_feedback.entity.dart';
 export 'domain/entities/session.entity.dart';
 export 'domain/entities/summary.entity.dart';
 export 'domain/entities/transcript_segment.entity.dart';

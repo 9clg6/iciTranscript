@@ -6,28 +6,66 @@ part of 'process_manager.service.provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$processManagerServiceHash() =>
-    r'd7be5c19b5f27573d6b7412dcaa386a983e4ea46';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// Provider singleton pour [ProcessManagerService].
+///
+/// Wrape le [ProcessManagerChannel] pour fournir une API
+/// de plus haut niveau pour le cycle de vie du serveur ML.
+
+@ProviderFor(processManagerService)
+const processManagerServiceProvider = ProcessManagerServiceProvider._();
 
 /// Provider singleton pour [ProcessManagerService].
 ///
 /// Wrape le [ProcessManagerChannel] pour fournir une API
 /// de plus haut niveau pour le cycle de vie du serveur ML.
-///
-/// Copied from [processManagerService].
-@ProviderFor(processManagerService)
-final processManagerServiceProvider = Provider<ProcessManagerService>.internal(
-  processManagerService,
-  name: r'processManagerServiceProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$processManagerServiceHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef ProcessManagerServiceRef = ProviderRef<ProcessManagerService>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class ProcessManagerServiceProvider
+    extends
+        $FunctionalProvider<
+          ProcessManagerService,
+          ProcessManagerService,
+          ProcessManagerService
+        >
+    with $Provider<ProcessManagerService> {
+  /// Provider singleton pour [ProcessManagerService].
+  ///
+  /// Wrape le [ProcessManagerChannel] pour fournir une API
+  /// de plus haut niveau pour le cycle de vie du serveur ML.
+  const ProcessManagerServiceProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'processManagerServiceProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$processManagerServiceHash();
+
+  @$internal
+  @override
+  $ProviderElement<ProcessManagerService> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  ProcessManagerService create(Ref ref) {
+    return processManagerService(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(ProcessManagerService value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<ProcessManagerService>(value),
+    );
+  }
+}
+
+String _$processManagerServiceHash() =>
+    r'd7be5c19b5f27573d6b7412dcaa386a983e4ea46';

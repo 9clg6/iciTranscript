@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
@@ -10,6 +11,7 @@ import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:rxdart/rxdart.dart';
@@ -44,6 +46,15 @@ final class LiveTranscriptionService {
   StreamSubscription<data.AudioChunk>? _audioSubscription;
   StreamSubscription<TranscriptEventRemoteModel>? _transcriptionSubscription;
   Timer? _commitTimer;
+
+  // Enregistrement des flux bruts pour la passe post-session (Path B) :
+  // micro = MOI, système = interlocuteurs (diarization).
+  WavRecorder? _micRecorder;
+  WavRecorder? _systemRecorder;
+
+  String get _recordingsDir =>
+      '${Platform.environment['HOME'] ?? '/tmp'}'
+      '/Library/Application Support/IciTranscript/recordings';
 
   /// Stream reactif de la session en cours.
   BehaviorSubject<SessionEntity?> get currentSessionStream =>
@@ -134,6 +145,23 @@ final class LiveTranscriptionService {
       await _transcriptionService.startSession();
       _log.info('Session creee OK');
 
+      // 4b. Ouvrir les enregistreurs WAV par session (micro + système) pour la
+      // passe post-session (transcription propre MOI + diarization meeting).
+      final String? recSessionId = currentSessionStream.valueOrNull?.id;
+      if (recSessionId != null) {
+        try {
+          _micRecorder = WavRecorder();
+          _systemRecorder = WavRecorder();
+          await _micRecorder!.open('$_recordingsDir/${recSessionId}_mic.wav');
+          await _systemRecorder!
+              .open('$_recordingsDir/${recSessionId}_system.wav');
+        } catch (e) {
+          _log.warning('Ouverture enregistreurs WAV échouée: $e');
+          _micRecorder = null;
+          _systemRecorder = null;
+        }
+      }
+
       // 5. Relayer l'audio vers le WebSocket
       int audioChunkCount = 0;
       _audioSubscription = _audioCaptureChannel.audioStream.listen(
@@ -143,6 +171,12 @@ final class LiveTranscriptionService {
             _log.debug(
               'Audio chunk #$audioChunkCount: ${chunk.data.length} bytes, source=${chunk.source}',
             );
+          }
+          // Tee vers l'enregistreur correspondant (avant le mixage WS).
+          if (chunk.source == AudioSource.input) {
+            _micRecorder?.append(chunk.data);
+          } else {
+            _systemRecorder?.append(chunk.data);
           }
           _transcriptionRemoteDataSource.sendAudio(chunk);
         },
@@ -218,6 +252,16 @@ final class LiveTranscriptionService {
 
     // Arreter la capture audio
     await _audioCaptureChannel.stopCapture();
+
+    // Finaliser les enregistrements WAV (corrige l'en-tête).
+    try {
+      await _micRecorder?.close();
+      await _systemRecorder?.close();
+    } catch (e) {
+      _log.warning('Fermeture enregistreurs WAV: $e');
+    }
+    _micRecorder = null;
+    _systemRecorder = null;
 
     // Deconnecte le WebSocket
     await _transcriptionRemoteDataSource.disconnect();

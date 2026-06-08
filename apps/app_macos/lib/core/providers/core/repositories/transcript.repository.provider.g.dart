@@ -6,29 +6,66 @@ part of 'transcript.repository.provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$transcriptRepositoryHash() =>
-    r'bb453fc13dbb43577c882912015a1897b02cd295';
+// GENERATED CODE - DO NOT MODIFY BY HAND
+// ignore_for_file: type=lint, type=warning
+/// Provider pour [TranscriptRepository].
+///
+/// Fournit l'implementation [TranscriptRepositoryImpl] qui utilise
+/// la source de donnees locale Drift pour la persistance des segments.
+
+@ProviderFor(transcriptRepository)
+const transcriptRepositoryProvider = TranscriptRepositoryProvider._();
 
 /// Provider pour [TranscriptRepository].
 ///
 /// Fournit l'implementation [TranscriptRepositoryImpl] qui utilise
 /// la source de donnees locale Drift pour la persistance des segments.
-///
-/// Copied from [transcriptRepository].
-@ProviderFor(transcriptRepository)
-final transcriptRepositoryProvider =
-    AutoDisposeProvider<TranscriptRepository>.internal(
-      transcriptRepository,
-      name: r'transcriptRepositoryProvider',
-      debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-          ? null
-          : _$transcriptRepositoryHash,
-      dependencies: null,
-      allTransitiveDependencies: null,
-    );
 
-@Deprecated('Will be removed in 3.0. Use Ref instead')
-// ignore: unused_element
-typedef TranscriptRepositoryRef = AutoDisposeProviderRef<TranscriptRepository>;
-// ignore_for_file: type=lint
-// ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member, deprecated_member_use_from_same_package
+final class TranscriptRepositoryProvider
+    extends
+        $FunctionalProvider<
+          TranscriptRepository,
+          TranscriptRepository,
+          TranscriptRepository
+        >
+    with $Provider<TranscriptRepository> {
+  /// Provider pour [TranscriptRepository].
+  ///
+  /// Fournit l'implementation [TranscriptRepositoryImpl] qui utilise
+  /// la source de donnees locale Drift pour la persistance des segments.
+  const TranscriptRepositoryProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'transcriptRepositoryProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$transcriptRepositoryHash();
+
+  @$internal
+  @override
+  $ProviderElement<TranscriptRepository> $createElement(
+    $ProviderPointer pointer,
+  ) => $ProviderElement(pointer);
+
+  @override
+  TranscriptRepository create(Ref ref) {
+    return transcriptRepository(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(TranscriptRepository value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<TranscriptRepository>(value),
+    );
+  }
+}
+
+String _$transcriptRepositoryHash() =>
+    r'bb453fc13dbb43577c882912015a1897b02cd295';

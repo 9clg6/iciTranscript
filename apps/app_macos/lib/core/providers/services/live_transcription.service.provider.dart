@@ -1,6 +1,5 @@
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/data/datasource/transcription.remote.data_source.provider.dart';
