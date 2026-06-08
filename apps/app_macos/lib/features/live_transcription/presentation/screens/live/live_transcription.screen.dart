@@ -1,5 +1,6 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:ici_transcript/foundation/routing/app_router.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -420,9 +421,15 @@ class _LiveTranscriptionScreenState
             onResume: () => ref
                 .read(liveTranscriptionViewModelProvider.notifier)
                 .resumeSession(),
-            onStop: () => ref
-                .read(liveTranscriptionViewModelProvider.notifier)
-                .stopSession(),
+            onStop: () async {
+              final StackRouter router = AutoRouter.of(context);
+              final String? sessionId = await ref
+                  .read(liveTranscriptionViewModelProvider.notifier)
+                  .stopSession();
+              if (sessionId != null && mounted) {
+                await router.push(SessionDetailRoute(sessionId: sessionId));
+              }
+            },
           ),
         ],
       ),
@@ -472,13 +479,17 @@ class _LiveTranscriptionScreenState
       itemCount: state.segments.length,
       itemBuilder: (BuildContext context, int index) {
         final segment = state.segments[index];
+        final String? translation = state.isTranslationEnabled
+            ? (state.translations[segment.id] ??
+                (segment.id.startsWith('current_')
+                    ? state.translations['current']
+                    : null))
+            : null;
         return Padding(
           padding: const EdgeInsets.only(bottom: 24),
           child: TranscriptLineWidget(
             segment: segment,
-            translation: state.isTranslationEnabled
-                ? state.translations[segment.id]
-                : null,
+            translation: translation,
           ),
         );
       },
