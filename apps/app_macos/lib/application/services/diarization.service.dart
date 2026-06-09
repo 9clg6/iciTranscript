@@ -169,23 +169,17 @@ class DiarizationService {
     }
   }
 
+  /// Télécharge [url] vers [dest] via `curl -fSL` (suit toutes les
+  /// redirections GitHub et échoue proprement, sans fichier tronqué — le
+  /// HttpClient maison sauvegardait des fichiers partiels/corrompus).
   Future<void> _download(String url, String dest) async {
-    final HttpClient client = HttpClient();
-    try {
-      final HttpClientRequest req = await client.getUrl(Uri.parse(url));
-      final HttpClientResponse res = await req.close();
-      if (res.statusCode >= 300 && res.statusCode < 400) {
-        // Suivre la redirection GitHub.
-        final String? loc = res.headers.value(HttpHeaders.locationHeader);
-        if (loc != null) {
-          await _download(loc, dest);
-          return;
-        }
-      }
-      final IOSink sink = File(dest).openWrite();
-      await res.pipe(sink);
-    } finally {
-      client.close();
+    final ProcessResult r = await Process.run(
+      '/usr/bin/curl',
+      <String>['-fSL', '--retry', '3', '-o', dest, url],
+    );
+    if (r.exitCode != 0) {
+      await _delete(dest);
+      throw Exception('Téléchargement échoué ($url): ${r.stderr}');
     }
   }
 
@@ -204,38 +198,67 @@ class DiarizationService {
   /// Alignement : chaque phrase (timestamps Parakeet) est attribuée au tour de
   /// parole (sherpa) avec lequel elle chevauche le plus.
   static const String _pyScript = r'''
-import json, sys, wave, os
+import json, sys, os, tempfile, wave
 import numpy as np
 import sherpa_onnx
 from parakeet_mlx import from_pretrained
 
 mic_wav, sys_wav, seg, emb, pk_model = sys.argv[1:6]
+SR = 16000
 
 def has(p):
     return p and p != '/dev/null' and os.path.exists(p) and os.path.getsize(p) > 44
 
+def load_pcm(path):
+    # Lecture brute : on ignore la taille déclarée dans l'en-tête WAV (qui peut
+    # ne pas avoir été corrigée si la session s'est terminée brutalement) et on
+    # lit tous les octets PCM après l'en-tête 44 octets.
+    with open(path, 'rb') as f:
+        raw = f.read()
+    return np.frombuffer(raw[44:], dtype=np.int16)
+
+def write_wav(pcm, path):
+    w = wave.open(path, 'wb'); w.setnchannels(1); w.setsampwidth(2)
+    w.setframerate(SR); w.writeframes(pcm.tobytes()); w.close()
+
+def rms(pcm):
+    if pcm.size == 0:
+        return 0.0
+    x = pcm.astype(np.float32) / 32768.0
+    return float(np.sqrt(np.mean(x * x)))
+
 m = from_pretrained(pk_model)
 out = {"mic_text": "", "speakers": []}
+tmpd = tempfile.mkdtemp()
 
-if has(mic_wav):
-    out["mic_text"] = m.transcribe(mic_wav).text.strip()
+mic_pcm = load_pcm(mic_wav) if has(mic_wav) else np.zeros(0, dtype=np.int16)
+sys_pcm = load_pcm(sys_wav) if has(sys_wav) else np.zeros(0, dtype=np.int16)
 
-if has(sys_wav):
-    w = wave.open(sys_wav); sr = w.getframerate()
-    pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
-    f32 = pcm.astype(np.float32) / 32768.0
+# Transcription du micro (= MOI) pour le coach.
+if mic_pcm.size > SR // 2:
+    p = os.path.join(tmpd, "mic.wav"); write_wav(mic_pcm, p)
+    out["mic_text"] = m.transcribe(p, chunk_duration=120.0).text.strip()
+
+# Diarization sur le flux MICRO (la conversation réelle s'y trouve : utilisateur
+# + interlocuteurs présents). Le flux système est souvent du bruit de bureau et
+# sur-segmente. Repli sur le système si le micro est vide.
+src = mic_pcm if mic_pcm.size > SR else (sys_pcm if sys_pcm.size > SR else None)
+
+if src is not None and rms(src) > 0.005:
+    p = os.path.join(tmpd, "diar.wav"); write_wav(src, p)
+    f32 = src.astype(np.float32) / 32768.0
     cfg = sherpa_onnx.OfflineSpeakerDiarizationConfig(
         segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
             pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(model=seg)),
         embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=emb),
-        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=0.5),
+        # threshold 0.8 : 0.5 sur-segmente massivement l'audio réel.
+        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=0.8),
         min_duration_on=0.3, min_duration_off=0.5,
     )
     sd = sherpa_onnx.OfflineSpeakerDiarization(cfg)
     turns = sd.process(f32).sort_by_start_time()
 
-    res = m.transcribe(sys_wav)
-    sentences = res.sentences if res.sentences else []
+    sentences = m.transcribe(p, chunk_duration=120.0).sentences or []
 
     def speaker_for(a, b):
         best, bestov = 0, 0.0
@@ -245,12 +268,19 @@ if has(sys_wav):
                 bestov, best = ov, t.speaker
         return best
 
+    # Remap des ids de cluster (arbitraires) en 0,1,2… par ordre d'apparition.
+    remap = {}
+    def norm(spk):
+        if spk not in remap:
+            remap[spk] = len(remap)
+        return remap[spk]
+
     merged = []
     for s in sentences:
-        spk = speaker_for(s.start, s.end)
         txt = s.text.strip()
         if not txt:
             continue
+        spk = norm(speaker_for(s.start, s.end))
         if merged and merged[-1]["speaker"] == spk:
             merged[-1]["end"] = round(s.end, 2)
             merged[-1]["text"] += " " + txt
