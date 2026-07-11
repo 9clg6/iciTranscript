@@ -1,7 +1,7 @@
 name: ici_transcript
 description: IciTranscript - Application de transcription vocale
 publish_to: "none"
-version: 0.1.0
+version: 0.1.2+3
 
 environment:
   sdk: ^3.10.3

@@ -35,7 +35,7 @@ jobs:
       - name: Sign app (ad-hoc)
         run: |
           codesign --sign - --deep --force \
-            "apps/app_macos/build/macos/Build/Products/Release/ici_transcript.app"
+            "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app"
 
       - name: Install create-dmg
         run: brew install create-dmg
@@ -51,22 +51,30 @@ jobs:
             --window-pos 200 120 \
             --window-size 660 400 \
             --icon-size 80 \
-            --icon "ici_transcript.app" 180 170 \
-            --hide-extension "ici_transcript.app" \
+            --icon "iciTranscript.app" 180 170 \
+            --hide-extension "iciTranscript.app" \
             --app-drop-link 480 170 \
             --no-internet-enable \
-            "IciTranscript-${{ github.ref_name }}.dmg" \
-            "apps/app_macos/build/macos/Build/Products/Release/ici_transcript.app"
+            "IciTranscript-${{ github.ref_name }}-macos.dmg" \
+            "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app"
+
+      - name: Create ZIP
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app" \
+            "IciTranscript-${{ github.ref_name }}-macos.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: IciTranscript-${{ github.ref_name }}.dmg
+          files: |
+            IciTranscript-${{ github.ref_name }}-macos.dmg
+            IciTranscript-${{ github.ref_name }}-macos.zip
           generate_release_notes: true
           body: |
             ## Installation
 
-            1. Télécharger `IciTranscript-${{ github.ref_name }}.dmg`
+            1. Télécharger `IciTranscript-${{ github.ref_name }}-macos.dmg`
             2. Ouvrir le DMG et glisser IciTranscript dans Applications
             3. **Clic droit > Ouvrir** (première fois, Gatekeeper avertit car signature ad-hoc)
             4. L'app vous guide pour installer `uv` si nécessaire
