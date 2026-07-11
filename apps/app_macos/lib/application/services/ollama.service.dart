@@ -151,14 +151,32 @@ class OllamaService {
     );
   }
 
+  /// Décharge explicitement le modèle de la mémoire unifiée.
+  ///
+  /// À appeler avant de lancer un autre modèle Metal lourd (Voxtral/Parakeet).
+  Future<void> unloadModel() async {
+    if (!await _isServerRunning()) return;
+    final Dio dio = Dio();
+    dio.options
+      ..connectTimeout = const Duration(seconds: 2)
+      ..receiveTimeout = const Duration(seconds: 15);
+    await dio.post<void>(
+      '$_baseUrl/api/generate',
+      data: <String, dynamic>{'model': _model, 'keep_alive': 0},
+      options: Options(
+        headers: <String, String>{'content-type': 'application/json'},
+      ),
+    );
+    _log.info('Modèle Ollama déchargé');
+  }
+
   /// Appel générique à l'API /api/chat d'Ollama (non-stream).
   Future<String> _chat({
     required String system,
     required String user,
     bool json = false,
   }) async {
-    final Dio dio = Dio()
-      ..options.receiveTimeout = const Duration(minutes: 5);
+    final Dio dio = Dio()..options.receiveTimeout = const Duration(minutes: 5);
     final Map<String, dynamic> payload = <String, dynamic>{
       'model': _model,
       'stream': false,
@@ -174,17 +192,17 @@ class OllamaService {
     };
     if (json) payload['format'] = 'json';
 
-    final Response<Map<String, dynamic>> response =
-        await dio.post<Map<String, dynamic>>(
-      '$_baseUrl/api/chat',
-      data: payload,
-      options: Options(
-        headers: <String, String>{'content-type': 'application/json'},
-      ),
-    );
+    final Response<Map<String, dynamic>> response = await dio
+        .post<Map<String, dynamic>>(
+          '$_baseUrl/api/chat',
+          data: payload,
+          options: Options(
+            headers: <String, String>{'content-type': 'application/json'},
+          ),
+        );
     final Map<String, dynamic> message =
         response.data?['message'] as Map<String, dynamic>? ??
-            <String, dynamic>{};
+        <String, dynamic>{};
     return message['content'] as String? ?? '';
   }
 
@@ -276,10 +294,13 @@ class OllamaService {
 
       // 2. Extraire
       await Directory(extractDir).create(recursive: true);
-      final ProcessResult unzip = await Process.run(
-        'unzip',
-        <String>['-o', '-q', zipPath, '-d', extractDir],
-      );
+      final ProcessResult unzip = await Process.run('unzip', <String>[
+        '-o',
+        '-q',
+        zipPath,
+        '-d',
+        extractDir,
+      ]);
       if (unzip.exitCode != 0) {
         throw Exception('unzip échoué: ${unzip.stderr}');
       }
@@ -287,16 +308,17 @@ class OllamaService {
       // 3. Copier TOUT le contenu de Resources (binaire CLI + backends
       //    ggml/Metal). Copier seulement le binaire le ferait tourner en
       //    CPU-only → 7B sature le CPU et fige la machine.
-      final String resourcesDir =
-          '$extractDir/Ollama.app/Contents/Resources';
+      final String resourcesDir = '$extractDir/Ollama.app/Contents/Resources';
       if (!await File('$resourcesDir/ollama').exists()) {
-        throw Exception('Binaire ollama introuvable dans le bundle: '
-            '$resourcesDir/ollama');
+        throw Exception(
+          'Binaire ollama introuvable dans le bundle: '
+          '$resourcesDir/ollama',
+        );
       }
-      final ProcessResult cp = await Process.run(
-        '/bin/sh',
-        <String>['-c', "cp -R '$resourcesDir/.' '$_binDir/'"],
-      );
+      final ProcessResult cp = await Process.run('/bin/sh', <String>[
+        '-c',
+        "cp -R '$resourcesDir/.' '$_binDir/'",
+      ]);
       if (cp.exitCode != 0) {
         throw Exception('Copie des Resources ollama échouée: ${cp.stderr}');
       }
@@ -305,9 +327,9 @@ class OllamaService {
     } finally {
       // Nettoyage même en cas d'erreur
       await File(zipPath).delete().catchError((_) => File(zipPath));
-      await Directory(extractDir)
-          .delete(recursive: true)
-          .catchError((_) => Directory(extractDir));
+      await Directory(
+        extractDir,
+      ).delete(recursive: true).catchError((_) => Directory(extractDir));
     }
   }
 
@@ -320,8 +342,9 @@ class OllamaService {
       final Dio dio = Dio()
         ..options.connectTimeout = const Duration(seconds: 2)
         ..options.receiveTimeout = const Duration(seconds: 2);
-      final Response<dynamic> res =
-          await dio.get<dynamic>('$_baseUrl/api/tags');
+      final Response<dynamic> res = await dio.get<dynamic>(
+        '$_baseUrl/api/tags',
+      );
       return res.statusCode == 200;
     } catch (_) {
       return false;
@@ -380,12 +403,13 @@ class OllamaService {
   Future<bool> _isModelAvailable() async {
     try {
       final Dio dio = Dio();
-      final Response<Map<String, dynamic>> res =
-          await dio.get<Map<String, dynamic>>('$_baseUrl/api/tags');
+      final Response<Map<String, dynamic>> res = await dio
+          .get<Map<String, dynamic>>('$_baseUrl/api/tags');
       final List<dynamic> models =
           res.data?['models'] as List<dynamic>? ?? <dynamic>[];
       return models.any((dynamic m) {
-        final String name = (m as Map<String, dynamic>)['name'] as String? ?? '';
+        final String name =
+            (m as Map<String, dynamic>)['name'] as String? ?? '';
         return name.startsWith(_model);
       });
     } catch (_) {
@@ -394,24 +418,25 @@ class OllamaService {
   }
 
   /// Tire le modèle via l'API REST Ollama (NDJSON stream) pour avoir la progression.
-  Future<void> _pullModel({
-    void Function(double progress)? onProgress,
-  }) async {
+  Future<void> _pullModel({void Function(double progress)? onProgress}) async {
     _log.info('Téléchargement du modèle $_model via Ollama API...');
 
     final HttpClient client = HttpClient();
-    final HttpClientRequest request =
-        await client.post('localhost', 11434, '/api/pull');
+    final HttpClientRequest request = await client.post(
+      'localhost',
+      11434,
+      '/api/pull',
+    );
     request.headers.contentType = ContentType.json;
-    request.write(jsonEncode(<String, dynamic>{
-      'name': _model,
-      'stream': true,
-    }));
+    request.write(
+      jsonEncode(<String, dynamic>{'name': _model, 'stream': true}),
+    );
 
     final HttpClientResponse response = await request.close();
 
-    await for (final String chunk
-        in response.transform(const SystemEncoding().decoder)) {
+    await for (final String chunk in response.transform(
+      const SystemEncoding().decoder,
+    )) {
       // Plusieurs JSON peuvent arriver dans un même chunk
       for (final String line in chunk.split('\n')) {
         final String trimmed = line.trim();

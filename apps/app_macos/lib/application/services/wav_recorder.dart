@@ -14,34 +14,93 @@ class WavRecorder {
 
   RandomAccessFile? _raf;
   int _dataBytes = 0;
+  Future<void> _pendingWrites = Future<void>.value();
+  Object? _writeError;
+  StackTrace? _writeErrorStackTrace;
+  bool _acceptingWrites = false;
 
   bool get isOpen => _raf != null;
 
   /// Ouvre [path] et écrit un en-tête WAV provisoire (tailles = 0).
   Future<void> open(String path) async {
+    if (_raf != null) {
+      throw StateError('WavRecorder is already open');
+    }
+
     final File file = File(path);
     await file.parent.create(recursive: true);
     _raf = await file.open(mode: FileMode.write);
     _dataBytes = 0;
+    _pendingWrites = Future<void>.value();
+    _writeError = null;
+    _writeErrorStackTrace = null;
     await _raf!.writeFrom(_header(0));
+    _acceptingWrites = true;
   }
 
   /// Ajoute un bloc PCM int16 little-endian.
-  Future<void> append(Uint8List pcm) async {
+  ///
+  /// Les appels peuvent être lancés sans `await` : chaque écriture est chaînée
+  /// après la précédente et les erreurs sont reportées par [close].
+  Future<void> append(Uint8List pcm) {
     final RandomAccessFile? raf = _raf;
-    if (raf == null) return;
-    await raf.writeFrom(pcm);
-    _dataBytes += pcm.length;
+    if (raf == null || !_acceptingWrites || pcm.isEmpty) {
+      return Future<void>.value();
+    }
+
+    // The platform chunk is owned by the caller. Keep an immutable snapshot
+    // until its turn in the write chain.
+    final Uint8List pendingPcm = Uint8List.fromList(pcm);
+    _pendingWrites = _pendingWrites.then((_) async {
+      if (_writeError != null) return;
+      try {
+        await raf.writeFrom(pendingPcm);
+        _dataBytes += pendingPcm.length;
+      } catch (error, stackTrace) {
+        _writeError ??= error;
+        _writeErrorStackTrace ??= stackTrace;
+      }
+    });
+    return _pendingWrites;
   }
 
   /// Corrige l'en-tête (tailles réelles) et ferme le fichier.
   Future<void> close() async {
     final RandomAccessFile? raf = _raf;
     if (raf == null) return;
-    await raf.setPosition(0);
-    await raf.writeFrom(_header(_dataBytes));
-    await raf.close();
-    _raf = null;
+
+    // Prevent a new append from extending the chain after the await below.
+    _acceptingWrites = false;
+    await _pendingWrites;
+
+    Object? closeError = _writeError;
+    StackTrace? closeErrorStackTrace = _writeErrorStackTrace;
+    try {
+      await raf.setPosition(0);
+      await raf.writeFrom(_header(_dataBytes));
+    } catch (error, stackTrace) {
+      closeError ??= error;
+      closeErrorStackTrace ??= stackTrace;
+    }
+
+    try {
+      await raf.close();
+    } catch (error, stackTrace) {
+      closeError ??= error;
+      closeErrorStackTrace ??= stackTrace;
+    } finally {
+      _raf = null;
+      _pendingWrites = Future<void>.value();
+      _writeError = null;
+      _writeErrorStackTrace = null;
+    }
+
+    if (closeError != null) {
+      Error.throwWithStackTrace(
+        closeError,
+        closeErrorStackTrace ?? StackTrace.current,
+      );
+    }
   }
 
   /// Construit un en-tête WAV canonical (44 octets) PCM 16 bits mono.

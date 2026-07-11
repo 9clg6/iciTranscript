@@ -12,6 +12,7 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
+import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:rxdart/rxdart.dart';
@@ -45,12 +46,22 @@ final class LiveTranscriptionService {
 
   StreamSubscription<data.AudioChunk>? _audioSubscription;
   StreamSubscription<TranscriptEventRemoteModel>? _transcriptionSubscription;
-  Timer? _commitTimer;
+  StreamSubscription<TranscriptEventRemoteModel>?
+  _systemTranscriptionSubscription;
+  final Set<Future<void>> _pendingFinalizations = <Future<void>>{};
+  final Map<AudioSource, Completer<void>> _stopFinalizationWaiters =
+      <AudioSource, Completer<void>>{};
+  Future<void> _lifecycleTail = Future<void>.value();
 
   // Enregistrement des flux bruts pour la passe post-session (Path B) :
   // micro = MOI, système = interlocuteurs (diarization).
   WavRecorder? _micRecorder;
   WavRecorder? _systemRecorder;
+  bool _recordPostProcessingAudio = false;
+  String? _captureInputDeviceId;
+  bool _captureOutputEnabled = false;
+  bool _capturePaused = false;
+  int _audioChunkCount = 0;
 
   String get _recordingsDir =>
       '${Platform.environment['HOME'] ?? '/tmp'}'
@@ -96,19 +107,45 @@ final class LiveTranscriptionService {
     String serverCommand = 'voxmlx-serve',
     List<String> serverArgs = const <String>[],
     String webSocketUrl = 'ws://localhost:8000/v1/realtime',
+    bool enablePostProcessing = false,
+  }) => _serializeLifecycle(
+    () => _startTranscription(
+      inputDeviceId: inputDeviceId,
+      outputEnabled: outputEnabled,
+      serverCommand: serverCommand,
+      serverArgs: serverArgs,
+      webSocketUrl: webSocketUrl,
+      enablePostProcessing: enablePostProcessing,
+    ),
+  );
+
+  Future<void> _startTranscription({
+    required String? inputDeviceId,
+    required bool outputEnabled,
+    required String serverCommand,
+    required List<String> serverArgs,
+    required String webSocketUrl,
+    required bool enablePostProcessing,
   }) async {
+    if (isRecording) {
+      _log.warning('Une transcription est déjà en cours');
+      return;
+    }
     try {
       _log.info('=== DEMARRAGE TRANSCRIPTION ===');
+      _captureInputDeviceId = inputDeviceId;
+      _captureOutputEnabled = outputEnabled;
+      _capturePaused = false;
+      _audioChunkCount = 0;
 
       // 1. Demarrer le serveur ML si pas deja en cours
-      final bool serverRunning =
-          await _processManagerService.isServerRunning();
+      final bool serverRunning = await _processManagerService.isServerRunning();
       if (!serverRunning) {
         _log.info('Demarrage du serveur ML: $serverCommand');
         await _processManagerService.startServer(
           command: serverCommand,
           args: serverArgs,
-          readyPattern: 'Uvicorn running',
+          readyPattern: 'VOXMLX_READY',
         );
         _log.info('Serveur ML demarre OK');
       } else {
@@ -117,7 +154,10 @@ final class LiveTranscriptionService {
 
       // 2. Connexion WebSocket
       _log.info('Connexion WebSocket: $webSocketUrl');
-      await _transcriptionRemoteDataSource.connect(url: webSocketUrl);
+      await _transcriptionRemoteDataSource.connect(
+        url: webSocketUrl,
+        systemAudioEnabled: outputEnabled,
+      );
       _log.info('WebSocket connecte OK');
 
       // 3. Demarrer la capture audio
@@ -147,14 +187,16 @@ final class LiveTranscriptionService {
 
       // 4b. Ouvrir les enregistreurs WAV par session (micro + système) pour la
       // passe post-session (transcription propre MOI + diarization meeting).
+      _recordPostProcessingAudio = enablePostProcessing;
       final String? recSessionId = currentSessionStream.valueOrNull?.id;
-      if (recSessionId != null) {
+      if (_recordPostProcessingAudio && recSessionId != null) {
         try {
           _micRecorder = WavRecorder();
           _systemRecorder = WavRecorder();
           await _micRecorder!.open('$_recordingsDir/${recSessionId}_mic.wav');
-          await _systemRecorder!
-              .open('$_recordingsDir/${recSessionId}_system.wav');
+          await _systemRecorder!.open(
+            '$_recordingsDir/${recSessionId}_system.wav',
+          );
         } catch (e) {
           _log.warning('Ouverture enregistreurs WAV échouée: $e');
           _micRecorder = null;
@@ -162,53 +204,34 @@ final class LiveTranscriptionService {
         }
       }
 
-      // 5. Relayer l'audio vers le WebSocket
-      int audioChunkCount = 0;
-      _audioSubscription = _audioCaptureChannel.audioStream.listen(
-        (data.AudioChunk chunk) {
-          audioChunkCount++;
-          if (audioChunkCount <= 3 || audioChunkCount % 100 == 0) {
-            _log.debug(
-              'Audio chunk #$audioChunkCount: ${chunk.data.length} bytes, source=${chunk.source}',
-            );
-          }
-          // Tee vers l'enregistreur correspondant (avant le mixage WS).
-          if (chunk.source == AudioSource.input) {
-            _micRecorder?.append(chunk.data);
-          } else {
-            _systemRecorder?.append(chunk.data);
-          }
-          _transcriptionRemoteDataSource.sendAudio(chunk);
-        },
-        onError: (Object error) {
-          _log.error('Erreur capture audio stream: $error');
-        },
-      );
-      _log.info('Audio subscription active, en attente de chunks...');
-
-      // 5b. Envoyer des commits periodiques pour declencher la transcription
-      _commitTimer?.cancel();
-      _commitTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-        _transcriptionRemoteDataSource.sendCommit();
-      });
-
-      // 6. Ecouter les segments de transcription
+      // 5. Écouter les deux flux avant de relayer l'audio. Ainsi, aucun delta
+      // ni `done` ne peut être perdu si le serveur répond immédiatement.
       _transcriptionSubscription = _transcriptionRemoteDataSource
           .transcriptionStream
           .listen(
-            (TranscriptEventRemoteModel event) {
-              _handleTranscriptionEvent(event);
-            },
-            onError: (Object error) {
-              _log.error('Erreur transcription stream: $error');
-            },
+            (TranscriptEventRemoteModel event) =>
+                _handleTranscriptionEvent(event, AudioSource.input),
+            onError: (Object error) =>
+                _log.error('Erreur transcription micro: $error'),
+          );
+      _systemTranscriptionSubscription = _transcriptionRemoteDataSource
+          .systemTranscriptionStream
+          .listen(
+            (TranscriptEventRemoteModel event) =>
+                _handleTranscriptionEvent(event, AudioSource.output),
+            onError: (Object error) =>
+                _log.error('Erreur transcription système: $error'),
           );
 
+      // 6. Relayer l'audio vers le WebSocket.
+      _subscribeToAudio();
+      _log.info('Audio subscription active, en attente de chunks...');
+
       _log.info('=== TRANSCRIPTION EN DIRECT DEMARREE ===');
-    } on Exception catch (e, st) {
+    } catch (e, st) {
       _log.error('Erreur demarrage transcription', e);
       _log.error('Stack: $st');
-      await stopTranscription();
+      await _stopTranscription();
       rethrow;
     }
   }
@@ -218,40 +241,80 @@ final class LiveTranscriptionService {
   /// 1. Arrete la capture audio
   /// 2. Deconnecte le WebSocket
   /// 3. Arrete la session
-  Future<void> stopTranscription() async {
-    _log.info('Arret de la transcription en direct');
+  Future<void> stopTranscription() => _serializeLifecycle(_stopTranscription);
 
-    // Sauvegarder la phrase en cours si non vide (au cas où 'done' n'arrive pas)
-    final SessionEntity? currentSession = currentSessionStream.valueOrNull;
-    if (currentSession != null && _currentPhrase.isNotEmpty) {
-      final String text = _currentPhrase.toString().trim();
-      if (text.isNotEmpty) {
-        _log.info('Flush phrase en cours avant arret: "$text"');
-        final TranscriptSegmentEntity segment = TranscriptSegmentEntity(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          sessionId: currentSession.id,
-          source: AudioSource.input,
-          text: text,
-          timestampMs: _currentPhraseStartMs,
-          createdAt: DateTime.now(),
-        );
-        await _transcriptionService.saveSegment(segment);
-      }
-      _currentPhrase = StringBuffer();
-    }
+  /// Met réellement la capture en pause et finalise les tours en cours.
+  Future<void> pauseTranscription() => _serializeLifecycle(_pauseTranscription);
 
-    // Annuler le timer de commit
-    _commitTimer?.cancel();
-    _commitTimer = null;
+  /// Relance la capture avec les mêmes périphériques, sans créer de session.
+  Future<void> resumeTranscription() =>
+      _serializeLifecycle(_resumeTranscription);
 
-    // Annuler les subscriptions
+  Future<void> _pauseTranscription() async {
+    if (!isRecording || _capturePaused) return;
+    _capturePaused = true;
     await _audioSubscription?.cancel();
     _audioSubscription = null;
+    await _audioCaptureChannel.stopCapture();
+    await _flushRemoteTranscripts();
+    _log.info('Capture audio mise en pause');
+  }
+
+  Future<void> _resumeTranscription() async {
+    if (!isRecording || !_capturePaused) return;
+    _subscribeToAudio();
+    try {
+      await _audioCaptureChannel.startCapture(
+        inputDeviceId: _captureInputDeviceId,
+        outputEnabled: _captureOutputEnabled,
+      );
+      _capturePaused = false;
+      _log.info('Capture audio reprise');
+    } catch (_) {
+      await _audioSubscription?.cancel();
+      _audioSubscription = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _stopTranscription() async {
+    _log.info('Arret de la transcription en direct');
+
+    // Couper d'abord la capture afin que plus aucun chunk ne soit ajouté pendant
+    // la finalisation des deux sessions voxmlx.
+    await _audioSubscription?.cancel();
+    _audioSubscription = null;
+    try {
+      await _audioCaptureChannel.stopCapture();
+    } catch (e) {
+      _log.warning('Arrêt capture audio: $e');
+    }
+
+    // Demander un vrai flush serveur et laisser les listeners recevoir les
+    // derniers deltas + `done`. Un timeout conserve un fallback local fiable.
+    await _flushRemoteTranscripts();
+
+    // Plus aucun événement distant après ce point : cela évite qu'un `done`
+    // tardif duplique le fallback local.
     await _transcriptionSubscription?.cancel();
     _transcriptionSubscription = null;
+    await _systemTranscriptionSubscription?.cancel();
+    _systemTranscriptionSubscription = null;
+    _stopFinalizationWaiters.clear();
 
-    // Arreter la capture audio
-    await _audioCaptureChannel.stopCapture();
+    // Sauvegarder les phrases restantes si le serveur n'a pas répondu à temps.
+    final SessionEntity? currentSession = currentSessionStream.valueOrNull;
+    if (currentSession != null) {
+      for (final AudioSource source in AudioSource.values) {
+        final String text = _phrase[source]!.toString().trim();
+        if (text.isEmpty) continue;
+        await _finalizeSegment(currentSession, source, text);
+      }
+    }
+
+    if (_pendingFinalizations.isNotEmpty) {
+      await Future.wait<void>(List<Future<void>>.from(_pendingFinalizations));
+    }
 
     // Finaliser les enregistrements WAV (corrige l'en-tête).
     try {
@@ -262,6 +325,10 @@ final class LiveTranscriptionService {
     }
     _micRecorder = null;
     _systemRecorder = null;
+    _recordPostProcessingAudio = false;
+    _capturePaused = false;
+    _captureInputDeviceId = null;
+    _captureOutputEnabled = false;
 
     // Deconnecte le WebSocket
     await _transcriptionRemoteDataSource.disconnect();
@@ -274,21 +341,94 @@ final class LiveTranscriptionService {
 
   /// Libere les ressources du service.
   Future<void> dispose() async {
-    _commitTimer?.cancel();
-    _commitTimer = null;
     await _audioSubscription?.cancel();
     await _transcriptionSubscription?.cancel();
+    await _systemTranscriptionSubscription?.cancel();
   }
 
   // ---------------------------------------------------------------------------
   // Private
   // ---------------------------------------------------------------------------
 
-  /// Buffer pour accumuler les deltas en une phrase complete.
-  StringBuffer _currentPhrase = StringBuffer();
-  int _currentPhraseStartMs = 0;
+  Future<T> _serializeLifecycle<T>(Future<T> Function() action) {
+    final Completer<T> result = Completer<T>();
+    final Future<void> previous = _lifecycleTail;
+    _lifecycleTail = () async {
+      try {
+        await previous;
+      } catch (_) {
+        // Une opération échouée ne doit pas bloquer les suivantes.
+      }
+      try {
+        result.complete(await action());
+      } catch (error, stackTrace) {
+        result.completeError(error, stackTrace);
+      }
+    }();
+    return result.future;
+  }
 
-  void _handleTranscriptionEvent(TranscriptEventRemoteModel event) {
+  void _subscribeToAudio() {
+    _audioSubscription = _audioCaptureChannel.audioStream.listen(
+      (data.AudioChunk chunk) {
+        _audioChunkCount++;
+        if (_audioChunkCount <= 3 || _audioChunkCount % 100 == 0) {
+          _log.debug(
+            'Audio chunk #$_audioChunkCount: ${chunk.data.length} bytes, '
+            'source=${chunk.source}',
+          );
+        }
+        if (chunk.source == AudioSource.input) {
+          _micRecorder?.append(chunk.data);
+        } else {
+          _systemRecorder?.append(chunk.data);
+        }
+        _transcriptionRemoteDataSource.sendAudio(chunk);
+      },
+      onError: (Object error) {
+        _log.error('Erreur capture audio stream: $error');
+      },
+    );
+  }
+
+  Future<void> _flushRemoteTranscripts() async {
+    final Set<AudioSource> sourcesToFinalize =
+        _transcriptionRemoteDataSource.activeSources;
+    _stopFinalizationWaiters.clear();
+    for (final AudioSource source in sourcesToFinalize) {
+      _stopFinalizationWaiters[source] = Completer<void>();
+    }
+    _transcriptionRemoteDataSource.sendCommit(isFinal: true);
+    if (_stopFinalizationWaiters.isEmpty) return;
+    try {
+      await Future.wait<void>(
+        _stopFinalizationWaiters.values.map(
+          (Completer<void> completer) => completer.future,
+        ),
+      ).timeout(const Duration(seconds: 5));
+    } on TimeoutException {
+      _log.warning('Timeout du flush final voxmlx, fallback sur les deltas');
+    } finally {
+      _stopFinalizationWaiters.clear();
+    }
+  }
+
+  /// Buffers d'accumulation des deltas, par source (micro / système).
+  final Map<AudioSource, StringBuffer> _phrase = <AudioSource, StringBuffer>{
+    AudioSource.input: StringBuffer(),
+    AudioSource.output: StringBuffer(),
+  };
+  final Map<AudioSource, int> _phraseStart = <AudioSource, int>{
+    AudioSource.input: 0,
+    AudioSource.output: 0,
+  };
+
+  String _tempId(AudioSource source) => 'current_${source.name}';
+
+  void _handleTranscriptionEvent(
+    TranscriptEventRemoteModel event,
+    AudioSource source,
+  ) {
     final SessionEntity? currentSession = currentSessionStream.valueOrNull;
     if (currentSession == null) return;
 
@@ -296,76 +436,122 @@ final class LiveTranscriptionService {
       final String? delta = event.delta;
       if (delta == null || delta.isEmpty) return;
 
-      // Premier mot de la phrase : enregistrer le timestamp
-      if (_currentPhrase.isEmpty) {
-        _currentPhraseStartMs = DateTime.now()
+      if (_phrase[source]!.isEmpty) {
+        _phraseStart[source] = DateTime.now()
             .difference(currentSession.createdAt)
             .inMilliseconds;
       }
+      _phrase[source]!.write(delta);
 
-      // Accumuler les mots
-      _currentPhrase.write(delta);
-
-      // Mettre a jour le segment en cours dans l'UI (en temps reel)
-      _updateCurrentSegmentInUI(currentSession);
+      _updateCurrentSegmentInUI(currentSession, source);
     } else if (event.type == 'response.audio_transcript.done') {
-      // Retirer le segment temporaire du stream UI avant de sauvegarder le final
-      final List<TranscriptSegmentEntity> currentSegments =
-          List<TranscriptSegmentEntity>.from(
-            _transcriptionService.segmentsStream.value,
-          );
-      if (currentSegments.isNotEmpty &&
-          currentSegments.last.id.startsWith('current_')) {
-        currentSegments.removeLast();
-        _transcriptionService.segmentsStream.add(currentSegments);
-      }
-
-      // Phrase terminee — sauvegarder le segment final
-      final String finalText = event.text ?? _currentPhrase.toString();
-      if (finalText.trim().isNotEmpty) {
-        final TranscriptSegmentEntity segment = TranscriptSegmentEntity(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          sessionId: currentSession.id,
-          source: AudioSource.input,
-          text: finalText.trim(),
-          timestampMs: _currentPhraseStartMs,
-          createdAt: DateTime.now(),
-        );
-        _transcriptionService.saveSegment(segment);
-      }
-      // Reset le buffer pour la prochaine phrase
-      _currentPhrase = StringBuffer();
+      _trackFinalization(
+        currentSession,
+        source,
+        event.text ?? _phrase[source]!.toString(),
+      );
     }
   }
 
-  /// Met a jour le dernier segment en temps reel pendant l'accumulation.
-  void _updateCurrentSegmentInUI(SessionEntity session) {
-    final String text = _currentPhrase.toString().trim();
+  /// Finalise la phrase courante d'une source : remplace le segment temporaire
+  /// par un segment définitif (sauvé en base) et réinitialise le buffer.
+  Future<void> _finalizeSegment(
+    SessionEntity session,
+    AudioSource source,
+    String rawText,
+  ) async {
+    final List<TranscriptSegmentEntity> segs =
+        List<TranscriptSegmentEntity>.from(
+          _transcriptionService.segmentsStream.value,
+        )..removeWhere((TranscriptSegmentEntity s) => s.id == _tempId(source));
+
+    final int phraseStart = _phraseStart[source]!;
+    _phrase[source] = StringBuffer();
+    final String text = TranscriptTextNormalizer.normalize(rawText);
+    _transcriptionService.segmentsStream.add(segs);
+    if (text.isNotEmpty) {
+      final TranscriptSegmentEntity segment = TranscriptSegmentEntity(
+        id: '${source.name}_${DateTime.now().millisecondsSinceEpoch}',
+        sessionId: session.id,
+        source: source,
+        text: text,
+        timestampMs: phraseStart,
+        createdAt: DateTime.now(),
+      );
+      await _transcriptionService.saveSegment(segment);
+    }
+    _sortAndDedupeSegments();
+  }
+
+  /// Met a jour le segment temporaire (par source) en temps reel.
+  void _updateCurrentSegmentInUI(SessionEntity session, AudioSource source) {
+    final String text = TranscriptTextNormalizer.normalize(
+      _phrase[source]!.toString(),
+    );
     if (text.isEmpty) return;
 
-    // Creer un segment temporaire avec le texte accumule
     final TranscriptSegmentEntity tempSegment = TranscriptSegmentEntity(
-      id: 'current_${DateTime.now().millisecondsSinceEpoch}',
+      id: _tempId(source),
       sessionId: session.id,
-      source: AudioSource.input,
+      source: source,
       text: text,
-      timestampMs: _currentPhraseStartMs,
+      timestampMs: _phraseStart[source]!,
       createdAt: DateTime.now(),
     );
 
-    // Remplacer le dernier segment "en cours" dans la liste
     final List<TranscriptSegmentEntity> segments =
         List<TranscriptSegmentEntity>.from(
           _transcriptionService.segmentsStream.value,
         );
-
-    // Si le dernier segment est un segment temporaire, le remplacer
-    if (segments.isNotEmpty && segments.last.id.startsWith('current_')) {
-      segments[segments.length - 1] = tempSegment;
+    final int idx = segments.indexWhere(
+      (TranscriptSegmentEntity s) => s.id == _tempId(source),
+    );
+    if (idx >= 0) {
+      segments[idx] = tempSegment;
     } else {
       segments.add(tempSegment);
     }
-
+    segments.sort(
+      (TranscriptSegmentEntity a, TranscriptSegmentEntity b) =>
+          a.timestampMs.compareTo(b.timestampMs),
+    );
     _transcriptionService.segmentsStream.add(segments);
+  }
+
+  void _trackFinalization(
+    SessionEntity session,
+    AudioSource source,
+    String rawText,
+  ) {
+    late final Future<void> task;
+    task = _finalizeSegment(session, source, rawText).whenComplete(() {
+      _pendingFinalizations.remove(task);
+      // Plusieurs commits peuvent déjà être en vol si le modèle a pris du
+      // retard. Ne couper les listeners qu'après le dernier `done` de la
+      // source, sinon les fins de phrases suivantes seraient perdues.
+      if (!_transcriptionRemoteDataSource.activeSources.contains(source)) {
+        final Completer<void>? waiter = _stopFinalizationWaiters.remove(source);
+        if (waiter != null && !waiter.isCompleted) waiter.complete();
+      }
+    });
+    _pendingFinalizations.add(task);
+    unawaited(task);
+  }
+
+  void _sortAndDedupeSegments() {
+    final Map<String, TranscriptSegmentEntity> byId =
+        <String, TranscriptSegmentEntity>{};
+    for (final TranscriptSegmentEntity segment
+        in _transcriptionService.segmentsStream.value) {
+      byId[segment.id] = segment;
+    }
+    final List<TranscriptSegmentEntity> sorted = byId.values.toList()
+      ..sort((TranscriptSegmentEntity a, TranscriptSegmentEntity b) {
+        final int byTimestamp = a.timestampMs.compareTo(b.timestampMs);
+        return byTimestamp != 0
+            ? byTimestamp
+            : a.createdAt.compareTo(b.createdAt);
+      });
+    _transcriptionService.segmentsStream.add(sorted);
   }
 }

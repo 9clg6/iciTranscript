@@ -7,6 +7,7 @@ import 'package:core_domain/domain/usecases/get_session_detail.use_case.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/summary.service.dart';
+import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/providers/services/ollama.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
@@ -88,10 +89,7 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
     buffer.writeln('# ${currentState.session?.title ?? ""}');
     buffer.writeln();
     for (final TranscriptSegmentEntity segment in currentState.segments) {
-      buffer.writeln(
-        '**[${segment.source.name.toUpperCase()}]** '
-        '${segment.text}',
-      );
+      buffer.writeln(TranscriptFormatter.markdownLine(segment));
       buffer.writeln();
     }
     return buffer.toString();
@@ -144,8 +142,8 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
     );
     try {
       await _ollamaService.ensureReady();
-      final EnglishFeedbackEntity feedback =
-          await _ollamaService.analyzeEnglish(transcript);
+      final EnglishFeedbackEntity feedback = await _ollamaService
+          .analyzeEnglish(transcript);
       await _persist(session.id, feedback: feedback);
       _emit(feedback: feedback, isFeedbackLoading: false);
     } catch (e) {
@@ -186,7 +184,7 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
   // ---------------------------------------------------------------------------
 
   String _transcript(SessionDetailState s) =>
-      s.segments.map((TranscriptSegmentEntity seg) => seg.text).join('\n');
+      s.segments.map(TranscriptFormatter.plainLine).join('\n');
 
   /// Transcript du micro de l'utilisateur uniquement (source input), pour le
   /// coach d'anglais : on ne corrige que ce que l'utilisateur a dit.

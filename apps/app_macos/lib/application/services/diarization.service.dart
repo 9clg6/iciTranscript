@@ -6,7 +6,10 @@ import 'package:ici_transcript/application/services/session_analysis.dart';
 
 /// Résultat brut de la passe post-session.
 class DiarizationResult {
-  const DiarizationResult({this.micText, this.speakers = const <SpeakerTurn>[]});
+  const DiarizationResult({
+    this.micText,
+    this.speakers = const <SpeakerTurn>[],
+  });
   final String? micText;
   final List<SpeakerTurn> speakers;
 }
@@ -39,8 +42,7 @@ class DiarizationService {
   String get _uvBin => '$_home/.local/bin/uv';
 
   /// Chemins WAV par session (écrits par [LiveTranscriptionService]).
-  String micWavPath(String sessionId) =>
-      '$_recordingsDir/${sessionId}_mic.wav';
+  String micWavPath(String sessionId) => '$_recordingsDir/${sessionId}_mic.wav';
   String systemWavPath(String sessionId) =>
       '$_recordingsDir/${sessionId}_system.wav';
   String get recordingsDir => _recordingsDir;
@@ -65,10 +67,14 @@ class DiarizationService {
       _uvBin,
       <String>[
         'run',
-        '--python', '3.12',
-        '--with', 'parakeet-mlx',
-        '--with', 'sherpa-onnx',
-        '--with', 'numpy',
+        '--python',
+        '3.12',
+        '--with',
+        'parakeet-mlx',
+        '--with',
+        'sherpa-onnx',
+        '--with',
+        'numpy',
         'python',
         _scriptPath,
         hasMic ? mic : '/dev/null',
@@ -77,24 +83,22 @@ class DiarizationService {
         _embModel,
         _pkModel,
       ],
-      environment: <String, String>{
-        'HOME': _home,
-        'PATH': _extendedPath(),
-      },
+      environment: <String, String>{'HOME': _home, 'PATH': _extendedPath()},
     );
 
     if (result.exitCode != 0) {
-      _log.error('Script post-session échoué (${result.exitCode}): '
-          '${result.stderr}');
+      _log.error(
+        'Script post-session échoué (${result.exitCode}): '
+        '${result.stderr}',
+      );
       return null;
     }
 
     // La dernière ligne stdout est le JSON (les libs loggent au-dessus).
     final String out = (result.stdout as String).trim();
-    final String jsonLine = out.split('\n').lastWhere(
-          (String l) => l.trim().startsWith('{'),
-          orElse: () => '',
-        );
+    final String jsonLine = out
+        .split('\n')
+        .lastWhere((String l) => l.trim().startsWith('{'), orElse: () => '');
     if (jsonLine.isEmpty) {
       _log.error('Pas de JSON en sortie du script post-session');
       return null;
@@ -114,7 +118,8 @@ class DiarizationService {
             .toList(),
       );
       _log.info('Post-session OK : ${r.speakers.length} tours');
-      // Nettoyage des WAV (volumineux) une fois traités.
+      // Les WAV bruts sont volumineux et sensibles. Ils ne sont conservés que
+      // si le traitement échoue afin de permettre une relance/diagnostic.
       await _delete(mic);
       await _delete(sys);
       return r;
@@ -163,9 +168,9 @@ class DiarizationService {
         await m.copy(_segModel);
       }
       await _delete(tar);
-      await Directory(extract).delete(recursive: true).catchError(
-            (_) => Directory(extract),
-          );
+      await Directory(
+        extract,
+      ).delete(recursive: true).catchError((_) => Directory(extract));
     }
   }
 
@@ -173,10 +178,14 @@ class DiarizationService {
   /// redirections GitHub et échoue proprement, sans fichier tronqué — le
   /// HttpClient maison sauvegardait des fichiers partiels/corrompus).
   Future<void> _download(String url, String dest) async {
-    final ProcessResult r = await Process.run(
-      '/usr/bin/curl',
-      <String>['-fSL', '--retry', '3', '-o', dest, url],
-    );
+    final ProcessResult r = await Process.run('/usr/bin/curl', <String>[
+      '-fSL',
+      '--retry',
+      '3',
+      '-o',
+      dest,
+      url,
+    ]);
     if (r.exitCode != 0) {
       await _delete(dest);
       throw Exception('Téléchargement échoué ($url): ${r.stderr}');
@@ -184,13 +193,13 @@ class DiarizationService {
   }
 
   String _extendedPath() => <String>[
-        '$_home/.local/bin',
-        '$_home/.cargo/bin',
-        '/opt/homebrew/bin',
-        '/usr/local/bin',
-        '/usr/bin',
-        '/bin',
-      ].join(':');
+    '$_home/.local/bin',
+    '$_home/.cargo/bin',
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+  ].join(':');
 
   /// Script Python embarqué (écrit dans le dossier de l'app au runtime).
   ///
@@ -239,10 +248,9 @@ if mic_pcm.size > SR // 2:
     p = os.path.join(tmpd, "mic.wav"); write_wav(mic_pcm, p)
     out["mic_text"] = m.transcribe(p, chunk_duration=120.0).text.strip()
 
-# Diarization sur le flux MICRO (la conversation réelle s'y trouve : utilisateur
-# + interlocuteurs présents). Le flux système est souvent du bruit de bureau et
-# sur-segmente. Repli sur le système si le micro est vide.
-src = mic_pcm if mic_pcm.size > SR else (sys_pcm if sys_pcm.size > SR else None)
+# Le micro est exclusivement « MOI ». Les interlocuteurs distants viennent du
+# flux système ; diariser le micro les réintroduirait dans la mauvaise source.
+src = sys_pcm if sys_pcm.size > SR else None
 
 if src is not None and rms(src) > 0.005:
     p = os.path.join(tmpd, "diar.wav"); write_wav(src, p)

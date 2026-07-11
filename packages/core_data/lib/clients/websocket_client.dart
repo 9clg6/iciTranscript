@@ -14,7 +14,10 @@ class WebSocketClient {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
 
-  final BehaviorSubject<String> _messageSubject = BehaviorSubject<String>();
+  // Les événements WebSocket ne représentent pas un état à rejouer. Un
+  // BehaviorSubject réémettait le dernier `done` lors d'une nouvelle session,
+  // ce qui pouvait finaliser à tort une phrase du nouvel appel.
+  final PublishSubject<String> _messageSubject = PublishSubject<String>();
 
   /// Stream des messages recus depuis le serveur WebSocket.
   Stream<String> get messageStream => _messageSubject.stream;

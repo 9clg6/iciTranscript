@@ -58,17 +58,18 @@ class ProcessManagerChannel {
     try {
       // Lancer via /bin/sh pour heriter d'un environnement shell complet
       // et eviter les crashes Process.start sur macOS Flutter
-      final String fullCommand =
-          <String>[resolvedCommand, ...args].map((String a) {
-        // Echapper les arguments contenant des caracteres speciaux
-        if (a.contains(' ') || a.contains('[') || a.contains(']')) {
-          return "'$a'";
-        }
-        return a;
-      }).join(' ');
+      final String fullCommand = <String>[resolvedCommand, ...args]
+          .map((String a) {
+            // Echapper les arguments contenant des caracteres speciaux
+            if (a.contains(' ') || a.contains('[') || a.contains(']')) {
+              return "'$a'";
+            }
+            return a;
+          })
+          .join(' ');
       _log.info('Commande shell: $fullCommand');
 
-      _serverProcess = await Process.start(
+      final Process serverProcess = await Process.start(
         '/bin/sh',
         <String>['-c', fullCommand],
         environment: <String, String>{
@@ -78,12 +79,25 @@ class ProcessManagerChannel {
         },
         mode: ProcessStartMode.normal,
       );
+      _serverProcess = serverProcess;
 
       final Completer<void> readyCompleter = Completer<void>();
       bool isReady = false;
 
+      unawaited(
+        _waitForServerHealth(serverProcess).then((bool healthy) {
+          if (healthy &&
+              identical(_serverProcess, serverProcess) &&
+              !readyCompleter.isCompleted) {
+            isReady = true;
+            _setState(ServerState.ready);
+            readyCompleter.complete();
+          }
+        }),
+      );
+
       // Ecouter stdout
-      _serverProcess!.stdout.transform(const SystemEncoding().decoder).listen((
+      serverProcess.stdout.transform(const SystemEncoding().decoder).listen((
         String data,
       ) {
         for (final String line in data.split('\n')) {
@@ -91,19 +105,16 @@ class ProcessManagerChannel {
           _logsController.add('[stdout] $line');
           _log.debug('[stdout] $line');
 
-          // Detecter le signal "pret"
+          // Le fork émet le marqueur avant que la socket Uvicorn soit
+          // nécessairement liée. Le healthcheck HTTP reste l'autorité.
           if (!isReady && readyPattern != null && line.contains(readyPattern)) {
-            isReady = true;
-            _setState(ServerState.ready);
-            if (!readyCompleter.isCompleted) {
-              readyCompleter.complete();
-            }
+            _log.debug('Marqueur ready observé: $readyPattern');
           }
         }
       });
 
       // Ecouter stderr
-      _serverProcess!.stderr.transform(const SystemEncoding().decoder).listen((
+      serverProcess.stderr.transform(const SystemEncoding().decoder).listen((
         String data,
       ) {
         for (final String line in data.split('\n')) {
@@ -111,50 +122,37 @@ class ProcessManagerChannel {
           _logsController.add('[stderr] $line');
           _log.debug('[stderr] $line');
 
-          // Uvicorn ecrit dans stderr
+          // Uvicorn écrit dans stderr, mais seul GET /health évite une course
+          // avec la connexion WebSocket qui suit immédiatement.
           if (!isReady && readyPattern != null && line.contains(readyPattern)) {
-            isReady = true;
-            _setState(ServerState.ready);
-            if (!readyCompleter.isCompleted) {
-              readyCompleter.complete();
-            }
+            _log.debug('Marqueur ready observé: $readyPattern');
           }
         }
       });
 
       // Detecter la fin du processus
-      _serverProcess!.exitCode.then((int code) {
+      serverProcess.exitCode.then((int code) {
+        if (!identical(_serverProcess, serverProcess)) return;
         _log.info('Serveur arrete avec code: $code');
         _serverProcess = null;
+        if (!readyCompleter.isCompleted) {
+          readyCompleter.completeError(
+            StateError(
+              'Le serveur ML s\'est arrêté avant d\'être prêt ($code)',
+            ),
+          );
+        }
         if (_currentState != ServerState.stopped) {
           _setState(code == 0 ? ServerState.stopped : ServerState.error);
         }
       });
 
-      // Attendre que le serveur soit pret (timeout 600s au premier lancement
-      // uvx doit telecharger le package + modele ML ~2-4 GB)
-      if (readyPattern != null) {
-        await readyCompleter.future.timeout(
-          const Duration(seconds: 600),
-          onTimeout: () {
-            // Si pas de signal ready apres 120s, on considere que c'est pret
-            // (le serveur peut etre pret sans log specifique)
-            if (!isReady) {
-              _log.warning(
-                'Timeout attente ready pattern "$readyPattern" apres 600s, '
-                'on continue quand meme',
-              );
-              _setState(ServerState.ready);
-            }
-          },
-        );
-      } else {
-        // Pas de pattern, attendre 3s et considerer pret
-        await Future<void>.delayed(const Duration(seconds: 3));
-        _setState(ServerState.ready);
-      }
-    } on Exception catch (e) {
+      // Le premier lancement peut télécharger le modèle (~2,3 Go), d'où le
+      // timeout large. Un échec n'est plus masqué par un faux état "ready".
+      await readyCompleter.future.timeout(const Duration(seconds: 600));
+    } catch (e) {
       _log.error('Erreur lancement serveur', e);
+      await stopServer();
       _setState(ServerState.error);
       rethrow;
     }
@@ -272,10 +270,10 @@ class ProcessManagerChannel {
   /// Silencieux si aucun processus n'occupe le port.
   Future<void> _killProcessOnPort(int port) async {
     try {
-      final ProcessResult result = await Process.run(
-        '/bin/sh',
-        <String>['-c', 'lsof -ti :$port'],
-      );
+      final ProcessResult result = await Process.run('/bin/sh', <String>[
+        '-c',
+        'lsof -ti :$port',
+      ]);
       final String output = (result.stdout as String).trim();
 
       // Tuer le PID qui ecoute le port (l'enfant python qui detient le socket).
@@ -300,6 +298,33 @@ class ProcessManagerChannel {
       await Future<void>.delayed(const Duration(milliseconds: 800));
     } on Exception catch (e) {
       _log.warning('Impossible de nettoyer le port $port: $e');
+    }
+  }
+
+  Future<bool> _waitForServerHealth(Process expectedProcess) async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 1);
+    final Stopwatch timeout = Stopwatch()..start();
+    try {
+      while (timeout.elapsed < const Duration(seconds: 600)) {
+        if (!identical(_serverProcess, expectedProcess)) return false;
+        try {
+          final HttpClientRequest request = await client
+              .getUrl(Uri.parse('http://127.0.0.1:$_serverPort/health'))
+              .timeout(const Duration(seconds: 1));
+          final HttpClientResponse response = await request.close().timeout(
+            const Duration(seconds: 1),
+          );
+          await response.drain<void>();
+          if (response.statusCode == HttpStatus.ok) return true;
+        } on Object {
+          // Le modèle charge ou la socket n'est pas encore liée.
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+      return false;
+    } finally {
+      client.close(force: true);
     }
   }
 

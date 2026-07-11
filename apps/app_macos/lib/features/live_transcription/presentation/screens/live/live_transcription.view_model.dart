@@ -10,6 +10,7 @@ import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/diarization.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
+import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -30,9 +31,12 @@ part 'live_transcription.view_model.g.dart';
 class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   final Log _log = Log.named('LiveTranscriptionViewModel');
   Timer? _durationTimer;
-  Timer? _translateDebounce;
+  final Map<String, Timer> _translateDebounces = <String, Timer>{};
+  final Map<String, int> _translationRetries = <String, int>{};
+  int _translationGeneration = 0;
   LiveTranscriptionService? _liveService;
   bool _subscribed = false;
+  Future<void>? _postProcessTask;
 
   @override
   LiveTranscriptionState build() {
@@ -49,6 +53,12 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
 
     ref.onDispose(() {
       _durationTimer?.cancel();
+      _translationGeneration++;
+      for (final Timer timer in _translateDebounces.values) {
+        timer.cancel();
+      }
+      _translateDebounces.clear();
+      _translationRetries.clear();
     });
 
     return LiveTranscriptionState.initial();
@@ -86,32 +96,49 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   Future<void> startSession() async {
     _log.info('startSession() appele');
 
+    // Les modèles Voxtral, Ollama et Parakeet partagent la mémoire unifiée.
+    // Si le coach optionnel de la session précédente tourne encore, attendre
+    // sa libération avant de relancer la transcription évite une course Metal
+    // et l'arrêt du nouveau serveur par l'ancienne tâche.
+    final Future<void>? previousPostProcess = _postProcessTask;
+    if (previousPostProcess != null) {
+      _log.info('Attente du post-traitement précédent');
+      await previousPostProcess;
+    }
+
     state = state.copyWith(
       isRecording: true,
       isPaused: false,
       segments: <TranscriptSegmentEntity>[],
       duration: Duration.zero,
       feedback: null,
+      translations: <String, String>{},
     );
+    _translationGeneration++;
+    _cancelTranslationDebounces();
+    if (state.isTranslationEnabled) unawaited(_prepareTranslationPair());
 
     _startDurationTimer();
 
     try {
-      final String? micId =
-          ref.read(settingsViewModelProvider).selectedMicId;
-      final bool systemAudio =
-          ref.read(settingsViewModelProvider).systemAudioEnabled;
+      final String? micId = ref.read(settingsViewModelProvider).selectedMicId;
+      final bool systemAudio = ref
+          .read(settingsViewModelProvider)
+          .systemAudioEnabled;
       await _liveService?.startTranscription(
         inputDeviceId: micId,
         serverCommand: 'uvx',
-        serverArgs: const <String>[
+        serverArgs: <String>[
           '--from',
-          'git+https://github.com/T0mSIlver/voxmlx.git[server]',
+          'git+https://github.com/T0mSIlver/voxmlx.git@2ea0639570e447493d04349d96a41f71c031ae0d[server]',
           'voxmlx-serve',
           '--model',
           'T0mSIlver/Voxtral-Mini-4B-Realtime-2602-MLX-4bit',
+          '--parent-pid',
+          '$pid',
         ],
         outputEnabled: systemAudio,
+        enablePostProcessing: state.isCoachEnabled,
       );
       _log.info('startTranscription OK');
     } catch (e) {
@@ -162,12 +189,22 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
 
     // Post-traitement en arrière-plan (ne bloque pas la navigation vers la
     // fiche). Met à jour la fiche détail à la fin via invalidation.
-    if (sessionId != null) {
-      unawaited(_postProcess(
-        sessionId: sessionId,
-        segments: segments,
-        coachEnabled: coachEnabled,
-      ));
+    if (sessionId != null && coachEnabled) {
+      late final Future<void> task;
+      task =
+          _postProcess(
+                sessionId: sessionId,
+                segments: segments,
+                coachEnabled: coachEnabled,
+              )
+              .catchError((Object error, StackTrace stackTrace) {
+                _log.error('Post-traitement échoué: $error');
+              })
+              .whenComplete(() {
+                if (identical(_postProcessTask, task)) _postProcessTask = null;
+              });
+      _postProcessTask = task;
+      unawaited(task);
     }
     return sessionId;
   }
@@ -197,6 +234,14 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       await _analyzeEnglish(transcript, sessionId: sessionId);
     }
 
+    // Le modèle Mistral était conservé cinq minutes. Le décharger avant
+    // Parakeet évite de cumuler plusieurs modèles Metal en mémoire unifiée.
+    try {
+      await ref.read(ollamaServiceProvider).unloadModel();
+    } catch (e) {
+      _log.warning('Déchargement Ollama avant diarization: $e');
+    }
+
     // Diarization + transcription propre (peut être longue la 1re fois).
     await _diarizeAndStore(sessionId);
 
@@ -209,20 +254,20 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   Future<String?> _diarizeAndStore(String? sessionId) async {
     if (sessionId == null) return null;
     try {
-      final DiarizationResult? result =
-          await ref.read(diarizationServiceProvider).processSession(sessionId);
+      final DiarizationResult? result = await ref
+          .read(diarizationServiceProvider)
+          .processSession(sessionId);
       if (result == null) return null;
 
       final SessionAnalysis existing = SessionAnalysis.fromStored(
         await ref.read(summaryServiceProvider).getSummaryForSession(sessionId),
       );
-      await ref.read(summaryServiceProvider).saveSummary(
+      await ref
+          .read(summaryServiceProvider)
+          .saveSummary(
             sessionId: sessionId,
             content: existing
-                .copyWith(
-                  micText: result.micText,
-                  speakers: result.speakers,
-                )
+                .copyWith(micText: result.micText, speakers: result.speakers)
                 .toStored(),
           );
       _log.info(
@@ -244,18 +289,31 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// Active/désactive la traduction temps réel.
   void toggleTranslation() {
     final bool enabled = !state.isTranslationEnabled;
-    state = state.copyWith(isTranslationEnabled: enabled);
-    if (enabled) _translateNewSegments(state.segments);
+    _translationGeneration++;
+    _cancelTranslationDebounces();
+    state = state.copyWith(
+      isTranslationEnabled: enabled,
+      translations: enabled ? state.translations : <String, String>{},
+    );
+    if (enabled) {
+      unawaited(_prepareTranslationPair());
+      _translateNewSegments(state.segments);
+    }
   }
 
   /// Change les langues de traduction et retraduit.
   void setTranslationLangs({String? from, String? to}) {
+    _translationGeneration++;
+    _cancelTranslationDebounces();
     state = state.copyWith(
       translationFrom: from ?? state.translationFrom,
       translationTo: to ?? state.translationTo,
       translations: <String, String>{},
     );
-    if (state.isTranslationEnabled) _translateNewSegments(state.segments);
+    if (state.isTranslationEnabled) {
+      unawaited(_prepareTranslationPair());
+      _translateNewSegments(state.segments);
+    }
   }
 
   /// Traduit les nouveaux segments finalisés (par phrase, en tâche de fond).
@@ -263,56 +321,143 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     if (!state.isTranslationEnabled) return;
     final String from = state.translationFrom;
     final String to = state.translationTo;
-
-    // Phrases finalisées : traduire une fois, clé = id du segment.
-    for (final TranscriptSegmentEntity s in segments) {
-      if (s.id.startsWith('current_')) continue;
-      if (state.translations.containsKey(s.id)) continue;
-      state = state.copyWith(
-        translations: <String, String>{...state.translations, s.id: ''},
-      );
-      ref
-          .read(translationServiceProvider)
-          .translate(text: s.text, from: from, to: to)
-          .then((String t) {
-        if (t.isEmpty) return;
-        state = state.copyWith(
-          translations: <String, String>{...state.translations, s.id: t},
-        );
-      });
+    final int generation = _translationGeneration;
+    final Set<String> activeIds = segments
+        .map((TranscriptSegmentEntity segment) => segment.id)
+        .toSet();
+    for (final String id in _translateDebounces.keys.toList()) {
+      if (id.startsWith('current_') && !activeIds.contains(id)) {
+        _translateDebounces.remove(id)?.cancel();
+      }
     }
 
-    // Phrase EN COURS (segment `current_`) : traduire en direct (debounce) pour
-    // afficher le sous-titre pendant qu'on parle, sans attendre la fin de phrase.
-    final TranscriptSegmentEntity? last =
-        segments.isNotEmpty ? segments.last : null;
-    if (last != null && last.id.startsWith('current_')) {
-      final String text = last.text;
-      _translateDebounce?.cancel();
-      _translateDebounce = Timer(const Duration(milliseconds: 600), () {
+    // Chaque segment a sa propre traduction, clé = id du segment (les ids des
+    // phrases en cours sont stables : "current_input" / "current_output").
+    for (final TranscriptSegmentEntity s in segments) {
+      final bool inProgress = s.id.startsWith('current_');
+      if (inProgress) {
+        // Phrase en cours : traduire en direct (debounce par source), réécrit
+        // au fil de la croissance du texte.
+        final String text = s.text;
+        final String id = s.id;
+        _translateDebounces[id]?.cancel();
+        _translateDebounces[id] = Timer(const Duration(milliseconds: 900), () {
+          _translateDebounces.remove(id);
+          if (!_translationRequestIsCurrent(generation, from, to)) return;
+          ref
+              .read(translationServiceProvider)
+              .translate(text: text, from: from, to: to)
+              .then((String t) {
+                if (t.isEmpty ||
+                    !_translationRequestIsCurrent(generation, from, to)) {
+                  return;
+                }
+                final TranscriptSegmentEntity? current = _segmentById(id);
+                if (current == null || current.text != text) return;
+                state = state.copyWith(
+                  translations: <String, String>{...state.translations, id: t},
+                );
+              });
+        });
+      } else {
+        // Phrase finalisée : traduire une seule fois.
+        if (state.translations.containsKey(s.id)) continue;
+        state = state.copyWith(
+          translations: <String, String>{...state.translations, s.id: ''},
+        );
+        final String id = s.id;
         ref
             .read(translationServiceProvider)
-            .translate(text: text, from: from, to: to)
+            .translate(text: s.text, from: from, to: to)
             .then((String t) {
-          if (t.isEmpty || !state.isTranslationEnabled) return;
-          state = state.copyWith(
-            translations: <String, String>{...state.translations, 'current': t},
-          );
-        });
-      });
+              if (!_translationRequestIsCurrent(generation, from, to)) {
+                return;
+              }
+              if (t.isEmpty) {
+                final Map<String, String> translations = <String, String>{
+                  ...state.translations,
+                }..remove(id);
+                state = state.copyWith(translations: translations);
+                final int attempts = _translationRetries[id] ?? 0;
+                if (attempts < 1) {
+                  _translationRetries[id] = attempts + 1;
+                  final String timerId = 'retry:$id';
+                  _translateDebounces[timerId]?.cancel();
+                  _translateDebounces[timerId] = Timer(
+                    const Duration(seconds: 2),
+                    () {
+                      _translateDebounces.remove(timerId);
+                      if (_translationRequestIsCurrent(generation, from, to) &&
+                          _segmentById(id) != null) {
+                        _translateNewSegments(state.segments);
+                      }
+                    },
+                  );
+                }
+                return;
+              }
+              _translationRetries.remove(id);
+              state = state.copyWith(
+                translations: <String, String>{...state.translations, id: t},
+              );
+            });
+      }
+    }
+  }
+
+  bool _translationRequestIsCurrent(int generation, String from, String to) =>
+      generation == _translationGeneration &&
+      state.isTranslationEnabled &&
+      state.translationFrom == from &&
+      state.translationTo == to;
+
+  TranscriptSegmentEntity? _segmentById(String id) {
+    for (final TranscriptSegmentEntity segment in state.segments) {
+      if (segment.id == id) return segment;
+    }
+    return null;
+  }
+
+  void _cancelTranslationDebounces() {
+    for (final Timer timer in _translateDebounces.values) {
+      timer.cancel();
+    }
+    _translateDebounces.clear();
+    _translationRetries.clear();
+  }
+
+  Future<void> _prepareTranslationPair() async {
+    final int generation = _translationGeneration;
+    final String from = state.translationFrom;
+    final String to = state.translationTo;
+    final bool ready = await ref
+        .read(translationServiceProvider)
+        .preparePair(from: from, to: to);
+    if (!ready && _translationRequestIsCurrent(generation, from, to)) {
+      _log.warning('Paire de traduction indisponible: $from->$to');
     }
   }
 
   /// Met en pause.
-  void pauseSession() {
-    _durationTimer?.cancel();
-    state = state.copyWith(isPaused: true);
+  Future<void> pauseSession() async {
+    try {
+      await _liveService?.pauseTranscription();
+      _durationTimer?.cancel();
+      state = state.copyWith(isPaused: true);
+    } catch (e) {
+      _log.error('Mise en pause échouée: $e');
+    }
   }
 
   /// Reprend.
-  void resumeSession() {
-    state = state.copyWith(isPaused: false);
-    _startDurationTimer();
+  Future<void> resumeSession() async {
+    try {
+      await _liveService?.resumeTranscription();
+      state = state.copyWith(isPaused: false);
+      _startDurationTimer();
+    } catch (e) {
+      _log.error('Reprise échouée: $e');
+    }
   }
 
   /// Vérifie les permissions et met à jour le state.
@@ -374,10 +519,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
 
       final StringBuffer buffer = StringBuffer();
       for (final TranscriptSegmentEntity segment in segments) {
-        final Duration ts = Duration(milliseconds: segment.timestampMs);
-        final String time =
-            '${ts.inMinutes.toString().padLeft(2, '0')}:${(ts.inSeconds % 60).toString().padLeft(2, '0')}';
-        buffer.writeln('[$time] ${segment.text}');
+        buffer.writeln(TranscriptFormatter.plainLine(segment));
       }
 
       await file.writeAsString(buffer.toString());
@@ -390,23 +532,22 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// Analyse l'anglais parlé via Ollama (Mistral local) et sauvegarde le retour.
   ///
   /// [transcript] = parole du micro (MOI) uniquement.
-  Future<void> _analyzeEnglish(
-    String transcript, {
-    String? sessionId,
-  }) async {
+  Future<void> _analyzeEnglish(String transcript, {String? sessionId}) async {
     if (transcript.trim().isEmpty) return;
     state = state.copyWith(isFeedbackLoading: true);
 
     // S'assurer qu'Ollama est prêt (téléchargement binaire + modèle si besoin)
     try {
-      await ref.read(ollamaServiceProvider).ensureReady(
-        onProgress: (OllamaSetupStage stage, double progress) {
-          state = state.copyWith(
-            ollamaSetupStage: stage,
-            ollamaSetupProgress: progress,
+      await ref
+          .read(ollamaServiceProvider)
+          .ensureReady(
+            onProgress: (OllamaSetupStage stage, double progress) {
+              state = state.copyWith(
+                ollamaSetupStage: stage,
+                ollamaSetupProgress: progress,
+              );
+            },
           );
-        },
-      );
       state = state.copyWith(
         ollamaSetupStage: OllamaSetupStage.idle,
         ollamaSetupProgress: 0,
@@ -423,8 +564,9 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     }
 
     try {
-      final EnglishFeedbackEntity feedback =
-          await ref.read(ollamaServiceProvider).analyzeEnglish(transcript);
+      final EnglishFeedbackEntity feedback = await ref
+          .read(ollamaServiceProvider)
+          .analyzeEnglish(transcript);
 
       state = state.copyWith(isFeedbackLoading: false, feedback: feedback);
       _log.info(
@@ -434,14 +576,16 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       // Sauvegarder le retour dans l'enveloppe partagée (résumé + coach).
       if (sessionId != null && feedback.corrections.isNotEmpty) {
         final SessionAnalysis existing = SessionAnalysis.fromStored(
-          await ref.read(summaryServiceProvider).getSummaryForSession(
-            sessionId,
-          ),
+          await ref
+              .read(summaryServiceProvider)
+              .getSummaryForSession(sessionId),
         );
-        await ref.read(summaryServiceProvider).saveSummary(
-          sessionId: sessionId,
-          content: existing.copyWith(feedback: feedback).toStored(),
-        );
+        await ref
+            .read(summaryServiceProvider)
+            .saveSummary(
+              sessionId: sessionId,
+              content: existing.copyWith(feedback: feedback).toStored(),
+            );
         _log.info('Retour coach sauvegardé pour session $sessionId');
       }
     } catch (e) {

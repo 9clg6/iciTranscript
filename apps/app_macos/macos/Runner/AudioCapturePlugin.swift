@@ -59,6 +59,17 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
     private var auhalAccumulatedData = Data()
     private let auhalLock = NSLock()
 
+    // A capture generation identifies every chunk produced by one start/stop
+    // cycle. Main-queue events keep the generation they were created in so a
+    // delayed event cannot leak into the next transcription session.
+    private let captureTelemetryLock = NSLock()
+    private var captureGeneration: UInt64 = 0
+    private var captureGenerationIsActive = false
+    private var captureStartedAtUptime: TimeInterval = 0
+    private var captureInputFrames: UInt64 = 0
+    private var captureOutputFrames: UInt64 = 0
+    private var captureChunkCount: UInt64 = 0
+
     // MARK: Plugin registration
 
     static func register(with registrar: FlutterPluginRegistrar) {
@@ -82,6 +93,85 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
         self.methodChannel = methodChannel
         self.eventChannel = eventChannel
         super.init()
+    }
+
+    // MARK: Capture generation and telemetry
+
+    @discardableResult
+    private func beginCaptureGeneration() -> UInt64 {
+        captureTelemetryLock.lock()
+        captureGeneration &+= 1
+        captureGenerationIsActive = true
+        captureStartedAtUptime = ProcessInfo.processInfo.systemUptime
+        captureInputFrames = 0
+        captureOutputFrames = 0
+        captureChunkCount = 0
+        let generation = captureGeneration
+        captureTelemetryLock.unlock()
+
+        NSLog("[AudioCapturePlugin] Capture generation \(generation) started")
+        return generation
+    }
+
+    private func activeCaptureGeneration() -> UInt64? {
+        captureTelemetryLock.lock()
+        defer { captureTelemetryLock.unlock() }
+        return captureGenerationIsActive ? captureGeneration : nil
+    }
+
+    private func isCaptureGenerationActive(_ generation: UInt64) -> Bool {
+        captureTelemetryLock.lock()
+        defer { captureTelemetryLock.unlock() }
+        return captureGenerationIsActive && captureGeneration == generation
+    }
+
+    private func recordAUHALFrames(
+        generation: UInt64,
+        inputFrames: UInt32,
+        outputFrames: Int
+    ) {
+        captureTelemetryLock.lock()
+        defer { captureTelemetryLock.unlock() }
+        guard captureGenerationIsActive, captureGeneration == generation else { return }
+        captureInputFrames &+= UInt64(inputFrames)
+        captureOutputFrames &+= UInt64(outputFrames)
+    }
+
+    private func recordAUHALChunk(generation: UInt64) {
+        captureTelemetryLock.lock()
+        defer { captureTelemetryLock.unlock() }
+        guard captureGenerationIsActive, captureGeneration == generation else { return }
+        captureChunkCount &+= 1
+    }
+
+    private func finishCaptureGeneration(expectedGeneration: UInt64? = nil) {
+        captureTelemetryLock.lock()
+        guard captureGenerationIsActive,
+              expectedGeneration == nil || expectedGeneration == captureGeneration else {
+            captureTelemetryLock.unlock()
+            return
+        }
+
+        let generation = captureGeneration
+        let elapsed = max(0, ProcessInfo.processInfo.systemUptime - captureStartedAtUptime)
+        let inputFrames = captureInputFrames
+        let outputFrames = captureOutputFrames
+        let chunks = captureChunkCount
+        captureGenerationIsActive = false
+        captureTelemetryLock.unlock()
+
+        let inputRate = elapsed > 0 ? Double(inputFrames) / elapsed : 0
+        let outputRate = elapsed > 0 ? Double(outputFrames) / elapsed : 0
+        let elapsedText = String(format: "%.3f", elapsed)
+        let inputRateText = String(format: "%.1f", inputRate)
+        let outputRateText = String(format: "%.1f", outputRate)
+        NSLog(
+            "[AudioCapturePlugin] Capture generation \(generation) telemetry: " +
+            "elapsed=\(elapsedText)s " +
+            "inputFrames=\(inputFrames) (\(inputRateText)/s) " +
+            "outputFrames=\(outputFrames) (\(outputRateText)/s) " +
+            "chunks=\(chunks) chunkFrames=\(chunks * UInt64(Self.samplesPerChunk))"
+        )
     }
 
     // MARK: FlutterPlugin – method call handling
@@ -253,10 +343,12 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
 
     private func startCaptureWithPermissions(inputDeviceId: String?, outputEnabled: Bool, result: @escaping FlutterResult) {
         isCapturing = true
+        let generation = beginCaptureGeneration()
 
         do {
             try startMicrophoneCapture(inputDeviceId: inputDeviceId)
         } catch {
+            finishCaptureGeneration(expectedGeneration: generation)
             isCapturing = false
             result(FlutterError(code: "MIC_ERROR", message: "Impossible de démarrer le microphone: \(error.localizedDescription)", details: nil))
             return
@@ -264,7 +356,7 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
 
         if outputEnabled {
             if #available(macOS 13.0, *) {
-                startSystemAudioCapture { [weak self] error in
+                startSystemAudioCapture(captureGeneration: generation) { [weak self] error in
                     guard let self = self else { return }
                     if let error = error {
                         NSLog("[AudioCapturePlugin] System audio capture failed: \(error.localizedDescription)")
@@ -353,7 +445,9 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
 
         // 5. Set the input device
         var deviceID: AudioDeviceID
-        if let inputDeviceId = inputDeviceId, let id = AudioDeviceID(inputDeviceId) {
+        if let inputDeviceId = inputDeviceId,
+           let id = AudioDeviceID(inputDeviceId),
+           getDeviceName(deviceID: id) != nil {
             // Device explicitement sélectionné par l'utilisateur
             deviceID = id
         } else {
@@ -447,11 +541,29 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
                           userInfo: [NSLocalizedDescriptionKey: "Could not set output format on element 1 (status \(status))"])
         }
 
-        // Create AVAudioFormat from the device ASBD
-        guard let deviceFormat = AVAudioFormat(streamDescription: &deviceASBD) else {
+        // Re-read the format actually negotiated by AUHAL. Continuity/Bluetooth
+        // devices may negotiate a different client format than the requested
+        // ASBD; building the converter from the stale request produces the
+        // wrong number of output samples and an ever-growing transcription lag.
+        var negotiatedASBD = AudioStreamBasicDescription()
+        var negotiatedSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+        status = AudioUnitGetProperty(au,
+            kAudioUnitProperty_StreamFormat,
+            kAudioUnitScope_Output,
+            1,
+            &negotiatedASBD,
+            &negotiatedSize)
+        guard status == noErr else {
+            AudioComponentInstanceDispose(au)
+            throw NSError(domain: "AudioCapturePlugin", code: Int(status),
+                          userInfo: [NSLocalizedDescriptionKey: "Could not get negotiated input format (status \(status))"])
+        }
+
+        // Create AVAudioFormat from the negotiated AUHAL client ASBD.
+        guard let deviceFormat = AVAudioFormat(streamDescription: &negotiatedASBD) else {
             AudioComponentInstanceDispose(au)
             throw NSError(domain: "AudioCapturePlugin", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Could not create AVAudioFormat from device ASBD"])
+                          userInfo: [NSLocalizedDescriptionKey: "Could not create AVAudioFormat from negotiated ASBD"])
         }
 
         // Create output format: PCM Int16, 16kHz, mono
@@ -467,12 +579,26 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
             throw NSError(domain: "AudioCapturePlugin", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "Could not create AVAudioConverter"])
         }
+        converter.primeMethod = .none
 
         self.auhalConverter = converter
         self.auhalDeviceFormat = deviceFormat
 
-        // Allocate render buffer - enough for one callback worth of data
-        let renderFrameCount: AVAudioFrameCount = 4096
+        // Core Audio may change the maximum slice size after route/sleep events.
+        // Query the unit instead of rendering `inNumberFrames` into a fixed
+        // 4096-frame buffer.
+        var maximumFramesPerSlice: UInt32 = 0
+        var maximumFramesSize = UInt32(MemoryLayout<UInt32>.size)
+        let maximumFramesStatus = AudioUnitGetProperty(au,
+            kAudioUnitProperty_MaximumFramesPerSlice,
+            kAudioUnitScope_Global,
+            0,
+            &maximumFramesPerSlice,
+            &maximumFramesSize)
+        if maximumFramesStatus != noErr || maximumFramesPerSlice == 0 {
+            maximumFramesPerSlice = 4096
+        }
+        let renderFrameCount = AVAudioFrameCount(Swift.max(maximumFramesPerSlice, 4096))
         guard let renderBuffer = AVAudioPCMBuffer(pcmFormat: deviceFormat, frameCapacity: renderFrameCount) else {
             AudioComponentInstanceDispose(au)
             throw NSError(domain: "AudioCapturePlugin", code: -1,
@@ -514,7 +640,7 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
         }
 
         self.auHAL = au
-        NSLog("[AudioCapturePlugin] AUHAL microphone capture started (device rate: \(deviceASBD.mSampleRate) Hz)")
+        NSLog("[AudioCapturePlugin] AUHAL microphone capture started (negotiated: \(negotiatedASBD.mSampleRate) Hz, maxSlice=\(maximumFramesPerSlice))")
     }
 
     // MARK: - AUHAL Render Callback
@@ -527,21 +653,28 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
         inBusNumber: UInt32,
         inNumberFrames: UInt32
     ) {
-        guard let au = auHAL,
+        guard let generation = activeCaptureGeneration(),
+              let au = auHAL,
               let renderBuffer = auhalRenderBuffer,
               let converter = auhalConverter,
               let deviceFormat = auhalDeviceFormat else { return }
 
-        // Prepare the render buffer
-        renderBuffer.frameLength = min(inNumberFrames, renderBuffer.frameCapacity)
+        // Never ask AudioUnitRender to fill more frames than the AudioBufferList
+        // can describe. The previous min()+render(larger count) was unsafe.
+        guard inNumberFrames <= renderBuffer.frameCapacity else {
+            NSLog("[AudioCapturePlugin] Dropping oversized AUHAL slice: \(inNumberFrames) > \(renderBuffer.frameCapacity)")
+            return
+        }
+        renderBuffer.frameLength = AVAudioFrameCount(inNumberFrames)
 
         // Render audio from the device
         let status = AudioUnitRender(au, ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, renderBuffer.mutableAudioBufferList)
         guard status == noErr else { return }
 
         // Convert to PCM Int16 16kHz mono
-        let ratio = deviceFormat.sampleRate / Self.targetSampleRate
-        let outputFrameCapacity = AVAudioFrameCount(Double(inNumberFrames) / ratio) + 1
+        let outputFrameCapacity = AVAudioFrameCount(
+            ceil(Double(inNumberFrames) * Self.targetSampleRate / deviceFormat.sampleRate)
+        ) + 32
         guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: converter.outputFormat, frameCapacity: outputFrameCapacity) else { return }
 
         var error: NSError?
@@ -570,8 +703,18 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
 
         let audioBufferList = outputBuffer.audioBufferList
         let bufferPointer = audioBufferList.pointee.mBuffers
-        let byteCount = Int(bufferPointer.mDataByteSize)
-        guard let dataPtr = bufferPointer.mData, byteCount > 0 else { return }
+        let availableByteCount = Int(bufferPointer.mDataByteSize)
+        let bytesPerFrame = Int(converter.outputFormat.streamDescription.pointee.mBytesPerFrame)
+        let byteCount = frameCount * bytesPerFrame
+        guard let dataPtr = bufferPointer.mData,
+              byteCount > 0,
+              byteCount <= availableByteCount else { return }
+
+        recordAUHALFrames(
+            generation: generation,
+            inputFrames: inNumberFrames,
+            outputFrames: frameCount
+        )
 
         let int16Data = Data(bytes: dataPtr, count: byteCount)
 
@@ -585,7 +728,12 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
             auhalAccumulatedData.removeFirst(chunkByteSize)
             auhalLock.unlock()
 
-            sendAudioChunk(source: "input", data: Data(chunkData))
+            recordAUHALChunk(generation: generation)
+            sendAudioChunk(
+                source: "input",
+                data: Data(chunkData),
+                captureGeneration: generation
+            )
 
             auhalLock.lock()
         }
@@ -595,9 +743,20 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
     // MARK: - System Audio Capture (ScreenCaptureKit)
 
     @available(macOS 13.0, *)
-    private func startSystemAudioCapture(completion: @escaping (Error?) -> Void) {
+    private func startSystemAudioCapture(
+        captureGeneration: UInt64,
+        completion: @escaping (Error?) -> Void
+    ) {
         SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: false) { [weak self] content, error in
             guard let self = self else { return }
+            guard self.isCaptureGenerationActive(captureGeneration) else {
+                completion(NSError(
+                    domain: "AudioCapturePlugin",
+                    code: -4,
+                    userInfo: [NSLocalizedDescriptionKey: "Capture stopped before system audio startup completed"]
+                ))
+                return
+            }
 
             if let error = error {
                 completion(error)
@@ -631,7 +790,10 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
             config.height = 2
             config.minimumFrameInterval = CMTime(value: 1, timescale: 1) // 1 fps minimum
 
-            let outputHandler = SystemAudioOutputHandler(plugin: self)
+            let outputHandler = SystemAudioOutputHandler(
+                plugin: self,
+                captureGeneration: captureGeneration
+            )
             self._scStreamOutput = outputHandler
 
             let stream = SCStream(filter: filter, configuration: config, delegate: nil)
@@ -663,6 +825,10 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
     }
 
     private func stopAllCapture() {
+        // Invalidate queued main-thread events before stopping native capture.
+        // The summary is emitted once for the generation, never per callback.
+        finishCaptureGeneration()
+
         // Stop AUHAL microphone
         if let au = auHAL {
             AudioOutputUnitStop(au)
@@ -889,7 +1055,14 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
 
     fileprivate static var logCount = 0
 
-    fileprivate func sendAudioChunk(source: String, data: Data) {
+    fileprivate func sendAudioChunk(
+        source: String,
+        data: Data,
+        captureGeneration suppliedGeneration: UInt64? = nil
+    ) {
+        guard let generation = suppliedGeneration ?? activeCaptureGeneration(),
+              isCaptureGenerationActive(generation) else { return }
+
         // Debug: log max sample amplitude
         AudioCapturePlugin.logCount += 1
         if AudioCapturePlugin.logCount <= 5 || AudioCapturePlugin.logCount % 200 == 0 {
@@ -912,7 +1085,9 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
         ]
 
         DispatchQueue.main.async { [weak self] in
-            self?.streamHandler.send(event: event)
+            guard let self,
+                  self.isCaptureGenerationActive(generation) else { return }
+            self.streamHandler.send(event: event)
         }
     }
 }
@@ -944,12 +1119,14 @@ private func auhalInputCallback(
 private class SystemAudioOutputHandler: NSObject, SCStreamOutput {
 
     private weak var plugin: AudioCapturePlugin?
+    private let captureGeneration: UInt64
 
     private var accumulatedData = Data()
     private let lock = NSLock()
 
-    init(plugin: AudioCapturePlugin) {
+    init(plugin: AudioCapturePlugin, captureGeneration: UInt64) {
         self.plugin = plugin
+        self.captureGeneration = captureGeneration
         super.init()
     }
 
@@ -1002,7 +1179,11 @@ private class SystemAudioOutputHandler: NSObject, SCStreamOutput {
             accumulatedData.removeFirst(chunkByteSize)
             lock.unlock()
 
-            plugin?.sendAudioChunk(source: "output", data: Data(chunkData))
+            plugin?.sendAudioChunk(
+                source: "output",
+                data: Data(chunkData),
+                captureGeneration: captureGeneration
+            )
 
             lock.lock()
         }

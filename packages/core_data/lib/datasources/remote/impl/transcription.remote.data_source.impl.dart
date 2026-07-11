@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:core_data/clients/websocket_client.dart';
@@ -11,25 +11,50 @@ import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 import 'package:rxdart/rxdart.dart';
 
-/// Implementation de [TranscriptionRemoteDataSource] utilisant WebSocket.
+/// Implementation WebSocket avec DEUX flux séparés (Path A) :
+/// - micro (input) → transcript "MOI"
+/// - audio système (output) → transcript des interlocuteurs distants
+///
+/// voxmlx-serve gère une session indépendante par connexion WebSocket, donc on
+/// ouvre deux connexions vers le même serveur. Aucun mixage : chaque source est
+/// transcrite séparément et taguée correctement.
 final class TranscriptionRemoteDataSourceImpl
     implements TranscriptionRemoteDataSource {
   /// Cree une instance de [TranscriptionRemoteDataSourceImpl].
-  TranscriptionRemoteDataSourceImpl({required WebSocketClient webSocketClient})
-    : _webSocketClient = webSocketClient;
+  TranscriptionRemoteDataSourceImpl({
+    WebSocketClient? micClient,
+    WebSocketClient? systemClient,
+  }) : _mic = micClient ?? WebSocketClient(),
+       _sys = systemClient ?? WebSocketClient();
 
-  final WebSocketClient _webSocketClient;
-  int _sendCount = 0;
+  final WebSocketClient _mic;
+  final WebSocketClient _sys;
+  bool _systemConnected = false;
 
-  // Buffers de mixage
-  Uint8List? _pendingInput;
-  Uint8List? _pendingOutput;
-
-  // Suivi de l'activité output : si pas de chunk output depuis 500ms, passer en mode
-  // pass-through (envoyer le micro directement sans attendre le bureau).
-  bool _outputActive = false;
-  Timer? _outputTimeoutTimer;
-  static const Duration _outputTimeout = Duration(milliseconds: 500);
+  // Gate de silence (VAD simple) : chaque source possède son propre tour de
+  // parole. Une pause finalise explicitement la session voxmlx correspondante,
+  // ce qui borne les caches du modèle et évite la dérive sur les appels longs.
+  static const int _voiceThreshold = 350; // amplitude int16 ~ parole
+  static const double _voiceStartRms = 300;
+  static const double _voiceContinueRms = 180;
+  static const int _silenceToFinalizeMs = 700;
+  static const int _maxUtteranceMs = 30000;
+  final Map<AudioSource, int> _lastVoicedMs = <AudioSource, int>{
+    AudioSource.input: 0,
+    AudioSource.output: 0,
+  };
+  final Map<AudioSource, int> _utteranceStartedMs = <AudioSource, int>{
+    AudioSource.input: 0,
+    AudioSource.output: 0,
+  };
+  final Map<AudioSource, bool> _utteranceActive = <AudioSource, bool>{
+    AudioSource.input: false,
+    AudioSource.output: false,
+  };
+  final Map<AudioSource, int> _finalizationsPending = <AudioSource, int>{
+    AudioSource.input: 0,
+    AudioSource.output: 0,
+  };
 
   final BehaviorSubject<domain.ConnectionState> _connectionStateSubject =
       BehaviorSubject<domain.ConnectionState>.seeded(
@@ -37,18 +62,21 @@ final class TranscriptionRemoteDataSourceImpl
       );
 
   @override
-  Future<void> connect({String url = 'ws://localhost:8000/v1/realtime'}) async {
-    _pendingInput = null;
-    _pendingOutput = null;
-    _outputActive = false;
-    _outputTimeoutTimer?.cancel();
-    _outputTimeoutTimer = null;
-    _sendCount = 0;
+  Future<void> connect({
+    String url = 'ws://localhost:8000/v1/realtime',
+    bool systemAudioEnabled = true,
+  }) async {
     _connectionStateSubject.add(domain.ConnectionState.connecting);
+    _systemConnected = systemAudioEnabled;
+    _resetUtteranceState();
     try {
-      await _webSocketClient.connect(url);
+      await Future.wait(<Future<void>>[
+        _mic.connect(url),
+        if (systemAudioEnabled) _sys.connect(url) else _sys.disconnect(),
+      ]);
       _connectionStateSubject.add(domain.ConnectionState.connected);
-    } on Exception {
+    } catch (_) {
+      await Future.wait(<Future<void>>[_mic.disconnect(), _sys.disconnect()]);
       _connectionStateSubject.add(domain.ConnectionState.error);
       rethrow;
     }
@@ -56,120 +84,165 @@ final class TranscriptionRemoteDataSourceImpl
 
   @override
   void sendAudio(AudioChunk chunk) {
-    if (chunk.source == AudioSource.input) {
-      _pendingInput = chunk.data;
+    final AudioSource source = chunk.source;
+    final int now = chunk.timestampMs;
+    final bool voiced = _isVoiced(
+      chunk.data,
+      alreadyActive: _utteranceActive[source]!,
+    );
 
-      // Si output n'est pas actif, envoyer directement (pas de buffer pending)
-      if (!_outputActive) {
-        _sendRaw(_pendingInput!);
-        _pendingInput = null;
-        return;
+    if (voiced) {
+      if (!_utteranceActive[source]!) {
+        _utteranceActive[source] = true;
+        _utteranceStartedMs[source] = now;
       }
-    } else {
-      // Chunk output reçu : marquer output comme actif et réarmer le timeout
-      _outputActive = true;
-      _outputTimeoutTimer?.cancel();
-      _outputTimeoutTimer = Timer(_outputTimeout, () {
-        _outputActive = false;
-        // Vider le pending input bloqué en attente d'output
-        if (_pendingInput != null) {
-          _sendRaw(_pendingInput!);
-          _pendingInput = null;
-        }
-      });
+      _lastVoicedMs[source] = now;
+      _sendChunk(chunk);
 
-      if (_pendingOutput != null) {
-        // Nouvelle chunk output sans avoir recu d'input : micro absent,
-        // envoyer directement la chunk output precedente.
-        _sendRaw(_pendingOutput!);
+      // Même sans pause, borner une session évite que l'état incrémental du
+      // modèle dérive après plusieurs minutes (langue parasite / ponctuation).
+      if (now - _utteranceStartedMs[source]! >= _maxUtteranceMs) {
+        _finalizeSource(source);
       }
-      _pendingOutput = chunk.data;
+      return;
     }
 
-    // Quand on a les deux sources, mixer et envoyer.
-    if (_pendingInput != null && _pendingOutput != null) {
-      _sendRaw(_mixPCM16(_pendingInput!, _pendingOutput!));
-      _pendingInput = null;
-      _pendingOutput = null;
+    if (!_utteranceActive[source]!) {
+      return;
     }
+
+    // Conserver une courte queue de silence pour ne pas couper la fin du mot.
+    if (now - _lastVoicedMs[source]! <= _silenceToFinalizeMs) {
+      _sendChunk(chunk);
+      return;
+    }
+
+    _finalizeSource(source);
   }
 
-  void _sendRaw(Uint8List data) {
-    _sendCount++;
-    if (_sendCount % 50 == 1) {
-      final ByteData bd = ByteData.sublistView(data);
-      int maxVal = 0;
-      for (int i = 0; i < data.length - 1; i += 2) {
-        final int v = bd.getInt16(i, Endian.little).abs();
-        if (v > maxVal) maxVal = v;
-      }
-      // ignore: avoid_print
-      print('[AUDIO] #$_sendCount: ${data.length}B max=$maxVal');
-    }
-    _webSocketClient.send(
+  void _sendChunk(AudioChunk chunk) {
+    if (chunk.source == AudioSource.output && !_systemConnected) return;
+    final WebSocketClient client = chunk.source == AudioSource.input
+        ? _mic
+        : _sys;
+    client.send(
       jsonEncode(<String, String>{
         'type': 'input_audio_buffer.append',
-        'audio': base64Encode(data),
+        'audio': base64Encode(chunk.data),
       }),
     );
   }
 
-  /// Mixe deux buffers PCM Int16 en moyennant les samples.
-  /// Si un des deux buffers est silencieux, retourne l'autre directement (sans diviser le volume).
-  Uint8List _mixPCM16(Uint8List a, Uint8List b) {
-    final int len = min(a.length, b.length) & ~1; // multiple de 2
-    final bool aIsSilent = _isSilent(a, len);
-    final bool bIsSilent = _isSilent(b, len);
-
-    if (aIsSilent && !bIsSilent) return Uint8List.fromList(b.sublist(0, len));
-    if (bIsSilent && !aIsSilent) return Uint8List.fromList(a.sublist(0, len));
-    if (aIsSilent && bIsSilent) return Uint8List(len); // silence total
-
-    final Uint8List out = Uint8List(len);
-    final ByteData bdA = ByteData.sublistView(a);
-    final ByteData bdB = ByteData.sublistView(b);
-    final ByteData bdOut = ByteData.sublistView(out);
-    for (int i = 0; i < len; i += 2) {
-      final int s = (bdA.getInt16(i, Endian.little) + bdB.getInt16(i, Endian.little)) >> 1;
-      bdOut.setInt16(i, s.clamp(-32768, 32767), Endian.little);
-    }
-    return out;
-  }
-
-  /// Retourne true si tous les samples sont en dessous du seuil (~0.15% du plein signal).
-  bool _isSilent(Uint8List data, int len, {int threshold = 50}) {
+  bool _isVoiced(Uint8List data, {required bool alreadyActive}) {
     final ByteData bd = ByteData.sublistView(data);
-    for (int i = 0; i < len; i += 2) {
-      if (bd.getInt16(i, Endian.little).abs() > threshold) return false;
+    int sampleCount = 0;
+    int loudSampleCount = 0;
+    double sumSquares = 0;
+    for (int i = 0; i + 1 < data.length; i += 2) {
+      final int sample = bd.getInt16(i, Endian.little);
+      sampleCount++;
+      if (sample.abs() > _voiceThreshold) loudSampleCount++;
+      sumSquares += sample * sample;
     }
-    return true;
+    if (sampleCount == 0) return false;
+
+    // Un clic isolé ne doit pas maintenir Voxtral actif. L'hystérésis garde
+    // toutefois les fins de mots plus faibles une fois la parole détectée.
+    final int minimumLoudSamples = math.max(3, sampleCount ~/ 50);
+    if (loudSampleCount < minimumLoudSamples) return false;
+    final double rms = math.sqrt(sumSquares / sampleCount);
+    return rms >= (alreadyActive ? _voiceContinueRms : _voiceStartRms);
   }
 
   @override
-  void sendCommit() {
-    _webSocketClient.send(
-      jsonEncode(<String, dynamic>{'type': 'input_audio_buffer.commit'}),
-    );
+  Set<AudioSource> sendCommit({bool isFinal = false}) {
+    if (!isFinal) {
+      const String commit = '{"type":"input_audio_buffer.commit"}';
+      _mic.send(commit);
+      if (_systemConnected) _sys.send(commit);
+      return <AudioSource>{};
+    }
+    final Set<AudioSource> finalized = <AudioSource>{};
+    for (final AudioSource source in AudioSource.values) {
+      if (_utteranceActive[source]! &&
+          (source == AudioSource.input || _systemConnected)) {
+        finalized.add(source);
+        _finalizeSource(source);
+      }
+    }
+    return finalized;
+  }
+
+  void _finalizeSource(AudioSource source) {
+    const String finalCommit =
+        '{"type":"input_audio_buffer.commit","final":true}';
+    final WebSocketClient client = source == AudioSource.input ? _mic : _sys;
+    client.send(finalCommit);
+    _finalizationsPending[source] = _finalizationsPending[source]! + 1;
+    _utteranceActive[source] = false;
+    _utteranceStartedMs[source] = 0;
+    _lastVoicedMs[source] = 0;
   }
 
   @override
-  Stream<TranscriptEventRemoteModel> get transcriptionStream {
-    return _webSocketClient.messageStream
+  Stream<TranscriptEventRemoteModel> get transcriptionStream =>
+      _decode(_mic, AudioSource.input);
+
+  @override
+  Stream<TranscriptEventRemoteModel> get systemTranscriptionStream =>
+      _decode(_sys, AudioSource.output);
+
+  @override
+  Set<AudioSource> get activeSources => _utteranceActive.entries
+      .where(
+        (MapEntry<AudioSource, bool> entry) =>
+            (entry.value || _finalizationsPending[entry.key]! > 0) &&
+            (entry.key == AudioSource.input || _systemConnected),
+      )
+      .map((MapEntry<AudioSource, bool> entry) => entry.key)
+      .toSet();
+
+  Stream<TranscriptEventRemoteModel> _decode(
+    WebSocketClient client,
+    AudioSource source,
+  ) {
+    return client.messageStream
         .where((String message) => message.isNotEmpty)
         .map((String message) {
           final Map<String, dynamic> json =
               jsonDecode(message) as Map<String, dynamic>;
-          return TranscriptEventRemoteModel.fromJson(json);
+          final TranscriptEventRemoteModel event =
+              TranscriptEventRemoteModel.fromJson(json);
+          if (event.type == 'response.audio_transcript.done' &&
+              _finalizationsPending[source]! > 0) {
+            _finalizationsPending[source] = _finalizationsPending[source]! - 1;
+          }
+          return event;
         });
   }
 
   @override
   Future<void> disconnect() async {
-    _outputTimeoutTimer?.cancel();
-    _outputTimeoutTimer = null;
-    _outputActive = false;
-    await _webSocketClient.disconnect();
+    await Future.wait(<Future<void>>[_mic.disconnect(), _sys.disconnect()]);
+    _systemConnected = false;
+    _resetUtteranceState();
     _connectionStateSubject.add(domain.ConnectionState.disconnected);
+  }
+
+  void _resetUtteranceState() {
+    for (final AudioSource source in AudioSource.values) {
+      _utteranceActive[source] = false;
+      _finalizationsPending[source] = 0;
+      _utteranceStartedMs[source] = 0;
+      _lastVoicedMs[source] = 0;
+    }
+  }
+
+  /// Libère les ressources (les deux connexions).
+  Future<void> dispose() async {
+    await _mic.dispose();
+    await _sys.dispose();
+    await _connectionStateSubject.close();
   }
 
   @override

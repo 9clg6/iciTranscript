@@ -16,7 +16,7 @@ class AudioChunk {
   /// Source audio (micro input ou systeme output).
   final AudioSource source;
 
-  /// Donnees audio brutes (PCM float32, 16kHz).
+  /// Donnees audio brutes (PCM Int16 little-endian, 16 kHz mono).
   final Uint8List data;
 
   /// Timestamp en millisecondes depuis le debut de la session.

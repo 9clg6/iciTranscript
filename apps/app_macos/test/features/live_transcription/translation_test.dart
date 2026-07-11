@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/translation.service.dart';
@@ -6,24 +8,39 @@ import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 
 void main() {
+  final bool runIntegration =
+      Platform.environment['RUN_TRANSLATION_INTEGRATION'] == '1';
+
   // Vérifie la VRAIE classe utilisée par l'app (spawn uv + argos) en process.
-  test('TranslationService traduit EN->FR (argos réel)', () async {
-    final TranslationService service = TranslationService();
-    final String out = await service.translate(
-      text: 'Welcome guys, it does not work again.',
-      from: 'en',
-      to: 'fr',
-    );
-    // ignore: avoid_print
-    print('TRADUCTION RÉELLE: "$out"');
-    expect(out.trim(), isNotEmpty,
-        reason: 'argos doit renvoyer une traduction non vide');
-    await service.dispose();
-  }, timeout: const Timeout(Duration(minutes: 3)));
+  test(
+    'TranslationService traduit EN->FR (argos réel)',
+    () async {
+      final TranslationService service = TranslationService();
+      expect(await service.preparePair(from: 'en', to: 'fr'), isTrue);
+      final String out = await service.translate(
+        text: 'Welcome guys, it does not work again.',
+        from: 'en',
+        to: 'fr',
+      );
+      // ignore: avoid_print
+      print('TRADUCTION RÉELLE: "$out"');
+      expect(
+        out.trim(),
+        isNotEmpty,
+        reason: 'argos doit renvoyer une traduction non vide',
+      );
+      await service.dispose();
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+    skip: runIntegration
+        ? false
+        : 'Définir RUN_TRANSLATION_INTEGRATION=1 pour le test Argos réel.',
+  );
 
   // Vérifie que le sous-titre s'affiche sous le texte.
-  testWidgets('TranscriptLineWidget affiche le sous-titre de traduction',
-      (WidgetTester tester) async {
+  testWidgets('TranscriptLineWidget affiche le sous-titre de traduction', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

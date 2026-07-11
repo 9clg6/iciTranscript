@@ -110,7 +110,8 @@ class _LiveTranscriptionScreenState
               context: context,
               colorScheme: colorScheme,
               icon: Icons.screenshot_monitor,
-              message: 'Permission Screen Recording refusée — son système non capturé.',
+              message:
+                  'Permission Screen Recording refusée — son système non capturé.',
               isWarning: true,
               onOpenSettings: () => ref
                   .read(liveTranscriptionViewModelProvider.notifier)
@@ -163,9 +164,9 @@ class _LiveTranscriptionScreenState
           Expanded(
             child: Text(
               message,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: fgColor,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(color: fgColor),
             ),
           ),
           const Gap(8),
@@ -237,8 +238,9 @@ class _LiveTranscriptionScreenState
             const Gap(6),
             LinearProgressIndicator(
               value: state.ollamaSetupProgress,
-              backgroundColor:
-                  colorScheme.secondaryContainer.withValues(alpha: 0.5),
+              backgroundColor: colorScheme.secondaryContainer.withValues(
+                alpha: 0.5,
+              ),
               color: colorScheme.secondary,
               minHeight: 3,
               borderRadius: BorderRadius.circular(2),
@@ -265,62 +267,79 @@ class _LiveTranscriptionScreenState
           ),
         ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: <Widget>[
-          // Coach (config seulement quand idle)
-          if (idle) ...<Widget>[
-            Icon(Icons.auto_awesome, size: 13, color: colorScheme.secondary),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        reverse: true,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            // Coach (config seulement quand idle)
+            if (idle) ...<Widget>[
+              Icon(Icons.auto_awesome, size: 13, color: colorScheme.secondary),
+              const Gap(6),
+              Text(
+                LocaleKeys.transcription_live_summary_option.tr(),
+                style: textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+              ),
+              const Gap(6),
+              Switch.adaptive(
+                value: state.isCoachEnabled,
+                onChanged: (_) => ref
+                    .read(liveTranscriptionViewModelProvider.notifier)
+                    .toggleCoach(),
+                activeTrackColor: colorScheme.primary,
+              ),
+              const Gap(20),
+            ],
+            // Traduction (toujours)
+            Icon(Icons.translate, size: 13, color: colorScheme.primary),
             const Gap(6),
             Text(
-              LocaleKeys.transcription_live_summary_option.tr(),
+              'Traduction',
               style: textTheme.labelSmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
                 fontSize: 11,
               ),
             ),
+            const Gap(8),
+            _langDropdown(
+              state.translationFrom,
+              (String v) {
+                ref
+                    .read(liveTranscriptionViewModelProvider.notifier)
+                    .setTranslationLangs(from: v);
+              },
+              colorScheme,
+              textTheme,
+            ),
+            Icon(
+              Icons.arrow_forward,
+              size: 12,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            _langDropdown(
+              state.translationTo,
+              (String v) {
+                ref
+                    .read(liveTranscriptionViewModelProvider.notifier)
+                    .setTranslationLangs(to: v);
+              },
+              colorScheme,
+              textTheme,
+            ),
             const Gap(6),
             Switch.adaptive(
-              value: state.isCoachEnabled,
+              value: state.isTranslationEnabled,
               onChanged: (_) => ref
                   .read(liveTranscriptionViewModelProvider.notifier)
-                  .toggleCoach(),
+                  .toggleTranslation(),
               activeTrackColor: colorScheme.primary,
             ),
-            const Gap(20),
           ],
-          // Traduction (toujours)
-          Icon(Icons.translate, size: 13, color: colorScheme.primary),
-          const Gap(6),
-          Text(
-            'Traduction',
-            style: textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontSize: 11,
-            ),
-          ),
-          const Gap(8),
-          _langDropdown(state.translationFrom, (String v) {
-            ref
-                .read(liveTranscriptionViewModelProvider.notifier)
-                .setTranslationLangs(from: v);
-          }, colorScheme, textTheme),
-          Icon(Icons.arrow_forward, size: 12,
-              color: colorScheme.onSurfaceVariant),
-          _langDropdown(state.translationTo, (String v) {
-            ref
-                .read(liveTranscriptionViewModelProvider.notifier)
-                .setTranslationLangs(to: v);
-          }, colorScheme, textTheme),
-          const Gap(6),
-          Switch.adaptive(
-            value: state.isTranslationEnabled,
-            onChanged: (_) => ref
-                .read(liveTranscriptionViewModelProvider.notifier)
-                .toggleTranslation(),
-            activeTrackColor: colorScheme.primary,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -351,10 +370,10 @@ class _LiveTranscriptionScreenState
         fontWeight: FontWeight.bold,
       ),
       items: _langs.entries
-          .map((MapEntry<String, String> e) => DropdownMenuItem<String>(
-                value: e.key,
-                child: Text(e.value),
-              ))
+          .map(
+            (MapEntry<String, String> e) =>
+                DropdownMenuItem<String>(value: e.key, child: Text(e.value)),
+          )
           .toList(),
       onChanged: (String? v) {
         if (v != null) onChanged(v);
@@ -483,10 +502,7 @@ class _LiveTranscriptionScreenState
       itemBuilder: (BuildContext context, int index) {
         final segment = state.segments[index];
         final String? translation = state.isTranslationEnabled
-            ? (state.translations[segment.id] ??
-                (segment.id.startsWith('current_')
-                    ? state.translations['current']
-                    : null))
+            ? state.translations[segment.id]
             : null;
         return Padding(
           padding: const EdgeInsets.only(bottom: 24),
@@ -522,7 +538,11 @@ class _LiveTranscriptionScreenState
           children: <Widget>[
             Row(
               children: <Widget>[
-                Icon(Icons.school_outlined, size: 14, color: colorScheme.secondary),
+                Icon(
+                  Icons.school_outlined,
+                  size: 14,
+                  color: colorScheme.secondary,
+                ),
                 const Gap(6),
                 Text(
                   LocaleKeys.transcription_live_summary_title.tr(),
