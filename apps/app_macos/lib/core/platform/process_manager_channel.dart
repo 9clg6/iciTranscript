@@ -83,6 +83,9 @@ class ProcessManagerChannel {
 
       final Completer<void> readyCompleter = Completer<void>();
       bool isReady = false;
+      // Dernières lignes stderr, remontées si le serveur meurt avant d'être
+      // prêt (ex: échec d'installation uv) — sinon l'erreur reste invisible.
+      final List<String> recentStderr = <String>[];
 
       unawaited(
         _waitForServerHealth(serverProcess).then((bool healthy) {
@@ -121,6 +124,8 @@ class ProcessManagerChannel {
           if (line.trim().isEmpty) continue;
           _logsController.add('[stderr] $line');
           _log.debug('[stderr] $line');
+          recentStderr.add(line);
+          if (recentStderr.length > 20) recentStderr.removeAt(0);
 
           // Uvicorn écrit dans stderr, mais seul GET /health évite une course
           // avec la connexion WebSocket qui suit immédiatement.
@@ -136,6 +141,10 @@ class ProcessManagerChannel {
         _log.info('Serveur arrete avec code: $code');
         _serverProcess = null;
         if (!readyCompleter.isCompleted) {
+          _log.error(
+            'Le serveur ML s\'est arrêté avant d\'être prêt ($code):\n'
+            '${recentStderr.join('\n')}',
+          );
           readyCompleter.completeError(
             StateError(
               'Le serveur ML s\'est arrêté avant d\'être prêt ($code)',

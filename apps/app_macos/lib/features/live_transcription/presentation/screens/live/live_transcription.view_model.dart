@@ -129,6 +129,11 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         inputDeviceId: micId,
         serverCommand: 'uvx',
         serverArgs: <String>[
+          // Sans version épinglée, uv choisit le Python le plus récent
+          // (3.15+) pour lequel mlx n'a pas encore de wheel : l'installation
+          // échoue et le serveur ne démarre jamais.
+          '--python',
+          '3.12',
           '--from',
           'git+https://github.com/T0mSIlver/voxmlx.git@2ea0639570e447493d04349d96a41f71c031ae0d[server]',
           'voxmlx-serve',
