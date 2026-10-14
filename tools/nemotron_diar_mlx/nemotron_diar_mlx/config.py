@@ -134,6 +134,8 @@ class ModelConfig:
             if pre.get(key, expected) != expected:
                 raise ValueError(f"preprocessor.{key}={pre.get(key)!r} non supporté (attendu {expected!r}).")
 
+        # Les valeurs par défaut reprennent celles du constructeur
+        # `SortformerModules`, utilisées quand la config ne les précise pas.
         mods = cfg["sortformer_modules"]
         num_spks = int(cfg.get("max_num_of_spks", mods.get("num_spks", 4)))
         high_resolution = bool(cfg.get("high_resolution", False))
@@ -175,8 +177,8 @@ class ModelConfig:
                 fifo_len=int(mods.get("fifo_len", 0)),
                 chunk_len=int(mods.get("chunk_len", 188)),
                 spkcache_update_period=int(mods.get("spkcache_update_period", 188)),
-                chunk_left_context=int(mods.get("chunk_left_context", 0)),
-                chunk_right_context=int(mods.get("chunk_right_context", 0)),
+                chunk_left_context=int(mods.get("chunk_left_context", 1)),
+                chunk_right_context=int(mods.get("chunk_right_context", 1)),
                 spkcache_sil_frames_per_spk=int(mods.get("spkcache_sil_frames_per_spk", 3)),
                 pred_score_threshold=float(mods.get("pred_score_threshold", 0.25)),
                 max_index=int(mods.get("max_index", 99999)),

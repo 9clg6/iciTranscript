@@ -7,8 +7,7 @@ Correspondance avec NeMo :
   (encoder_proj, upsampling sub-pixel, têtes interlocuteurs et activité)
 - `Model.__call__`      <- `SortformerEncLabelModel.frontend_encoder` + `forward_infer`
 
-Seule l'inférence hors-ligne (attention complète) est implémentée ici ; le
-streaming (cache d'interlocuteurs) viendra dans une étape suivante.
+L'inférence streaming (cache d'interlocuteurs) est dans `streaming.py`.
 """
 
 from __future__ import annotations
@@ -19,6 +18,7 @@ from typing import Dict, Optional, Tuple
 
 import mlx.core as mx
 import mlx.nn as nn
+import numpy as np
 
 from .config import EncoderConfig, ModelConfig, ModulesConfig
 from .features import log_mel
@@ -205,28 +205,45 @@ class Model(nn.Module):
         preds = mx.sigmoid(logits) * mask[..., None]
         return preds, logits, self.sortformer.activity_logits(hidden)
 
-    def __call__(self, waveform: mx.array) -> Dict[str, mx.array]:
-        """Diarisation hors-ligne d'un signal mono 16 kHz.
+    def __call__(self, waveform) -> Dict[str, np.ndarray]:
+        """Diarisation d'un signal mono 16 kHz (float32).
 
-        Retourne `preds` `(T_out, num_spks)` : probabilité d'activité de chaque
+        Comme `SortformerEncLabelModel.forward` : streaming par blocs si la
+        config l'indique (Nemotron 3), sinon attention sur tout le signal.
+        Retourne `preds` `(T_out, num_spks)`, probabilité d'activité de chaque
         interlocuteur toutes les `frame_duration` secondes, et `activity`
         `(T_out, 3)` (silence / une voix / chevauchement) si la tête existe.
-        L'attention est quadratique en durée : réservé aux enregistrements
-        courts tant que le mode streaming n'est pas porté.
         """
-        feats, n_valid = self.features(waveform)
+        if self.config.streaming_mode:
+            return self.forward_streaming(waveform)
+        return self.forward_offline(waveform)
+
+    def forward_streaming(self, waveform) -> Dict[str, np.ndarray]:
+        """Streaming par blocs avec cache d'interlocuteurs : mémoire constante."""
+        from .streaming import StreamingDiarizer
+
+        diarizer = StreamingDiarizer(self)
+        first = diarizer.feed(np.asarray(waveform, dtype=np.float32))
+        last = diarizer.flush()
+        out = {"preds": np.concatenate([first.preds, last.preds])}
+        if first.activity is not None:
+            out["activity"] = np.concatenate([first.activity, last.activity])
+        return out
+
+    def forward_offline(self, waveform) -> Dict[str, np.ndarray]:
+        """Attention complète sur tout le signal : coût quadratique, extraits courts."""
+        feats, n_valid = self.features(mx.array(np.asarray(waveform, dtype=np.float32)))
         lengths = mx.array([n_valid])
         emb, emb_lengths = self.encode(feats[None], lengths)
         preds, _, activity = self.forward_infer(emb, emb_lengths)
 
         frame_factor = 1 if self.config.high_resolution else self.config.encoder.subsampling_factor
-        n_out = min(preds.shape[1], -(-n_valid // frame_factor))
-        out = {"preds": preds[0, :n_out].astype(mx.float32)}
-        if activity is not None:
-            out["activity"] = mx.softmax(activity[0, :n_out].astype(mx.float32), axis=-1)
-        downsample = self.config.output_subsampling_factor // frame_factor
-        if downsample > 1:
+        if self.config.output_subsampling_factor // frame_factor > 1:
             raise NotImplementedError("output_subsampling_factor > résolution native non supporté.")
+        n_out = min(preds.shape[1], -(-n_valid // frame_factor))
+        out = {"preds": np.array(preds[0, :n_out].astype(mx.float32))}
+        if activity is not None:
+            out["activity"] = np.array(mx.softmax(activity[0, :n_out].astype(mx.float32), axis=-1))
         return out
 
     @property
