@@ -536,7 +536,9 @@ final class LiveTranscriptionService {
     _phrase[source] = StringBuffer();
     final String text = TranscriptTextNormalizer.normalize(rawText);
     _transcriptionService.segmentsStream.add(segs);
-    if (text.isNotEmpty) {
+    if (TranscriptTextNormalizer.isForeignScript(text)) {
+      _log.info('Phrase écartée (alphabet non latin, bruit probable): $text');
+    } else if (text.isNotEmpty) {
       final TranscriptSegmentEntity segment = TranscriptSegmentEntity(
         id: '${source.name}_${DateTime.now().millisecondsSinceEpoch}',
         sessionId: session.id,
@@ -570,7 +572,7 @@ final class LiveTranscriptionService {
     final String text = TranscriptTextNormalizer.normalize(
       _phrase[source]!.toString(),
     );
-    if (text.isEmpty) return;
+    if (text.isEmpty || TranscriptTextNormalizer.isForeignScript(text)) return;
 
     final TranscriptSegmentEntity tempSegment = TranscriptSegmentEntity(
       id: _tempId(source),

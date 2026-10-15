@@ -55,7 +55,7 @@ void main() {
 
       dataSource.sendAudio(_chunk(AudioSource.input, 1000, voiced: true));
       dataSource.sendAudio(_chunk(AudioSource.input, 1500, voiced: false));
-      dataSource.sendAudio(_chunk(AudioSource.input, 1801, voiced: false));
+      dataSource.sendAudio(_chunk(AudioSource.input, 2201, voiced: false));
 
       expect(_messageTypes(mic.sent), <String>[
         'input_audio_buffer.append',
@@ -103,9 +103,9 @@ void main() {
         .listen((_) {});
 
     dataSource.sendAudio(_chunk(AudioSource.input, 1000, voiced: true));
-    dataSource.sendAudio(_chunk(AudioSource.input, 1801, voiced: false));
-    dataSource.sendAudio(_chunk(AudioSource.input, 2000, voiced: true));
-    dataSource.sendAudio(_chunk(AudioSource.input, 2801, voiced: false));
+    dataSource.sendAudio(_chunk(AudioSource.input, 2201, voiced: false));
+    dataSource.sendAudio(_chunk(AudioSource.input, 2400, voiced: true));
+    dataSource.sendAudio(_chunk(AudioSource.input, 3601, voiced: false));
 
     expect(
       _messageTypes(
