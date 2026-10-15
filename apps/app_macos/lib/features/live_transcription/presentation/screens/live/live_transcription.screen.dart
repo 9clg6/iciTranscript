@@ -293,6 +293,39 @@ class _LiveTranscriptionScreenState
                 activeTrackColor: colorScheme.primary,
               ),
               const Gap(20),
+              // Interlocuteurs en direct (audio système, Nemotron 3)
+              Tooltip(
+                message:
+                    'Identifie qui parle dans l’audio système pendant la '
+                    'session (jusqu’à 8 interlocuteurs).',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      Icons.groups_outlined,
+                      size: 13,
+                      color: colorScheme.tertiary,
+                    ),
+                    const Gap(6),
+                    Text(
+                      'Interlocuteurs',
+                      style: textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Gap(6),
+              Switch.adaptive(
+                value: state.isLiveSpeakersEnabled,
+                onChanged: (_) => ref
+                    .read(liveTranscriptionViewModelProvider.notifier)
+                    .toggleLiveSpeakers(),
+                activeTrackColor: colorScheme.primary,
+              ),
+              const Gap(20),
             ],
             // Traduction (toujours)
             Icon(Icons.translate, size: 13, color: colorScheme.primary),
@@ -509,6 +542,7 @@ class _LiveTranscriptionScreenState
           child: TranscriptLineWidget(
             segment: segment,
             translation: translation,
+            speaker: state.speakerLabels[segment.id],
           ),
         );
       },

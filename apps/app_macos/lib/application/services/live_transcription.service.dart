@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_data/model/audio_chunk.dart' as data;
 import 'package:core_data/model/remote/transcript_event.remote.model.dart';
+import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
@@ -32,15 +34,26 @@ final class LiveTranscriptionService {
     required AudioCaptureChannel audioCaptureChannel,
     required TranscriptionRemoteDataSource transcriptionRemoteDataSource,
     required TranscriptionService transcriptionService,
+    LiveDiarizationService? liveDiarization,
   }) : _processManagerService = processManagerService,
        _audioCaptureChannel = audioCaptureChannel,
        _transcriptionRemoteDataSource = transcriptionRemoteDataSource,
-       _transcriptionService = transcriptionService;
+       _transcriptionService = transcriptionService,
+       _liveDiarization = liveDiarization;
 
   final ProcessManagerService _processManagerService;
   final AudioCaptureChannel _audioCaptureChannel;
   final TranscriptionRemoteDataSource _transcriptionRemoteDataSource;
   final TranscriptionService _transcriptionService;
+  final LiveDiarizationService? _liveDiarization;
+
+  // Interlocuteurs en direct : id de segment système -> index (0, 1, …).
+  final BehaviorSubject<Map<String, int>> _speakerLabels =
+      BehaviorSubject<Map<String, int>>.seeded(<String, int>{});
+  final List<_PendingLabel> _pendingLabels = <_PendingLabel>[];
+  StreamSubscription<void>? _diarizationUpdates;
+  Timer? _labelTimer;
+  bool _liveDiarizationEnabled = false;
 
   final Log _log = Log.named('LiveTranscriptionService');
 
@@ -86,6 +99,12 @@ final class LiveTranscriptionService {
   /// Indique si une transcription est en cours.
   bool get isRecording => _transcriptionService.isTranscribingStream.value;
 
+  /// Interlocuteur de chaque segment système (id -> 0, 1, …), en direct.
+  Stream<Map<String, int>> get speakerLabelsStream => _speakerLabels.stream;
+
+  /// Dernières étiquettes connues.
+  Map<String, int> get speakerLabels => _speakerLabels.value;
+
   /// Vérifie les statuts de permissions (micro + Screen Recording).
   Future<Map<String, String>> checkPermissions() =>
       _audioCaptureChannel.checkPermissions();
@@ -108,6 +127,7 @@ final class LiveTranscriptionService {
     List<String> serverArgs = const <String>[],
     String webSocketUrl = 'ws://localhost:8000/v1/realtime',
     bool enablePostProcessing = false,
+    bool liveDiarization = false,
   }) => _serializeLifecycle(
     () => _startTranscription(
       inputDeviceId: inputDeviceId,
@@ -116,6 +136,7 @@ final class LiveTranscriptionService {
       serverArgs: serverArgs,
       webSocketUrl: webSocketUrl,
       enablePostProcessing: enablePostProcessing,
+      liveDiarization: liveDiarization,
     ),
   );
 
@@ -126,6 +147,7 @@ final class LiveTranscriptionService {
     required List<String> serverArgs,
     required String webSocketUrl,
     required bool enablePostProcessing,
+    required bool liveDiarization,
   }) async {
     if (isRecording) {
       _log.warning('Une transcription est déjà en cours');
@@ -223,6 +245,14 @@ final class LiveTranscriptionService {
                 _log.error('Erreur transcription système: $error'),
           );
 
+      // 5b. Interlocuteurs en direct (audio système) : démarre en arrière-plan,
+      // la transcription n'attend pas le serveur (premier lancement : modèle).
+      _speakerLabels.add(<String, int>{});
+      _pendingLabels.clear();
+      _liveDiarizationEnabled =
+          liveDiarization && outputEnabled && _liveDiarization != null;
+      if (_liveDiarizationEnabled) _startLiveDiarization();
+
       // 6. Relayer l'audio vers le WebSocket.
       _subscribeToAudio();
       _log.info('Audio subscription active, en attente de chunks...');
@@ -316,6 +346,10 @@ final class LiveTranscriptionService {
       await Future.wait<void>(List<Future<void>>.from(_pendingFinalizations));
     }
 
+    // Dernières trames de diarization, puis étiquetage des phrases restantes
+    // et arrêt du serveur (libère la mémoire avant la passe post-session).
+    await _stopLiveDiarization();
+
     // Finaliser les enregistrements WAV (corrige l'en-tête).
     try {
       await _micRecorder?.close();
@@ -341,6 +375,9 @@ final class LiveTranscriptionService {
 
   /// Libere les ressources du service.
   Future<void> dispose() async {
+    _labelTimer?.cancel();
+    await _diarizationUpdates?.cancel();
+    await _liveDiarization?.stop();
     await _audioSubscription?.cancel();
     await _transcriptionSubscription?.cancel();
     await _systemTranscriptionSubscription?.cancel();
@@ -382,6 +419,9 @@ final class LiveTranscriptionService {
           _micRecorder?.append(chunk.data);
         } else {
           _systemRecorder?.append(chunk.data);
+          if (_liveDiarizationEnabled) {
+            _liveDiarization?.sendAudio(chunk.data, chunk.timestampMs);
+          }
         }
         _transcriptionRemoteDataSource.sendAudio(chunk);
       },
@@ -449,6 +489,7 @@ final class LiveTranscriptionService {
         currentSession,
         source,
         event.text ?? _phrase[source]!.toString(),
+        window: _transcriptionRemoteDataSource.windowOf(event),
       );
     }
   }
@@ -458,8 +499,9 @@ final class LiveTranscriptionService {
   Future<void> _finalizeSegment(
     SessionEntity session,
     AudioSource source,
-    String rawText,
-  ) async {
+    String rawText, {
+    UtteranceWindow? window,
+  }) async {
     final List<TranscriptSegmentEntity> segs =
         List<TranscriptSegmentEntity>.from(
           _transcriptionService.segmentsStream.value,
@@ -479,6 +521,21 @@ final class LiveTranscriptionService {
         createdAt: DateTime.now(),
       );
       await _transcriptionService.saveSegment(segment);
+      if (source == AudioSource.output && _liveDiarizationEnabled) {
+        _queueSpeakerLabel(
+          segment.id,
+          window ??
+              // Phrase terminée par le serveur lui-même : intervalle estimé
+              // depuis l'arrivée du premier mot (~1 s après le début réel).
+              UtteranceWindow(
+                startMs:
+                    session.createdAt.millisecondsSinceEpoch +
+                    phraseStart -
+                    1000,
+                endMs: DateTime.now().millisecondsSinceEpoch - 300,
+              ),
+        );
+      }
     }
     _sortAndDedupeSegments();
   }
@@ -521,10 +578,16 @@ final class LiveTranscriptionService {
   void _trackFinalization(
     SessionEntity session,
     AudioSource source,
-    String rawText,
-  ) {
+    String rawText, {
+    UtteranceWindow? window,
+  }) {
     late final Future<void> task;
-    task = _finalizeSegment(session, source, rawText).whenComplete(() {
+    task = _finalizeSegment(
+      session,
+      source,
+      rawText,
+      window: window,
+    ).whenComplete(() {
       _pendingFinalizations.remove(task);
       // Plusieurs commits peuvent déjà être en vol si le modèle a pris du
       // retard. Ne couper les listeners qu'après le dernier `done` de la
@@ -536,6 +599,68 @@ final class LiveTranscriptionService {
     });
     _pendingFinalizations.add(task);
     unawaited(task);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Interlocuteurs en direct
+  // ---------------------------------------------------------------------------
+
+  void _startLiveDiarization() {
+    final LiveDiarizationService? diarization = _liveDiarization;
+    if (diarization == null) return;
+    _diarizationUpdates ??= diarization.updates.listen((_) => _resolveLabels());
+    // Filet de sécurité : étiquette avec les trames disponibles les phrases
+    // qui attendent depuis trop longtemps (serveur en retard).
+    _labelTimer?.cancel();
+    _labelTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _resolveLabels(),
+    );
+    unawaited(
+      diarization.start().catchError((Object e) {
+        _log.warning('Diarization en direct indisponible: $e');
+      }),
+    );
+  }
+
+  Future<void> _stopLiveDiarization() async {
+    final LiveDiarizationService? diarization = _liveDiarization;
+    _labelTimer?.cancel();
+    _labelTimer = null;
+    if (diarization == null || !_liveDiarizationEnabled) return;
+    _liveDiarizationEnabled = false;
+    await diarization.finish();
+    _resolveLabels(force: true);
+    _pendingLabels.clear();
+    await diarization.stop();
+  }
+
+  void _queueSpeakerLabel(String segmentId, UtteranceWindow window) {
+    _pendingLabels.add(_PendingLabel(segmentId, window, DateTime.now()));
+    _resolveLabels();
+  }
+
+  /// Étiquette les phrases dont les trames de diarization sont arrivées.
+  void _resolveLabels({bool force = false}) {
+    final LiveDiarizationService? diarization = _liveDiarization;
+    if (diarization == null || _pendingLabels.isEmpty) return;
+    final DateTime now = DateTime.now();
+    final Map<String, int> labels = Map<String, int>.of(_speakerLabels.value);
+    bool changed = false;
+    _pendingLabels.removeWhere((_PendingLabel p) {
+      final ({bool covered, int? speaker}) r = diarization.resolve(
+        p.window.startMs,
+        p.window.endMs,
+      );
+      final bool expired = now.difference(p.queuedAt).inSeconds >= 20;
+      if (!r.covered && !force && !expired) return false;
+      if (r.speaker != null) {
+        labels[p.segmentId] = r.speaker!;
+        changed = true;
+      }
+      return true;
+    });
+    if (changed) _speakerLabels.add(labels);
   }
 
   void _sortAndDedupeSegments() {
@@ -554,4 +679,13 @@ final class LiveTranscriptionService {
       });
     _transcriptionService.segmentsStream.add(sorted);
   }
+}
+
+/// Phrase système en attente de ses trames de diarization.
+class _PendingLabel {
+  _PendingLabel(this.segmentId, this.window, this.queuedAt);
+
+  final String segmentId;
+  final UtteranceWindow window;
+  final DateTime queuedAt;
 }

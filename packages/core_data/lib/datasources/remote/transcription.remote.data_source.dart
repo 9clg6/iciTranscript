@@ -1,5 +1,6 @@
 import 'package:core_data/model/audio_chunk.dart';
 import 'package:core_data/model/remote/transcript_event.remote.model.dart';
+import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 
@@ -22,6 +23,10 @@ abstract interface class TranscriptionRemoteDataSource {
 
   /// Sources ayant actuellement un tour de parole non finalisé.
   Set<AudioSource> get activeSources;
+
+  /// Intervalle de capture de la phrase terminée par l'événement `done`
+  /// [event], ou null si le serveur l'a terminée de lui-même.
+  UtteranceWindow? windowOf(TranscriptEventRemoteModel event);
 
   /// Deconnecte du serveur WebSocket.
   Future<void> disconnect();

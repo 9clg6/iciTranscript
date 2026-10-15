@@ -15,6 +15,7 @@ part of 'live_transcription.service.provider.dart';
 /// - La capture audio via [AudioCaptureChannel]
 /// - Le WebSocket via [TranscriptionRemoteDataSource]
 /// - La session et les segments via [TranscriptionService]
+/// - Les interlocuteurs en direct via [LiveDiarizationService]
 
 @ProviderFor(liveTranscriptionService)
 const liveTranscriptionServiceProvider = LiveTranscriptionServiceProvider._();
@@ -26,6 +27,7 @@ const liveTranscriptionServiceProvider = LiveTranscriptionServiceProvider._();
 /// - La capture audio via [AudioCaptureChannel]
 /// - Le WebSocket via [TranscriptionRemoteDataSource]
 /// - La session et les segments via [TranscriptionService]
+/// - Les interlocuteurs en direct via [LiveDiarizationService]
 
 final class LiveTranscriptionServiceProvider
     extends
@@ -42,6 +44,7 @@ final class LiveTranscriptionServiceProvider
   /// - La capture audio via [AudioCaptureChannel]
   /// - Le WebSocket via [TranscriptionRemoteDataSource]
   /// - La session et les segments via [TranscriptionService]
+  /// - Les interlocuteurs en direct via [LiveDiarizationService]
   const LiveTranscriptionServiceProvider._()
     : super(
         from: null,
@@ -77,4 +80,4 @@ final class LiveTranscriptionServiceProvider
 }
 
 String _$liveTranscriptionServiceHash() =>
-    r'd7f9c5e5bc10092b62f6258a586b3bc1a5e0129c';
+    r'2c6d2d8428e764015ea6a4d5256ebd79636478ad';

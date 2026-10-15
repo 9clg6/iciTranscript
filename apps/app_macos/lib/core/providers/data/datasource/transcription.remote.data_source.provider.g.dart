@@ -10,8 +10,8 @@ part of 'transcription.remote.data_source.provider.dart';
 // ignore_for_file: type=lint, type=warning
 /// Provider pour [TranscriptionRemoteDataSource].
 ///
-/// Fournit l'implementation WebSocket pour la communication
-/// avec le serveur voxmlx-serve (transcription en temps reel).
+/// Fournit l'implementation WebSocket (deux flux : micro + système) pour la
+/// communication avec voxmlx-serve (transcription temps réel).
 
 @ProviderFor(transcriptionRemoteDataSource)
 const transcriptionRemoteDataSourceProvider =
@@ -19,8 +19,8 @@ const transcriptionRemoteDataSourceProvider =
 
 /// Provider pour [TranscriptionRemoteDataSource].
 ///
-/// Fournit l'implementation WebSocket pour la communication
-/// avec le serveur voxmlx-serve (transcription en temps reel).
+/// Fournit l'implementation WebSocket (deux flux : micro + système) pour la
+/// communication avec voxmlx-serve (transcription temps réel).
 
 final class TranscriptionRemoteDataSourceProvider
     extends
@@ -32,8 +32,8 @@ final class TranscriptionRemoteDataSourceProvider
     with $Provider<TranscriptionRemoteDataSource> {
   /// Provider pour [TranscriptionRemoteDataSource].
   ///
-  /// Fournit l'implementation WebSocket pour la communication
-  /// avec le serveur voxmlx-serve (transcription en temps reel).
+  /// Fournit l'implementation WebSocket (deux flux : micro + système) pour la
+  /// communication avec voxmlx-serve (transcription temps réel).
   const TranscriptionRemoteDataSourceProvider._()
     : super(
         from: null,
@@ -71,4 +71,4 @@ final class TranscriptionRemoteDataSourceProvider
 }
 
 String _$transcriptionRemoteDataSourceHash() =>
-    r'815e1836ab5a0d74df09d9cc74a2c120e82d2b21';
+    r'f097adb5cf224ba70c2a5835a446c0255f4e57c0';

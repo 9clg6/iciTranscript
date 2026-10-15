@@ -14,6 +14,7 @@ class TranscriptLineWidget extends StatelessWidget {
   const TranscriptLineWidget({
     required this.segment,
     this.translation,
+    this.speaker,
     super.key,
   });
 
@@ -22,6 +23,21 @@ class TranscriptLineWidget extends StatelessWidget {
 
   /// Traduction du texte (sous-titre), null si absente/désactivée.
   final String? translation;
+
+  /// Interlocuteur identifié en direct (0, 1, …), null si inconnu.
+  final int? speaker;
+
+  /// Une teinte par interlocuteur, stable d'une phrase à l'autre.
+  static const List<Color> _speakerColors = <Color>[
+    Color(0xFF7E57C2),
+    Color(0xFF00897B),
+    Color(0xFFEF6C00),
+    Color(0xFF1E88E5),
+    Color(0xFFD81B60),
+    Color(0xFF6D4C41),
+    Color(0xFF3949AB),
+    Color(0xFF7CB342),
+  ];
 
   String _formatTimestamp(int timestampMs) {
     final Duration duration = Duration(milliseconds: timestampMs);
@@ -36,16 +52,24 @@ class TranscriptLineWidget extends StatelessWidget {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
     final bool isInput = segment.source == AudioSource.input;
 
+    final int? speaker = isInput ? null : this.speaker;
+    final Color? speakerColor = speaker == null
+        ? null
+        : _speakerColors[speaker % _speakerColors.length];
+
     final Color badgeBackgroundColor = isInput
         ? colorScheme.primaryContainer.withValues(alpha: 0.15)
-        : colorScheme.tertiaryContainer.withValues(alpha: 0.15);
+        : speakerColor?.withValues(alpha: 0.15) ??
+              colorScheme.tertiaryContainer.withValues(alpha: 0.15);
 
     final Color badgeTextColor = isInput
         ? colorScheme.primary
-        : colorScheme.tertiary;
+        : speakerColor ?? colorScheme.tertiary;
 
     final String badgeLabel = isInput
         ? LocaleKeys.transcription_live_speaker_me.tr()
+        : speaker != null
+        ? 'INTERLOCUTEUR ${speaker + 1}'
         : LocaleKeys.transcription_live_speaker_system.tr();
 
     return Column(

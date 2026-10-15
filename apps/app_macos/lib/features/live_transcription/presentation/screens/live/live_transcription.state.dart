@@ -52,6 +52,12 @@ abstract class LiveTranscriptionState with _$LiveTranscriptionState {
     /// Traductions par segment (id segment → texte traduit).
     @Default(<String, String>{}) Map<String, String> translations,
 
+    /// Indique si les interlocuteurs sont identifiés en direct (audio système).
+    @Default(true) bool isLiveSpeakersEnabled,
+
+    /// Interlocuteur de chaque segment système (id segment → 0, 1, …).
+    @Default(<String, int>{}) Map<String, int> speakerLabels,
+
     /// Retour du coach d'anglais (null si pas encore généré).
     EnglishFeedbackEntity? feedback,
 
