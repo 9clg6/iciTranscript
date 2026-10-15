@@ -14,6 +14,7 @@ IciTranscript captures your microphone and system audio simultaneously, transcri
 - **Real-time transcription** — see your words appear as you speak, powered by [voxmlx](https://github.com/T0mSIlver/voxmlx) and Apple Silicon MLX
 - **Dual audio capture** — microphone + system audio (meetings, videos, calls) captured and mixed simultaneously
 - **Session history** — every transcription is automatically saved and instantly visible in the sidebar; click any session to review it
+- **Speaker diarization** — after a session, remote participants (system audio) are separated and labelled, up to 8 speakers, with NVIDIA Nemotron 3 Diarization running on MLX ([nemotron-diar-mlx](https://github.com/9clg6/nemotron-diar-mlx)) and word-level timestamps from Parakeet; the model (~400 MB) is downloaded on first use
 - **AI summaries** — get a concise summary of any session using a local [Mistral](https://mistral.ai) model; summaries are saved and viewable directly in the session detail panel
 - **Zero setup for AI** — Ollama runtime (~106 MB) and the Mistral model (~4 GB) are downloaded automatically on first launch, with a detailed progress screen; no manual steps required
 - **Export** — copy transcript to clipboard or export as Markdown to `~/Downloads/`

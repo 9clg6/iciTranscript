@@ -17,19 +17,23 @@ class DiarizationResult {
 /// Service de traitement post-session (Path B) :
 /// - transcrit le micro (MOI) proprement,
 /// - diarize + transcrit le flux système (Interlocuteur N),
-/// via un script Python (voxmlx + sherpa-onnx) lancé avec `uv`.
+/// via un script Python (Nemotron 3 Diarization MLX + Parakeet MLX) lancé
+/// avec `uv`.
 class DiarizationService {
   DiarizationService();
 
   final Log _log = Log.named('DiarizationService');
 
   // Parakeet 0.6B (multilingue, MLX) : ~7x plus léger que Voxtral 4B → moins
-  // de pression mémoire/GPU + timestamps natifs pour l'alignement diarization.
+  // de pression mémoire/GPU + timestamps par mot pour l'attribution.
   static const String _pkModel = 'mlx-community/parakeet-tdt-0.6b-v3';
-  static const String _segUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2';
-  static const String _embUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx';
+
+  // NVIDIA Nemotron 3 Diarization (jusqu'à 8 interlocuteurs) porté en MLX.
+  // Épinglé sur un commit ; archive plutôt que `git+https` pour ne pas
+  // dépendre de `git` (absent sans les outils Xcode).
+  static const String _diarPackage =
+      'nemotron-diar-mlx @ https://github.com/9clg6/nemotron-diar-mlx/archive/'
+      'b9e1f4632122253cd85a675acfee8b9948742677.tar.gz';
 
   String get _home => Platform.environment['HOME'] ?? '/tmp';
   String get _appSupportDir =>
@@ -37,8 +41,8 @@ class DiarizationService {
   String get _recordingsDir => '$_appSupportDir/recordings';
   String get _diarDir => '$_appSupportDir/diar';
   String get _scriptPath => '$_diarDir/process_session.py';
-  String get _segModel => '$_diarDir/segmentation.onnx';
-  String get _embModel => '$_diarDir/embedding.onnx';
+  // Poids Nemotron convertis en MLX (téléchargés une fois depuis Hugging Face).
+  String get _diarModelCache => '$_diarDir/nemotron';
   String get _uvBin => '$_home/.local/bin/uv';
 
   /// Chemins WAV par session (écrits par [LiveTranscriptionService]).
@@ -60,7 +64,7 @@ class DiarizationService {
     }
 
     await _ensureScript();
-    await _ensureModels();
+    await _removeLegacyModels();
 
     _log.info('Lancement passe post-session pour $sessionId');
     final ProcessResult result = await Process.run(
@@ -72,16 +76,13 @@ class DiarizationService {
         '--with',
         'parakeet-mlx',
         '--with',
-        'sherpa-onnx',
-        '--with',
-        'numpy',
+        _diarPackage,
         'python',
         _scriptPath,
         hasMic ? mic : '/dev/null',
         hasSys ? sys : '/dev/null',
-        _segModel,
-        _embModel,
         _pkModel,
+        _diarModelCache,
       ],
       environment: <String, String>{'HOME': _home, 'PATH': _extendedPath()},
     );
@@ -149,46 +150,11 @@ class DiarizationService {
     await f.writeAsString(_pyScript);
   }
 
-  Future<void> _ensureModels() async {
-    if (!await File(_embModel).exists()) {
-      _log.info('Téléchargement modèle embedding…');
-      await _download(_embUrl, _embModel);
-    }
-    if (!await File(_segModel).exists()) {
-      _log.info('Téléchargement modèle segmentation…');
-      final String tar = '$_diarDir/seg.tar.bz2';
-      await _download(_segUrl, tar);
-      final String extract = '$_diarDir/_seg';
-      await Directory(extract).create(recursive: true);
-      await Process.run('tar', <String>['xjf', tar, '-C', extract]);
-      final File m = File(
-        '$extract/sherpa-onnx-pyannote-segmentation-3-0/model.onnx',
-      );
-      if (await m.exists()) {
-        await m.copy(_segModel);
-      }
-      await _delete(tar);
-      await Directory(
-        extract,
-      ).delete(recursive: true).catchError((_) => Directory(extract));
-    }
-  }
-
-  /// Télécharge [url] vers [dest] via `curl -fSL` (suit toutes les
-  /// redirections GitHub et échoue proprement, sans fichier tronqué — le
-  /// HttpClient maison sauvegardait des fichiers partiels/corrompus).
-  Future<void> _download(String url, String dest) async {
-    final ProcessResult r = await Process.run('/usr/bin/curl', <String>[
-      '-fSL',
-      '--retry',
-      '3',
-      '-o',
-      dest,
-      url,
-    ]);
-    if (r.exitCode != 0) {
-      await _delete(dest);
-      throw Exception('Téléchargement échoué ($url): ${r.stderr}');
+  /// Supprime les modèles sherpa-onnx (pyannote + TitaNet) des versions
+  /// précédentes, remplacés par Nemotron 3 Diarization.
+  Future<void> _removeLegacyModels() async {
+    for (final String name in <String>['segmentation.onnx', 'embedding.onnx']) {
+      await _delete('$_diarDir/$name');
     }
   }
 
@@ -203,16 +169,16 @@ class DiarizationService {
 
   /// Script Python embarqué (écrit dans le dossier de l'app au runtime).
   ///
-  /// Transcription : Parakeet MLX (multilingue, léger). Diarization : sherpa.
-  /// Alignement : chaque phrase (timestamps Parakeet) est attribuée au tour de
-  /// parole (sherpa) avec lequel elle chevauche le plus.
+  /// Diarization : Nemotron 3 Diarization (MLX, preset « offline » de NVIDIA,
+  /// jusqu'à 8 interlocuteurs numérotés par ordre d'apparition).
+  /// Transcription : Parakeet MLX (multilingue, timestamps par mot).
+  /// Attribution : chaque mot va à l'interlocuteur le plus actif pendant ce
+  /// mot, puis les mots consécutifs d'un même interlocuteur forment un tour.
   static const String _pyScript = r'''
-import json, sys, os, tempfile, wave
+import gc, json, sys, os, tempfile, wave
 import numpy as np
-import sherpa_onnx
-from parakeet_mlx import from_pretrained
 
-mic_wav, sys_wav, seg, emb, pk_model = sys.argv[1:6]
+mic_wav, sys_wav, pk_model, diar_cache = sys.argv[1:5]
 SR = 16000
 
 def has(p):
@@ -236,66 +202,48 @@ def rms(pcm):
     x = pcm.astype(np.float32) / 32768.0
     return float(np.sqrt(np.mean(x * x)))
 
-m = from_pretrained(pk_model)
 out = {"mic_text": "", "speakers": []}
 tmpd = tempfile.mkdtemp()
 
 mic_pcm = load_pcm(mic_wav) if has(mic_wav) else np.zeros(0, dtype=np.int16)
 sys_pcm = load_pcm(sys_wav) if has(sys_wav) else np.zeros(0, dtype=np.int16)
 
-# Transcription du micro (= MOI) pour le coach.
+# Le micro est exclusivement « MOI ». Les interlocuteurs distants viennent du
+# flux système ; diariser le micro les réintroduirait dans la mauvaise source.
+src = sys_pcm if sys_pcm.size > SR and rms(sys_pcm) > 0.005 else None
+
+# 1) Diarization avant Parakeet : un seul modèle en mémoire unifiée à la fois.
+preds, frame = None, 0.01
+if src is not None:
+    import mlx.core as mx
+    from nemotron_diar_mlx import Model
+    diar = Model.from_pretrained("nvidia/Nemotron-3-Diarization", dtype=mx.bfloat16,
+                                 streaming="offline", cache_dir=diar_cache)
+    preds = diar(src.astype(np.float32) / 32768.0)["preds"]
+    frame = diar.frame_duration
+    del diar
+    gc.collect()
+    clear_cache = getattr(mx, "clear_cache", None) or getattr(mx.metal, "clear_cache", None)
+    if clear_cache:
+        clear_cache()
+
+from parakeet_mlx import from_pretrained
+m = from_pretrained(pk_model)
+
+# 2) Transcription du micro (= MOI) pour le coach.
 if mic_pcm.size > SR // 2:
     p = os.path.join(tmpd, "mic.wav"); write_wav(mic_pcm, p)
     out["mic_text"] = m.transcribe(p, chunk_duration=120.0).text.strip()
 
-# Le micro est exclusivement « MOI ». Les interlocuteurs distants viennent du
-# flux système ; diariser le micro les réintroduirait dans la mauvaise source.
-src = sys_pcm if sys_pcm.size > SR else None
-
-if src is not None and rms(src) > 0.005:
-    p = os.path.join(tmpd, "diar.wav"); write_wav(src, p)
-    f32 = src.astype(np.float32) / 32768.0
-    cfg = sherpa_onnx.OfflineSpeakerDiarizationConfig(
-        segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
-            pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(model=seg)),
-        embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=emb),
-        # threshold 0.8 : 0.5 sur-segmente massivement l'audio réel.
-        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=0.8),
-        min_duration_on=0.3, min_duration_off=0.5,
-    )
-    sd = sherpa_onnx.OfflineSpeakerDiarization(cfg)
-    turns = sd.process(f32).sort_by_start_time()
-
-    sentences = m.transcribe(p, chunk_duration=120.0).sentences or []
-
-    def speaker_for(a, b):
-        best, bestov = 0, 0.0
-        for t in turns:
-            ov = max(0.0, min(b, t.end) - max(a, t.start))
-            if ov > bestov:
-                bestov, best = ov, t.speaker
-        return best
-
-    # Remap des ids de cluster (arbitraires) en 0,1,2… par ordre d'apparition.
-    remap = {}
-    def norm(spk):
-        if spk not in remap:
-            remap[spk] = len(remap)
-        return remap[spk]
-
-    merged = []
-    for s in sentences:
-        txt = s.text.strip()
-        if not txt:
-            continue
-        spk = norm(speaker_for(s.start, s.end))
-        if merged and merged[-1]["speaker"] == spk:
-            merged[-1]["end"] = round(s.end, 2)
-            merged[-1]["text"] += " " + txt
-        else:
-            merged.append({"speaker": spk, "start": round(s.start, 2),
-                           "end": round(s.end, 2), "text": txt})
-    out["speakers"] = merged
+# 3) Transcription du flux système, mot par mot, attribuée aux interlocuteurs.
+if preds is not None:
+    from nemotron_diar_mlx import tokens_to_words, words_to_turns
+    p = os.path.join(tmpd, "system.wav"); write_wav(src, p)
+    result = m.transcribe(p, chunk_duration=120.0)
+    words = tokens_to_words(t for s in result.sentences for t in s.tokens)
+    turns = words_to_turns(words, preds, frame)
+    # -1 : aucun interlocuteur détecté sur tout l'audio → un seul interlocuteur.
+    out["speakers"] = [dict(t.to_dict(), speaker=max(t.speaker, 0)) for t in turns]
 
 print(json.dumps(out, ensure_ascii=False))
 ''';
