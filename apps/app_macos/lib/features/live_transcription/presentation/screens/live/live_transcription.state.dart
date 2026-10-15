@@ -37,6 +37,12 @@ abstract class LiveTranscriptionState with _$LiveTranscriptionState {
     /// Valeurs : "authorized", "denied", "notDetermined", "unknown".
     @Default('unknown') String screenRecordingPermission,
 
+    /// Raison pour laquelle le son du Mac n'est pas capté (null si capté).
+    String? systemAudioError,
+
+    /// Dernière ligne du serveur de transcription pendant son démarrage.
+    String? serverStartupLine,
+
     /// Indique si l'option coach d'anglais est activée.
     @Default(false) bool isCoachEnabled,
 

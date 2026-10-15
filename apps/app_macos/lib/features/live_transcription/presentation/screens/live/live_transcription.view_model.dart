@@ -69,7 +69,40 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     ref.watch(processManagerServiceProvider).stateStream.listen((
       ServerState serverState,
     ) {
-      state = state.copyWith(serverState: serverState);
+      state = state.copyWith(
+        serverState: serverState,
+        serverStartupLine: serverState == ServerState.starting
+            ? state.serverStartupLine
+            : null,
+      );
+    });
+
+    // Premier lancement : installation + téléchargement du modèle peuvent
+    // prendre plusieurs minutes. Afficher où en est le serveur.
+    ref.watch(processManagerServiceProvider).logsStream.listen((String line) {
+      if (state.serverState != ServerState.starting) return;
+      final String? text = _startupLine(line);
+      if (text != null) state = state.copyWith(serverStartupLine: text);
+    });
+
+    // Son du Mac : capté ou non (autorisation, erreur ScreenCaptureKit).
+    _liveService?.captureStatusStream.listen((Map<String, String> status) {
+      switch (status['type']) {
+        case 'outputActive':
+          state = state.copyWith(
+            screenRecordingPermission: 'authorized',
+            systemAudioError: null,
+          );
+        case 'outputUnavailable':
+          _log.warning('Son du Mac non capté: $status');
+          final bool denied = status['reason'] == 'SCREEN_RECORDING_DENIED';
+          state = state.copyWith(
+            screenRecordingPermission: denied
+                ? 'denied'
+                : state.screenRecordingPermission,
+            systemAudioError: denied ? null : status['message'] ?? 'erreur',
+          );
+      }
     });
 
     // Ecoute les segments de la transcription
@@ -97,6 +130,18 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     });
   }
 
+  /// Ligne lisible du journal du serveur, sans bruit ni codes ANSI.
+  static String? _startupLine(String line) {
+    String text = line
+        .replaceFirst(RegExp(r'^\[(stdout|stderr)\]\s*'), '')
+        .replaceAll(RegExp(r'\x1B\[[0-9;]*[A-Za-z]'), '')
+        .trim();
+    // Barres de progression : garder la dernière mise à jour.
+    if (text.contains('\r')) text = text.split('\r').last.trim();
+    if (text.isEmpty) return null;
+    return text.length > 140 ? '${text.substring(0, 140)}…' : text;
+  }
+
   /// Demarre une nouvelle session de transcription.
   Future<void> startSession() async {
     _log.info('startSession() appele');
@@ -119,6 +164,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       feedback: null,
       translations: <String, String>{},
       speakerLabels: <String, int>{},
+      systemAudioError: null,
     );
     _translationGeneration++;
     _cancelTranslationDebounces();
