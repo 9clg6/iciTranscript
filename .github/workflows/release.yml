@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag de la release (ex. v0.2.0), créé sur le commit choisi"
+        required: true
 
 permissions:
   contents: write
@@ -12,6 +17,8 @@ jobs:
   build-macos:
     name: Build & Release macOS DMG
     runs-on: macos-14
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
 
     steps:
       - name: Checkout
@@ -42,7 +49,7 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Create DMG
         run: |
@@ -55,26 +62,28 @@ jobs:
             --hide-extension "iciTranscript.app" \
             --app-drop-link 480 170 \
             --no-internet-enable \
-            "IciTranscript-${{ github.ref_name }}-macos.dmg" \
+            "IciTranscript-${{ env.TAG }}-macos.dmg" \
             "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app"
 
       - name: Create ZIP
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
             "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app" \
-            "IciTranscript-${{ github.ref_name }}-macos.zip"
+            "IciTranscript-${{ env.TAG }}-macos.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           files: |
-            IciTranscript-${{ github.ref_name }}-macos.dmg
-            IciTranscript-${{ github.ref_name }}-macos.zip
+            IciTranscript-${{ env.TAG }}-macos.dmg
+            IciTranscript-${{ env.TAG }}-macos.zip
           generate_release_notes: true
           body: |
             ## Installation
 
-            1. Télécharger `IciTranscript-${{ github.ref_name }}-macos.dmg`
+            1. Télécharger `IciTranscript-${{ env.TAG }}-macos.dmg`
             2. Ouvrir le DMG et glisser IciTranscript dans Applications
             3. **Clic droit > Ouvrir** (première fois, Gatekeeper avertit car signature ad-hoc)
             4. L'app vous guide pour installer `uv` si nécessaire
