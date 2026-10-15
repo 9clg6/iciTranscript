@@ -33,7 +33,7 @@ class DiarizationService {
   // dépendre de `git` (absent sans les outils Xcode).
   static const String _diarPackage =
       'nemotron-diar-mlx @ https://github.com/9clg6/nemotron-diar-mlx/archive/'
-      'b9e1f4632122253cd85a675acfee8b9948742677.tar.gz';
+      '71c2097309522c7191644458b4a7dcbb0b29c3b5.tar.gz';
 
   String get _home => Platform.environment['HOME'] ?? '/tmp';
   String get _appSupportDir =>
