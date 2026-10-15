@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
 
 /// Un tour de parole d'un interlocuteur du meeting (résultat de diarization).
 class SpeakerTurn {
@@ -133,4 +135,46 @@ class SessionAnalysis {
       'speakers': speakers.map((SpeakerTurn t) => t.toJson()).toList(),
     });
   }
+}
+
+/// Tours de parole à partir des segments système étiquetés en direct.
+///
+/// Les segments consécutifs d'un même interlocuteur sont fusionnés ; les
+/// segments sans étiquette (diarization pas encore prête) sont ignorés.
+List<SpeakerTurn> buildSpeakerTurns(
+  List<TranscriptSegmentEntity> segments,
+  Map<String, int> labels,
+) {
+  final List<TranscriptSegmentEntity> labelled =
+      segments
+          .where(
+            (TranscriptSegmentEntity s) =>
+                s.source == AudioSource.output && labels.containsKey(s.id),
+          )
+          .toList()
+        ..sort(
+          (TranscriptSegmentEntity a, TranscriptSegmentEntity b) =>
+              a.timestampMs.compareTo(b.timestampMs),
+        );
+  final List<SpeakerTurn> turns = <SpeakerTurn>[];
+  for (final TranscriptSegmentEntity segment in labelled) {
+    final int speaker = labels[segment.id]!;
+    final double start = segment.timestampMs / 1000;
+    if (turns.isNotEmpty && turns.last.speaker == speaker) {
+      final SpeakerTurn last = turns.removeLast();
+      turns.add(
+        SpeakerTurn(
+          speaker: speaker,
+          start: last.start,
+          end: start,
+          text: '${last.text} ${segment.text}',
+        ),
+      );
+    } else {
+      turns.add(
+        SpeakerTurn(speaker: speaker, start: start, end: start, text: segment.text),
+      );
+    }
+  }
+  return turns;
 }

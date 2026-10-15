@@ -30,6 +30,7 @@ dependencies:
   mcp_toolkit: ^0.4.0
   drift: ^2.28.2
   rxdart: ^0.28.0
+  web_socket_channel: ^3.0.2
 
 dev_dependencies:
   flutter_test:

@@ -81,6 +81,11 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       _translateNewSegments(segments);
     });
 
+    // Interlocuteurs identifiés en direct sur l'audio système.
+    _liveService?.speakerLabelsStream.listen((Map<String, int> labels) {
+      state = state.copyWith(speakerLabels: labels);
+    });
+
     // Ecoute l'etat d'enregistrement
     _liveService?.isRecordingStream.listen((bool isRecording) {
       _log.debug('isRecording: $isRecording');
@@ -113,6 +118,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       duration: Duration.zero,
       feedback: null,
       translations: <String, String>{},
+      speakerLabels: <String, int>{},
     );
     _translationGeneration++;
     _cancelTranslationDebounces();
@@ -144,6 +150,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         ],
         outputEnabled: systemAudio,
         enablePostProcessing: state.isCoachEnabled,
+        liveDiarization: state.isLiveSpeakersEnabled,
       );
       _log.info('startTranscription OK');
     } catch (e) {
@@ -178,16 +185,25 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     await _liveService?.stopTranscription();
 
     final List<TranscriptSegmentEntity> segments = state.segments;
+    final Map<String, int> speakerLabels =
+        _liveService?.speakerLabels ?? state.speakerLabels;
     // Vider les segments immédiatement — chaque session commence vierge
     state = state.copyWith(
       isRecording: false,
       isPaused: false,
       segments: <TranscriptSegmentEntity>[],
       duration: Duration.zero,
+      speakerLabels: <String, int>{},
     );
 
     // Sauvegarder la transcription en local
     await _saveTranscriptToFile(segments);
+
+    // Interlocuteurs identifiés en direct : visibles dans la fiche de session
+    // (la passe post-session, si elle tourne, les remplacera par les siens).
+    if (sessionId != null) {
+      await _saveLiveSpeakers(sessionId, segments, speakerLabels);
+    }
 
     // Rafraichir la liste des sessions dans la sidebar
     await ref.read(sessionHistoryServiceProvider).loadSessions();
@@ -289,6 +305,39 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// Active ou désactive le coach d'anglais.
   void toggleCoach() {
     state = state.copyWith(isCoachEnabled: !state.isCoachEnabled);
+  }
+
+  /// Active ou désactive l'identification des interlocuteurs en direct.
+  void toggleLiveSpeakers() {
+    state = state.copyWith(
+      isLiveSpeakersEnabled: !state.isLiveSpeakersEnabled,
+    );
+  }
+
+  /// Enregistre les tours de parole identifiés en direct dans l'enveloppe
+  /// d'analyse de la session (mêmes champs que la passe post-session).
+  Future<void> _saveLiveSpeakers(
+    String sessionId,
+    List<TranscriptSegmentEntity> segments,
+    Map<String, int> labels,
+  ) async {
+    final List<SpeakerTurn> turns = buildSpeakerTurns(segments, labels);
+    if (turns.isEmpty) return;
+    try {
+      final SessionAnalysis existing = SessionAnalysis.fromStored(
+        await ref.read(summaryServiceProvider).getSummaryForSession(sessionId),
+      );
+      if (existing.speakers.isNotEmpty) return;
+      await ref
+          .read(summaryServiceProvider)
+          .saveSummary(
+            sessionId: sessionId,
+            content: existing.copyWith(speakers: turns).toStored(),
+          );
+      _log.info('Interlocuteurs en direct stockés: ${turns.length} tours');
+    } catch (e) {
+      _log.warning('Sauvegarde des interlocuteurs en direct échouée: $e');
+    }
   }
 
   /// Active/désactive la traduction temps réel.

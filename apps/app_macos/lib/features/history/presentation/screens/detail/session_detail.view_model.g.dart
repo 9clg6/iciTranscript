@@ -67,7 +67,7 @@ final class SessionDetailViewModelProvider
 }
 
 String _$sessionDetailViewModelHash() =>
-    r'70b88e342da19e4775a903ebb61bc87d5207a910';
+    r'ca5e177227c2dd8d63c045cd7ac0c730229a4d10';
 
 /// ViewModel de l'ecran de detail d'une session.
 ///

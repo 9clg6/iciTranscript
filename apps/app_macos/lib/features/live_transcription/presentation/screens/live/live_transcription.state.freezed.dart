@@ -29,7 +29,9 @@ mixin _$LiveTranscriptionState {
  bool get isTranslationEnabled;/// Langue source de la traduction (code ISO, ex: "en").
  String get translationFrom;/// Langue cible de la traduction (code ISO, ex: "fr").
  String get translationTo;/// Traductions par segment (id segment → texte traduit).
- Map<String, String> get translations;/// Retour du coach d'anglais (null si pas encore généré).
+ Map<String, String> get translations;/// Indique si les interlocuteurs sont identifiés en direct (audio système).
+ bool get isLiveSpeakersEnabled;/// Interlocuteur de chaque segment système (id segment → 0, 1, …).
+ Map<String, int> get speakerLabels;/// Retour du coach d'anglais (null si pas encore généré).
  EnglishFeedbackEntity? get feedback;/// Indique si l'analyse de l'anglais est en cours.
  bool get isFeedbackLoading;/// Étape courante du setup Ollama.
  OllamaSetupStage get ollamaSetupStage;/// Progression du setup Ollama (0.0 – 1.0).
@@ -45,16 +47,16 @@ $LiveTranscriptionStateCopyWith<LiveTranscriptionState> get copyWith => _$LiveTr
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is LiveTranscriptionState&&const DeepCollectionEquality().equals(other.segments, segments)&&(identical(other.isRecording, isRecording) || other.isRecording == isRecording)&&(identical(other.isPaused, isPaused) || other.isPaused == isPaused)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.serverState, serverState) || other.serverState == serverState)&&(identical(other.sessionTitle, sessionTitle) || other.sessionTitle == sessionTitle)&&(identical(other.micPermission, micPermission) || other.micPermission == micPermission)&&(identical(other.screenRecordingPermission, screenRecordingPermission) || other.screenRecordingPermission == screenRecordingPermission)&&(identical(other.isCoachEnabled, isCoachEnabled) || other.isCoachEnabled == isCoachEnabled)&&(identical(other.isTranslationEnabled, isTranslationEnabled) || other.isTranslationEnabled == isTranslationEnabled)&&(identical(other.translationFrom, translationFrom) || other.translationFrom == translationFrom)&&(identical(other.translationTo, translationTo) || other.translationTo == translationTo)&&const DeepCollectionEquality().equals(other.translations, translations)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&(identical(other.ollamaSetupStage, ollamaSetupStage) || other.ollamaSetupStage == ollamaSetupStage)&&(identical(other.ollamaSetupProgress, ollamaSetupProgress) || other.ollamaSetupProgress == ollamaSetupProgress)&&(identical(other.ollamaSetupError, ollamaSetupError) || other.ollamaSetupError == ollamaSetupError));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is LiveTranscriptionState&&const DeepCollectionEquality().equals(other.segments, segments)&&(identical(other.isRecording, isRecording) || other.isRecording == isRecording)&&(identical(other.isPaused, isPaused) || other.isPaused == isPaused)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.serverState, serverState) || other.serverState == serverState)&&(identical(other.sessionTitle, sessionTitle) || other.sessionTitle == sessionTitle)&&(identical(other.micPermission, micPermission) || other.micPermission == micPermission)&&(identical(other.screenRecordingPermission, screenRecordingPermission) || other.screenRecordingPermission == screenRecordingPermission)&&(identical(other.isCoachEnabled, isCoachEnabled) || other.isCoachEnabled == isCoachEnabled)&&(identical(other.isTranslationEnabled, isTranslationEnabled) || other.isTranslationEnabled == isTranslationEnabled)&&(identical(other.translationFrom, translationFrom) || other.translationFrom == translationFrom)&&(identical(other.translationTo, translationTo) || other.translationTo == translationTo)&&const DeepCollectionEquality().equals(other.translations, translations)&&(identical(other.isLiveSpeakersEnabled, isLiveSpeakersEnabled) || other.isLiveSpeakersEnabled == isLiveSpeakersEnabled)&&const DeepCollectionEquality().equals(other.speakerLabels, speakerLabels)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&(identical(other.ollamaSetupStage, ollamaSetupStage) || other.ollamaSetupStage == ollamaSetupStage)&&(identical(other.ollamaSetupProgress, ollamaSetupProgress) || other.ollamaSetupProgress == ollamaSetupProgress)&&(identical(other.ollamaSetupError, ollamaSetupError) || other.ollamaSetupError == ollamaSetupError));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(segments),isRecording,isPaused,duration,serverState,sessionTitle,micPermission,screenRecordingPermission,isCoachEnabled,isTranslationEnabled,translationFrom,translationTo,const DeepCollectionEquality().hash(translations),feedback,isFeedbackLoading,ollamaSetupStage,ollamaSetupProgress,ollamaSetupError);
+int get hashCode => Object.hashAll([runtimeType,const DeepCollectionEquality().hash(segments),isRecording,isPaused,duration,serverState,sessionTitle,micPermission,screenRecordingPermission,isCoachEnabled,isTranslationEnabled,translationFrom,translationTo,const DeepCollectionEquality().hash(translations),isLiveSpeakersEnabled,const DeepCollectionEquality().hash(speakerLabels),feedback,isFeedbackLoading,ollamaSetupStage,ollamaSetupProgress,ollamaSetupError]);
 
 @override
 String toString() {
-  return 'LiveTranscriptionState(segments: $segments, isRecording: $isRecording, isPaused: $isPaused, duration: $duration, serverState: $serverState, sessionTitle: $sessionTitle, micPermission: $micPermission, screenRecordingPermission: $screenRecordingPermission, isCoachEnabled: $isCoachEnabled, isTranslationEnabled: $isTranslationEnabled, translationFrom: $translationFrom, translationTo: $translationTo, translations: $translations, feedback: $feedback, isFeedbackLoading: $isFeedbackLoading, ollamaSetupStage: $ollamaSetupStage, ollamaSetupProgress: $ollamaSetupProgress, ollamaSetupError: $ollamaSetupError)';
+  return 'LiveTranscriptionState(segments: $segments, isRecording: $isRecording, isPaused: $isPaused, duration: $duration, serverState: $serverState, sessionTitle: $sessionTitle, micPermission: $micPermission, screenRecordingPermission: $screenRecordingPermission, isCoachEnabled: $isCoachEnabled, isTranslationEnabled: $isTranslationEnabled, translationFrom: $translationFrom, translationTo: $translationTo, translations: $translations, isLiveSpeakersEnabled: $isLiveSpeakersEnabled, speakerLabels: $speakerLabels, feedback: $feedback, isFeedbackLoading: $isFeedbackLoading, ollamaSetupStage: $ollamaSetupStage, ollamaSetupProgress: $ollamaSetupProgress, ollamaSetupError: $ollamaSetupError)';
 }
 
 
@@ -65,7 +67,7 @@ abstract mixin class $LiveTranscriptionStateCopyWith<$Res>  {
   factory $LiveTranscriptionStateCopyWith(LiveTranscriptionState value, $Res Function(LiveTranscriptionState) _then) = _$LiveTranscriptionStateCopyWithImpl;
 @useResult
 $Res call({
- List<TranscriptSegmentEntity> segments, bool isRecording, bool isPaused, Duration duration, ServerState serverState, String? sessionTitle, String micPermission, String screenRecordingPermission, bool isCoachEnabled, bool isTranslationEnabled, String translationFrom, String translationTo, Map<String, String> translations, EnglishFeedbackEntity? feedback, bool isFeedbackLoading, OllamaSetupStage ollamaSetupStage, double ollamaSetupProgress, String? ollamaSetupError
+ List<TranscriptSegmentEntity> segments, bool isRecording, bool isPaused, Duration duration, ServerState serverState, String? sessionTitle, String micPermission, String screenRecordingPermission, bool isCoachEnabled, bool isTranslationEnabled, String translationFrom, String translationTo, Map<String, String> translations, bool isLiveSpeakersEnabled, Map<String, int> speakerLabels, EnglishFeedbackEntity? feedback, bool isFeedbackLoading, OllamaSetupStage ollamaSetupStage, double ollamaSetupProgress, String? ollamaSetupError
 });
 
 
@@ -82,7 +84,7 @@ class _$LiveTranscriptionStateCopyWithImpl<$Res>
 
 /// Create a copy of LiveTranscriptionState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? segments = null,Object? isRecording = null,Object? isPaused = null,Object? duration = null,Object? serverState = null,Object? sessionTitle = freezed,Object? micPermission = null,Object? screenRecordingPermission = null,Object? isCoachEnabled = null,Object? isTranslationEnabled = null,Object? translationFrom = null,Object? translationTo = null,Object? translations = null,Object? feedback = freezed,Object? isFeedbackLoading = null,Object? ollamaSetupStage = null,Object? ollamaSetupProgress = null,Object? ollamaSetupError = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? segments = null,Object? isRecording = null,Object? isPaused = null,Object? duration = null,Object? serverState = null,Object? sessionTitle = freezed,Object? micPermission = null,Object? screenRecordingPermission = null,Object? isCoachEnabled = null,Object? isTranslationEnabled = null,Object? translationFrom = null,Object? translationTo = null,Object? translations = null,Object? isLiveSpeakersEnabled = null,Object? speakerLabels = null,Object? feedback = freezed,Object? isFeedbackLoading = null,Object? ollamaSetupStage = null,Object? ollamaSetupProgress = null,Object? ollamaSetupError = freezed,}) {
   return _then(_self.copyWith(
 segments: null == segments ? _self.segments : segments // ignore: cast_nullable_to_non_nullable
 as List<TranscriptSegmentEntity>,isRecording: null == isRecording ? _self.isRecording : isRecording // ignore: cast_nullable_to_non_nullable
@@ -97,7 +99,9 @@ as bool,isTranslationEnabled: null == isTranslationEnabled ? _self.isTranslation
 as bool,translationFrom: null == translationFrom ? _self.translationFrom : translationFrom // ignore: cast_nullable_to_non_nullable
 as String,translationTo: null == translationTo ? _self.translationTo : translationTo // ignore: cast_nullable_to_non_nullable
 as String,translations: null == translations ? _self.translations : translations // ignore: cast_nullable_to_non_nullable
-as Map<String, String>,feedback: freezed == feedback ? _self.feedback : feedback // ignore: cast_nullable_to_non_nullable
+as Map<String, String>,isLiveSpeakersEnabled: null == isLiveSpeakersEnabled ? _self.isLiveSpeakersEnabled : isLiveSpeakersEnabled // ignore: cast_nullable_to_non_nullable
+as bool,speakerLabels: null == speakerLabels ? _self.speakerLabels : speakerLabels // ignore: cast_nullable_to_non_nullable
+as Map<String, int>,feedback: freezed == feedback ? _self.feedback : feedback // ignore: cast_nullable_to_non_nullable
 as EnglishFeedbackEntity?,isFeedbackLoading: null == isFeedbackLoading ? _self.isFeedbackLoading : isFeedbackLoading // ignore: cast_nullable_to_non_nullable
 as bool,ollamaSetupStage: null == ollamaSetupStage ? _self.ollamaSetupStage : ollamaSetupStage // ignore: cast_nullable_to_non_nullable
 as OllamaSetupStage,ollamaSetupProgress: null == ollamaSetupProgress ? _self.ollamaSetupProgress : ollamaSetupProgress // ignore: cast_nullable_to_non_nullable
@@ -199,10 +203,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<TranscriptSegmentEntity> segments,  bool isRecording,  bool isPaused,  Duration duration,  ServerState serverState,  String? sessionTitle,  String micPermission,  String screenRecordingPermission,  bool isCoachEnabled,  bool isTranslationEnabled,  String translationFrom,  String translationTo,  Map<String, String> translations,  EnglishFeedbackEntity? feedback,  bool isFeedbackLoading,  OllamaSetupStage ollamaSetupStage,  double ollamaSetupProgress,  String? ollamaSetupError)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<TranscriptSegmentEntity> segments,  bool isRecording,  bool isPaused,  Duration duration,  ServerState serverState,  String? sessionTitle,  String micPermission,  String screenRecordingPermission,  bool isCoachEnabled,  bool isTranslationEnabled,  String translationFrom,  String translationTo,  Map<String, String> translations,  bool isLiveSpeakersEnabled,  Map<String, int> speakerLabels,  EnglishFeedbackEntity? feedback,  bool isFeedbackLoading,  OllamaSetupStage ollamaSetupStage,  double ollamaSetupProgress,  String? ollamaSetupError)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _LiveTranscriptionState() when $default != null:
-return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_that.serverState,_that.sessionTitle,_that.micPermission,_that.screenRecordingPermission,_that.isCoachEnabled,_that.isTranslationEnabled,_that.translationFrom,_that.translationTo,_that.translations,_that.feedback,_that.isFeedbackLoading,_that.ollamaSetupStage,_that.ollamaSetupProgress,_that.ollamaSetupError);case _:
+return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_that.serverState,_that.sessionTitle,_that.micPermission,_that.screenRecordingPermission,_that.isCoachEnabled,_that.isTranslationEnabled,_that.translationFrom,_that.translationTo,_that.translations,_that.isLiveSpeakersEnabled,_that.speakerLabels,_that.feedback,_that.isFeedbackLoading,_that.ollamaSetupStage,_that.ollamaSetupProgress,_that.ollamaSetupError);case _:
   return orElse();
 
 }
@@ -220,10 +224,10 @@ return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<TranscriptSegmentEntity> segments,  bool isRecording,  bool isPaused,  Duration duration,  ServerState serverState,  String? sessionTitle,  String micPermission,  String screenRecordingPermission,  bool isCoachEnabled,  bool isTranslationEnabled,  String translationFrom,  String translationTo,  Map<String, String> translations,  EnglishFeedbackEntity? feedback,  bool isFeedbackLoading,  OllamaSetupStage ollamaSetupStage,  double ollamaSetupProgress,  String? ollamaSetupError)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<TranscriptSegmentEntity> segments,  bool isRecording,  bool isPaused,  Duration duration,  ServerState serverState,  String? sessionTitle,  String micPermission,  String screenRecordingPermission,  bool isCoachEnabled,  bool isTranslationEnabled,  String translationFrom,  String translationTo,  Map<String, String> translations,  bool isLiveSpeakersEnabled,  Map<String, int> speakerLabels,  EnglishFeedbackEntity? feedback,  bool isFeedbackLoading,  OllamaSetupStage ollamaSetupStage,  double ollamaSetupProgress,  String? ollamaSetupError)  $default,) {final _that = this;
 switch (_that) {
 case _LiveTranscriptionState():
-return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_that.serverState,_that.sessionTitle,_that.micPermission,_that.screenRecordingPermission,_that.isCoachEnabled,_that.isTranslationEnabled,_that.translationFrom,_that.translationTo,_that.translations,_that.feedback,_that.isFeedbackLoading,_that.ollamaSetupStage,_that.ollamaSetupProgress,_that.ollamaSetupError);case _:
+return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_that.serverState,_that.sessionTitle,_that.micPermission,_that.screenRecordingPermission,_that.isCoachEnabled,_that.isTranslationEnabled,_that.translationFrom,_that.translationTo,_that.translations,_that.isLiveSpeakersEnabled,_that.speakerLabels,_that.feedback,_that.isFeedbackLoading,_that.ollamaSetupStage,_that.ollamaSetupProgress,_that.ollamaSetupError);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -240,10 +244,10 @@ return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<TranscriptSegmentEntity> segments,  bool isRecording,  bool isPaused,  Duration duration,  ServerState serverState,  String? sessionTitle,  String micPermission,  String screenRecordingPermission,  bool isCoachEnabled,  bool isTranslationEnabled,  String translationFrom,  String translationTo,  Map<String, String> translations,  EnglishFeedbackEntity? feedback,  bool isFeedbackLoading,  OllamaSetupStage ollamaSetupStage,  double ollamaSetupProgress,  String? ollamaSetupError)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<TranscriptSegmentEntity> segments,  bool isRecording,  bool isPaused,  Duration duration,  ServerState serverState,  String? sessionTitle,  String micPermission,  String screenRecordingPermission,  bool isCoachEnabled,  bool isTranslationEnabled,  String translationFrom,  String translationTo,  Map<String, String> translations,  bool isLiveSpeakersEnabled,  Map<String, int> speakerLabels,  EnglishFeedbackEntity? feedback,  bool isFeedbackLoading,  OllamaSetupStage ollamaSetupStage,  double ollamaSetupProgress,  String? ollamaSetupError)?  $default,) {final _that = this;
 switch (_that) {
 case _LiveTranscriptionState() when $default != null:
-return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_that.serverState,_that.sessionTitle,_that.micPermission,_that.screenRecordingPermission,_that.isCoachEnabled,_that.isTranslationEnabled,_that.translationFrom,_that.translationTo,_that.translations,_that.feedback,_that.isFeedbackLoading,_that.ollamaSetupStage,_that.ollamaSetupProgress,_that.ollamaSetupError);case _:
+return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_that.serverState,_that.sessionTitle,_that.micPermission,_that.screenRecordingPermission,_that.isCoachEnabled,_that.isTranslationEnabled,_that.translationFrom,_that.translationTo,_that.translations,_that.isLiveSpeakersEnabled,_that.speakerLabels,_that.feedback,_that.isFeedbackLoading,_that.ollamaSetupStage,_that.ollamaSetupProgress,_that.ollamaSetupError);case _:
   return null;
 
 }
@@ -255,7 +259,7 @@ return $default(_that.segments,_that.isRecording,_that.isPaused,_that.duration,_
 
 
 class _LiveTranscriptionState implements LiveTranscriptionState {
-  const _LiveTranscriptionState({required final  List<TranscriptSegmentEntity> segments, this.isRecording = false, this.isPaused = false, this.duration = Duration.zero, this.serverState = ServerState.stopped, this.sessionTitle, this.micPermission = 'unknown', this.screenRecordingPermission = 'unknown', this.isCoachEnabled = false, this.isTranslationEnabled = false, this.translationFrom = 'en', this.translationTo = 'fr', final  Map<String, String> translations = const <String, String>{}, this.feedback, this.isFeedbackLoading = false, this.ollamaSetupStage = OllamaSetupStage.idle, this.ollamaSetupProgress = 0.0, this.ollamaSetupError}): _segments = segments,_translations = translations;
+  const _LiveTranscriptionState({required final  List<TranscriptSegmentEntity> segments, this.isRecording = false, this.isPaused = false, this.duration = Duration.zero, this.serverState = ServerState.stopped, this.sessionTitle, this.micPermission = 'unknown', this.screenRecordingPermission = 'unknown', this.isCoachEnabled = false, this.isTranslationEnabled = false, this.translationFrom = 'en', this.translationTo = 'fr', final  Map<String, String> translations = const <String, String>{}, this.isLiveSpeakersEnabled = true, final  Map<String, int> speakerLabels = const <String, int>{}, this.feedback, this.isFeedbackLoading = false, this.ollamaSetupStage = OllamaSetupStage.idle, this.ollamaSetupProgress = 0.0, this.ollamaSetupError}): _segments = segments,_translations = translations,_speakerLabels = speakerLabels;
   
 
 /// Liste des segments de transcription de la session courante.
@@ -300,6 +304,17 @@ class _LiveTranscriptionState implements LiveTranscriptionState {
   return EqualUnmodifiableMapView(_translations);
 }
 
+/// Indique si les interlocuteurs sont identifiés en direct (audio système).
+@override@JsonKey() final  bool isLiveSpeakersEnabled;
+/// Interlocuteur de chaque segment système (id segment → 0, 1, …).
+ final  Map<String, int> _speakerLabels;
+/// Interlocuteur de chaque segment système (id segment → 0, 1, …).
+@override@JsonKey() Map<String, int> get speakerLabels {
+  if (_speakerLabels is EqualUnmodifiableMapView) return _speakerLabels;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableMapView(_speakerLabels);
+}
+
 /// Retour du coach d'anglais (null si pas encore généré).
 @override final  EnglishFeedbackEntity? feedback;
 /// Indique si l'analyse de l'anglais est en cours.
@@ -321,16 +336,16 @@ _$LiveTranscriptionStateCopyWith<_LiveTranscriptionState> get copyWith => __$Liv
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LiveTranscriptionState&&const DeepCollectionEquality().equals(other._segments, _segments)&&(identical(other.isRecording, isRecording) || other.isRecording == isRecording)&&(identical(other.isPaused, isPaused) || other.isPaused == isPaused)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.serverState, serverState) || other.serverState == serverState)&&(identical(other.sessionTitle, sessionTitle) || other.sessionTitle == sessionTitle)&&(identical(other.micPermission, micPermission) || other.micPermission == micPermission)&&(identical(other.screenRecordingPermission, screenRecordingPermission) || other.screenRecordingPermission == screenRecordingPermission)&&(identical(other.isCoachEnabled, isCoachEnabled) || other.isCoachEnabled == isCoachEnabled)&&(identical(other.isTranslationEnabled, isTranslationEnabled) || other.isTranslationEnabled == isTranslationEnabled)&&(identical(other.translationFrom, translationFrom) || other.translationFrom == translationFrom)&&(identical(other.translationTo, translationTo) || other.translationTo == translationTo)&&const DeepCollectionEquality().equals(other._translations, _translations)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&(identical(other.ollamaSetupStage, ollamaSetupStage) || other.ollamaSetupStage == ollamaSetupStage)&&(identical(other.ollamaSetupProgress, ollamaSetupProgress) || other.ollamaSetupProgress == ollamaSetupProgress)&&(identical(other.ollamaSetupError, ollamaSetupError) || other.ollamaSetupError == ollamaSetupError));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _LiveTranscriptionState&&const DeepCollectionEquality().equals(other._segments, _segments)&&(identical(other.isRecording, isRecording) || other.isRecording == isRecording)&&(identical(other.isPaused, isPaused) || other.isPaused == isPaused)&&(identical(other.duration, duration) || other.duration == duration)&&(identical(other.serverState, serverState) || other.serverState == serverState)&&(identical(other.sessionTitle, sessionTitle) || other.sessionTitle == sessionTitle)&&(identical(other.micPermission, micPermission) || other.micPermission == micPermission)&&(identical(other.screenRecordingPermission, screenRecordingPermission) || other.screenRecordingPermission == screenRecordingPermission)&&(identical(other.isCoachEnabled, isCoachEnabled) || other.isCoachEnabled == isCoachEnabled)&&(identical(other.isTranslationEnabled, isTranslationEnabled) || other.isTranslationEnabled == isTranslationEnabled)&&(identical(other.translationFrom, translationFrom) || other.translationFrom == translationFrom)&&(identical(other.translationTo, translationTo) || other.translationTo == translationTo)&&const DeepCollectionEquality().equals(other._translations, _translations)&&(identical(other.isLiveSpeakersEnabled, isLiveSpeakersEnabled) || other.isLiveSpeakersEnabled == isLiveSpeakersEnabled)&&const DeepCollectionEquality().equals(other._speakerLabels, _speakerLabels)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&(identical(other.ollamaSetupStage, ollamaSetupStage) || other.ollamaSetupStage == ollamaSetupStage)&&(identical(other.ollamaSetupProgress, ollamaSetupProgress) || other.ollamaSetupProgress == ollamaSetupProgress)&&(identical(other.ollamaSetupError, ollamaSetupError) || other.ollamaSetupError == ollamaSetupError));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_segments),isRecording,isPaused,duration,serverState,sessionTitle,micPermission,screenRecordingPermission,isCoachEnabled,isTranslationEnabled,translationFrom,translationTo,const DeepCollectionEquality().hash(_translations),feedback,isFeedbackLoading,ollamaSetupStage,ollamaSetupProgress,ollamaSetupError);
+int get hashCode => Object.hashAll([runtimeType,const DeepCollectionEquality().hash(_segments),isRecording,isPaused,duration,serverState,sessionTitle,micPermission,screenRecordingPermission,isCoachEnabled,isTranslationEnabled,translationFrom,translationTo,const DeepCollectionEquality().hash(_translations),isLiveSpeakersEnabled,const DeepCollectionEquality().hash(_speakerLabels),feedback,isFeedbackLoading,ollamaSetupStage,ollamaSetupProgress,ollamaSetupError]);
 
 @override
 String toString() {
-  return 'LiveTranscriptionState(segments: $segments, isRecording: $isRecording, isPaused: $isPaused, duration: $duration, serverState: $serverState, sessionTitle: $sessionTitle, micPermission: $micPermission, screenRecordingPermission: $screenRecordingPermission, isCoachEnabled: $isCoachEnabled, isTranslationEnabled: $isTranslationEnabled, translationFrom: $translationFrom, translationTo: $translationTo, translations: $translations, feedback: $feedback, isFeedbackLoading: $isFeedbackLoading, ollamaSetupStage: $ollamaSetupStage, ollamaSetupProgress: $ollamaSetupProgress, ollamaSetupError: $ollamaSetupError)';
+  return 'LiveTranscriptionState(segments: $segments, isRecording: $isRecording, isPaused: $isPaused, duration: $duration, serverState: $serverState, sessionTitle: $sessionTitle, micPermission: $micPermission, screenRecordingPermission: $screenRecordingPermission, isCoachEnabled: $isCoachEnabled, isTranslationEnabled: $isTranslationEnabled, translationFrom: $translationFrom, translationTo: $translationTo, translations: $translations, isLiveSpeakersEnabled: $isLiveSpeakersEnabled, speakerLabels: $speakerLabels, feedback: $feedback, isFeedbackLoading: $isFeedbackLoading, ollamaSetupStage: $ollamaSetupStage, ollamaSetupProgress: $ollamaSetupProgress, ollamaSetupError: $ollamaSetupError)';
 }
 
 
@@ -341,7 +356,7 @@ abstract mixin class _$LiveTranscriptionStateCopyWith<$Res> implements $LiveTran
   factory _$LiveTranscriptionStateCopyWith(_LiveTranscriptionState value, $Res Function(_LiveTranscriptionState) _then) = __$LiveTranscriptionStateCopyWithImpl;
 @override @useResult
 $Res call({
- List<TranscriptSegmentEntity> segments, bool isRecording, bool isPaused, Duration duration, ServerState serverState, String? sessionTitle, String micPermission, String screenRecordingPermission, bool isCoachEnabled, bool isTranslationEnabled, String translationFrom, String translationTo, Map<String, String> translations, EnglishFeedbackEntity? feedback, bool isFeedbackLoading, OllamaSetupStage ollamaSetupStage, double ollamaSetupProgress, String? ollamaSetupError
+ List<TranscriptSegmentEntity> segments, bool isRecording, bool isPaused, Duration duration, ServerState serverState, String? sessionTitle, String micPermission, String screenRecordingPermission, bool isCoachEnabled, bool isTranslationEnabled, String translationFrom, String translationTo, Map<String, String> translations, bool isLiveSpeakersEnabled, Map<String, int> speakerLabels, EnglishFeedbackEntity? feedback, bool isFeedbackLoading, OllamaSetupStage ollamaSetupStage, double ollamaSetupProgress, String? ollamaSetupError
 });
 
 
@@ -358,7 +373,7 @@ class __$LiveTranscriptionStateCopyWithImpl<$Res>
 
 /// Create a copy of LiveTranscriptionState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? segments = null,Object? isRecording = null,Object? isPaused = null,Object? duration = null,Object? serverState = null,Object? sessionTitle = freezed,Object? micPermission = null,Object? screenRecordingPermission = null,Object? isCoachEnabled = null,Object? isTranslationEnabled = null,Object? translationFrom = null,Object? translationTo = null,Object? translations = null,Object? feedback = freezed,Object? isFeedbackLoading = null,Object? ollamaSetupStage = null,Object? ollamaSetupProgress = null,Object? ollamaSetupError = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? segments = null,Object? isRecording = null,Object? isPaused = null,Object? duration = null,Object? serverState = null,Object? sessionTitle = freezed,Object? micPermission = null,Object? screenRecordingPermission = null,Object? isCoachEnabled = null,Object? isTranslationEnabled = null,Object? translationFrom = null,Object? translationTo = null,Object? translations = null,Object? isLiveSpeakersEnabled = null,Object? speakerLabels = null,Object? feedback = freezed,Object? isFeedbackLoading = null,Object? ollamaSetupStage = null,Object? ollamaSetupProgress = null,Object? ollamaSetupError = freezed,}) {
   return _then(_LiveTranscriptionState(
 segments: null == segments ? _self._segments : segments // ignore: cast_nullable_to_non_nullable
 as List<TranscriptSegmentEntity>,isRecording: null == isRecording ? _self.isRecording : isRecording // ignore: cast_nullable_to_non_nullable
@@ -373,7 +388,9 @@ as bool,isTranslationEnabled: null == isTranslationEnabled ? _self.isTranslation
 as bool,translationFrom: null == translationFrom ? _self.translationFrom : translationFrom // ignore: cast_nullable_to_non_nullable
 as String,translationTo: null == translationTo ? _self.translationTo : translationTo // ignore: cast_nullable_to_non_nullable
 as String,translations: null == translations ? _self._translations : translations // ignore: cast_nullable_to_non_nullable
-as Map<String, String>,feedback: freezed == feedback ? _self.feedback : feedback // ignore: cast_nullable_to_non_nullable
+as Map<String, String>,isLiveSpeakersEnabled: null == isLiveSpeakersEnabled ? _self.isLiveSpeakersEnabled : isLiveSpeakersEnabled // ignore: cast_nullable_to_non_nullable
+as bool,speakerLabels: null == speakerLabels ? _self._speakerLabels : speakerLabels // ignore: cast_nullable_to_non_nullable
+as Map<String, int>,feedback: freezed == feedback ? _self.feedback : feedback // ignore: cast_nullable_to_non_nullable
 as EnglishFeedbackEntity?,isFeedbackLoading: null == isFeedbackLoading ? _self.isFeedbackLoading : isFeedbackLoading // ignore: cast_nullable_to_non_nullable
 as bool,ollamaSetupStage: null == ollamaSetupStage ? _self.ollamaSetupStage : ollamaSetupStage // ignore: cast_nullable_to_non_nullable
 as OllamaSetupStage,ollamaSetupProgress: null == ollamaSetupProgress ? _self.ollamaSetupProgress : ollamaSetupProgress // ignore: cast_nullable_to_non_nullable

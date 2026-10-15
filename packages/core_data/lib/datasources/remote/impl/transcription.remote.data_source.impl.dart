@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -7,6 +8,7 @@ import 'package:core_data/clients/websocket_client.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_data/model/audio_chunk.dart';
 import 'package:core_data/model/remote/transcript_event.remote.model.dart';
+import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 import 'package:rxdart/rxdart.dart';
@@ -55,6 +57,13 @@ final class TranscriptionRemoteDataSourceImpl
     AudioSource.input: 0,
     AudioSource.output: 0,
   };
+  // Intervalles des phrases finalisées, dans l'ordre des `done` attendus.
+  final Map<AudioSource, Queue<UtteranceWindow>> _pendingWindows =
+      <AudioSource, Queue<UtteranceWindow>>{
+        AudioSource.input: Queue<UtteranceWindow>(),
+        AudioSource.output: Queue<UtteranceWindow>(),
+      };
+  final Expando<UtteranceWindow> _eventWindows = Expando<UtteranceWindow>();
 
   final BehaviorSubject<domain.ConnectionState> _connectionStateSubject =
       BehaviorSubject<domain.ConnectionState>.seeded(
@@ -178,6 +187,14 @@ final class TranscriptionRemoteDataSourceImpl
         '{"type":"input_audio_buffer.commit","final":true}';
     final WebSocketClient client = source == AudioSource.input ? _mic : _sys;
     client.send(finalCommit);
+    final int start = _utteranceStartedMs[source]!;
+    final int lastVoiced = _lastVoicedMs[source]!;
+    _pendingWindows[source]!.add(
+      UtteranceWindow(
+        startMs: start,
+        endMs: lastVoiced > start ? lastVoiced : start,
+      ),
+    );
     _finalizationsPending[source] = _finalizationsPending[source]! + 1;
     _utteranceActive[source] = false;
     _utteranceStartedMs[source] = 0;
@@ -216,10 +233,16 @@ final class TranscriptionRemoteDataSourceImpl
           if (event.type == 'response.audio_transcript.done' &&
               _finalizationsPending[source]! > 0) {
             _finalizationsPending[source] = _finalizationsPending[source]! - 1;
+            final Queue<UtteranceWindow> windows = _pendingWindows[source]!;
+            if (windows.isNotEmpty) _eventWindows[event] = windows.removeFirst();
           }
           return event;
         });
   }
+
+  @override
+  UtteranceWindow? windowOf(TranscriptEventRemoteModel event) =>
+      _eventWindows[event];
 
   @override
   Future<void> disconnect() async {
@@ -233,6 +256,7 @@ final class TranscriptionRemoteDataSourceImpl
     for (final AudioSource source in AudioSource.values) {
       _utteranceActive[source] = false;
       _finalizationsPending[source] = 0;
+      _pendingWindows[source]!.clear();
       _utteranceStartedMs[source] = 0;
       _lastVoicedMs[source] = 0;
     }

@@ -31,18 +31,25 @@ class DiarizationService {
   // NVIDIA Nemotron 3 Diarization (jusqu'à 8 interlocuteurs) porté en MLX.
   // Épinglé sur un commit ; archive plutôt que `git+https` pour ne pas
   // dépendre de `git` (absent sans les outils Xcode).
-  static const String _diarPackage =
-      'nemotron-diar-mlx @ https://github.com/9clg6/nemotron-diar-mlx/archive/'
-      '71c2097309522c7191644458b4a7dcbb0b29c3b5.tar.gz';
+  static const String _diarArchive =
+      'https://github.com/9clg6/nemotron-diar-mlx/archive/'
+      'b042a0ad1b7f2e2ac033f6900b1f5fff9213bc9d.tar.gz';
+  static const String _diarPackage = 'nemotron-diar-mlx @ $_diarArchive';
 
-  String get _home => Platform.environment['HOME'] ?? '/tmp';
-  String get _appSupportDir =>
+  /// Paquet du serveur de diarization en direct (extra `server`).
+  static const String liveServerPackage =
+      'nemotron-diar-mlx[server] @ $_diarArchive';
+
+  static String get _home => Platform.environment['HOME'] ?? '/tmp';
+  static String get _appSupportDir =>
       '$_home/Library/Application Support/IciTranscript';
   String get _recordingsDir => '$_appSupportDir/recordings';
-  String get _diarDir => '$_appSupportDir/diar';
+  static String get _diarDir => '$_appSupportDir/diar';
   String get _scriptPath => '$_diarDir/process_session.py';
-  // Poids Nemotron convertis en MLX (téléchargés une fois depuis Hugging Face).
-  String get _diarModelCache => '$_diarDir/nemotron';
+
+  /// Poids Nemotron convertis en MLX (téléchargés une fois depuis Hugging
+  /// Face), partagés par la passe post-session et la diarization en direct.
+  static String get modelCacheDir => '$_diarDir/nemotron';
   String get _uvBin => '$_home/.local/bin/uv';
 
   /// Chemins WAV par session (écrits par [LiveTranscriptionService]).
@@ -82,9 +89,9 @@ class DiarizationService {
         hasMic ? mic : '/dev/null',
         hasSys ? sys : '/dev/null',
         _pkModel,
-        _diarModelCache,
+        modelCacheDir,
       ],
-      environment: <String, String>{'HOME': _home, 'PATH': _extendedPath()},
+      environment: <String, String>{'HOME': _home, 'PATH': extendedPath},
     );
 
     if (result.exitCode != 0) {
@@ -158,7 +165,8 @@ class DiarizationService {
     }
   }
 
-  String _extendedPath() => <String>[
+  /// PATH incluant les emplacements usuels de `uv` (lancé hors d'un shell).
+  static String get extendedPath => <String>[
     '$_home/.local/bin',
     '$_home/.cargo/bin',
     '/opt/homebrew/bin',

@@ -1,5 +1,6 @@
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
+import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/data/datasource/transcription.remote.data_source.provider.dart';
@@ -17,6 +18,7 @@ part 'live_transcription.service.provider.g.dart';
 /// - La capture audio via [AudioCaptureChannel]
 /// - Le WebSocket via [TranscriptionRemoteDataSource]
 /// - La session et les segments via [TranscriptionService]
+/// - Les interlocuteurs en direct via [LiveDiarizationService]
 @Riverpod(keepAlive: true)
 LiveTranscriptionService liveTranscriptionService(Ref ref) {
   final ProcessManagerService processManagerService = ref.watch(
@@ -37,6 +39,7 @@ LiveTranscriptionService liveTranscriptionService(Ref ref) {
     audioCaptureChannel: audioCaptureChannel,
     transcriptionRemoteDataSource: transcriptionRemoteDataSource,
     transcriptionService: transcriptionService,
+    liveDiarization: LiveDiarizationService(),
   );
 
   ref.onDispose(service.dispose);
