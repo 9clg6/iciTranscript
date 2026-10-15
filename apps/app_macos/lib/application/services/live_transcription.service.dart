@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
@@ -101,6 +102,10 @@ final class LiveTranscriptionService {
 
   /// Interlocuteur de chaque segment système (id -> 0, 1, …), en direct.
   Stream<Map<String, int>> get speakerLabelsStream => _speakerLabels.stream;
+
+  /// Statut de la capture audio (ex. son du Mac indisponible).
+  Stream<Map<String, String>> get captureStatusStream =>
+      _audioCaptureChannel.statusStream;
 
   /// Dernières étiquettes connues.
   Map<String, int> get speakerLabels => _speakerLabels.value;
@@ -419,6 +424,7 @@ final class LiveTranscriptionService {
           _micRecorder?.append(chunk.data);
         } else {
           _systemRecorder?.append(chunk.data);
+          _traceSystemLevel(chunk.data);
           if (_liveDiarizationEnabled) {
             _liveDiarization?.sendAudio(chunk.data, chunk.timestampMs);
           }
@@ -429,6 +435,25 @@ final class LiveTranscriptionService {
         _log.error('Erreur capture audio stream: $error');
       },
     );
+  }
+
+  // Diagnostic : niveau du son du Mac (un flux muet ne produit aucun texte).
+  int _systemChunks = 0;
+  int _systemPeak = 0;
+
+  void _traceSystemLevel(Uint8List pcm) {
+    final ByteData bytes = ByteData.sublistView(pcm);
+    for (int i = 0; i + 1 < pcm.length; i += 2) {
+      final int v = bytes.getInt16(i, Endian.little).abs();
+      if (v > _systemPeak) _systemPeak = v;
+    }
+    if (++_systemChunks % 200 == 1) {
+      _log.info(
+        'Son du Mac : $_systemChunks blocs reçus, crête '
+        '${(_systemPeak / 32768 * 100).toStringAsFixed(1)} %',
+      );
+      _systemPeak = 0;
+    }
   }
 
   Future<void> _flushRemoteTranscripts() async {

@@ -20,13 +20,14 @@ class AudioCaptureChannel {
   StreamSubscription<dynamic>? _eventSubscription;
   final StreamController<AudioChunk> _audioController =
       StreamController<AudioChunk>.broadcast();
-  final StreamController<String> _statusController =
-      StreamController<String>.broadcast();
+  final StreamController<Map<String, String>> _statusController =
+      StreamController<Map<String, String>>.broadcast();
   /// Stream of audio chunks from both microphone and system audio.
   Stream<AudioChunk> get audioStream => _audioController.stream;
 
-  /// Stream of status notifications (ex: "outputUnavailable").
-  Stream<String> get statusStream => _statusController.stream;
+  /// Notifications de statut de la capture : `type` ("outputActive",
+  /// "outputUnavailable"), et pour une indisponibilité `reason` et `message`.
+  Stream<Map<String, String>> get statusStream => _statusController.stream;
 
   /// Starts audio capture.
   Future<void> startCapture({
@@ -110,7 +111,10 @@ class AudioCaptureChannel {
     // Événements de statut (non-audio)
     final String? type = event['type'] as String?;
     if (type != null) {
-      _statusController.add(type);
+      _statusController.add(<String, String>{
+        for (final MapEntry<dynamic, dynamic> e in event.entries)
+          if (e.value != null) '${e.key}': '${e.value}',
+      });
       return;
     }
 

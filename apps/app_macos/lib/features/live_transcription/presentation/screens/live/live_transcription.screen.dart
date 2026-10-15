@@ -1,5 +1,6 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -111,7 +112,25 @@ class _LiveTranscriptionScreenState
               colorScheme: colorScheme,
               icon: Icons.screenshot_monitor,
               message:
-                  'Permission Screen Recording refusée — son système non capturé.',
+                  'Son du Mac non capté : autorisation « Enregistrement de '
+                  "l'écran et des sons » refusée. Si iciTranscript est déjà "
+                  'coché, retirez-le (−), relancez l’app et acceptez à nouveau '
+                  '(chaque nouvelle version le redemande).',
+              isWarning: true,
+              onOpenSettings: () => ref
+                  .read(liveTranscriptionViewModelProvider.notifier)
+                  .openScreenRecordingSettings(),
+              onRecheck: () => ref
+                  .read(liveTranscriptionViewModelProvider.notifier)
+                  .recheckPermissions(),
+            ),
+          if (state.systemAudioError != null &&
+              state.screenRecordingPermission != 'denied')
+            _buildPermissionBanner(
+              context: context,
+              colorScheme: colorScheme,
+              icon: Icons.volume_off,
+              message: 'Son du Mac non capté : ${state.systemAudioError}',
               isWarning: true,
               onOpenSettings: () => ref
                   .read(liveTranscriptionViewModelProvider.notifier)
@@ -516,6 +535,33 @@ class _LiveTranscriptionScreenState
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (state.serverState == ServerState.starting) ...<Widget>[
+                const Gap(8),
+                Text(
+                  'Premier lancement : installation et téléchargement du '
+                  'modèle de transcription (~2,5 Go), quelques minutes.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                if (state.serverStartupLine != null) ...<Widget>[
+                  const Gap(4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: Text(
+                      state.serverStartupLine!,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontFamily: 'Menlo',
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ] else
               Text(
                 LocaleKeys.transcription_live_no_session.tr(),
@@ -621,6 +667,9 @@ class _LiveTranscriptionScreenState
     LiveTranscriptionState state,
     ColorScheme colorScheme,
   ) {
+    final bool systemAudioOff =
+        state.screenRecordingPermission == 'denied' ||
+        state.systemAudioError != null;
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -673,17 +722,17 @@ class _LiveTranscriptionScreenState
           Icon(
             Icons.screenshot_monitor,
             size: 14,
-            color: state.screenRecordingPermission == 'denied'
+            color: systemAudioOff
                 ? colorScheme.error
                 : colorScheme.onSurfaceVariant,
           ),
           const Gap(4),
           Flexible(
             child: Text(
-              '${LocaleKeys.transcription_status_bar_system.tr()}: ${state.screenRecordingPermission == 'denied' ? 'Refusé' : 'ScreenCaptureKit'}',
+              '${LocaleKeys.transcription_status_bar_system.tr()}: ${state.screenRecordingPermission == 'denied' ? 'Refusé' : state.systemAudioError != null ? 'Non capté' : state.screenRecordingPermission == 'authorized' ? 'Actif' : 'ScreenCaptureKit'}',
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: state.screenRecordingPermission == 'denied'
+                color: systemAudioOff
                     ? colorScheme.error
                     : colorScheme.onSurfaceVariant,
                 fontSize: 11,

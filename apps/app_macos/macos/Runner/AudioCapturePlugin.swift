@@ -363,24 +363,24 @@ class AudioCapturePlugin: NSObject, FlutterPlugin {
                         // Detect permission errors by their error code/domain
                         let isPermissionError = self.isScreenCapturePermissionError(error)
                         self.screenCapturePermissionGranted = false
-                        if isPermissionError {
-                            NSLog("[AudioCapturePlugin] Screen Recording denied — falling back to mic only")
-                            DispatchQueue.main.async {
-                                // Notifier Dart que l'audio bureau est indisponible (informatif, pas bloquant)
-                                self.streamHandler.send(event: [
-                                    "type": "outputUnavailable",
-                                    "reason": "SCREEN_RECORDING_DENIED",
-                                ])
-                                result(nil) // Succès — le micro tourne déjà
-                            }
-                            return
+                        let nsError = error as NSError
+                        NSLog("[AudioCapturePlugin] System audio unavailable (\(nsError.domain) \(nsError.code)) — mic only")
+                        DispatchQueue.main.async {
+                            // Notifier Dart que l'audio du Mac n'est pas capté (le micro tourne déjà).
+                            self.streamHandler.send(event: [
+                                "type": "outputUnavailable",
+                                "reason": isPermissionError ? "SCREEN_RECORDING_DENIED" : "SYSTEM_AUDIO_ERROR",
+                                "message": "\(error.localizedDescription) (\(nsError.domain) \(nsError.code))",
+                            ])
+                            result(nil)
                         }
-                        // Autre erreur non-permission : continuer avec le micro seulement
-                        NSLog("[AudioCapturePlugin] Erreur audio système non-critique, micro seul actif")
-                    } else {
-                        self.screenCapturePermissionGranted = true
+                        return
                     }
-                    DispatchQueue.main.async { result(nil) }
+                    self.screenCapturePermissionGranted = true
+                    DispatchQueue.main.async {
+                        self.streamHandler.send(event: ["type": "outputActive"])
+                        result(nil)
+                    }
                 }
                 return
             } else {
