@@ -39,7 +39,9 @@ final class TranscriptionRemoteDataSourceImpl
   static const int _voiceThreshold = 350; // amplitude int16 ~ parole
   static const double _voiceStartRms = 300;
   static const double _voiceContinueRms = 180;
-  static const int _silenceToFinalizeMs = 700;
+  // Une respiration au milieu d'une phrase dépasse souvent 0,7 s : en dessous
+  // de ~1,2 s, une même phrase était coupée en plusieurs lignes.
+  static const int _silenceToFinalizeMs = 1200;
   static const int _maxUtteranceMs = 30000;
   final Map<AudioSource, int> _lastVoicedMs = <AudioSource, int>{
     AudioSource.input: 0,

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
+import 'package:ici_transcript/application/services/transcript_grouping.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
@@ -574,21 +575,28 @@ class _LiveTranscriptionScreenState
       );
     }
 
+    // Une phrase coupée par une pause reste sur un seul bloc.
+    final List<TranscriptBlock> blocks = groupTranscript(
+      state.segments,
+      speakerLabels: state.speakerLabels,
+    );
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
-      itemCount: state.segments.length,
+      itemCount: blocks.length,
       itemBuilder: (BuildContext context, int index) {
-        final segment = state.segments[index];
-        final String? translation = state.isTranslationEnabled
-            ? state.translations[segment.id]
-            : null;
+        final TranscriptBlock block = blocks[index];
+        final List<String> parts = <String>[
+          if (state.isTranslationEnabled)
+            for (final String id in block.segmentIds)
+              if (state.translations[id] case final String t) t,
+        ];
         return Padding(
           padding: const EdgeInsets.only(bottom: 24),
           child: TranscriptLineWidget(
-            segment: segment,
-            translation: translation,
-            speaker: state.speakerLabels[segment.id],
+            segment: block.segment,
+            translation: parts.isEmpty ? null : parts.join(' '),
+            speaker: block.speaker,
           ),
         );
       },

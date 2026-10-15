@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:ici_transcript/application/services/transcript_grouping.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
@@ -125,13 +126,25 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         ],
         // Transcript content
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
-            itemCount: state.segments.length,
-            itemBuilder: (BuildContext context, int index) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 24),
-                child: TranscriptLineWidget(segment: state.segments[index]),
+          child: Builder(
+            builder: (BuildContext context) {
+              final List<TranscriptBlock> blocks = groupTranscript(
+                state.segments,
+              );
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 48,
+                  vertical: 32,
+                ),
+                itemCount: blocks.length,
+                itemBuilder: (BuildContext context, int index) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: TranscriptLineWidget(
+                      segment: blocks[index].segment,
+                    ),
+                  );
+                },
               );
             },
           ),
