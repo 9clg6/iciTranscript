@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:ici_transcript/application/services/transcript_grouping.dart';
+import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/server_status.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/finalising.widget.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/live_answers_panel.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/session_controls.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
@@ -128,7 +130,11 @@ class _LiveTranscriptionScreenState
               ),
               child: n,
             ),
-          Expanded(child: _buildTranscriptArea(state)),
+          Expanded(
+            child: state.isRecording
+                ? _withQuestions(_buildTranscriptArea(state))
+                : _buildTranscriptArea(state),
+          ),
           if (state.feedback != null || state.isFeedbackLoading)
             _buildCoachPanel(state),
           _buildStatusBar(state),
@@ -358,6 +364,24 @@ class _LiveTranscriptionScreenState
     );
   }
 
+  /// La transcription et, à droite, la zone « Questions ».
+  Widget _withQuestions(Widget transcript) {
+    final Oats o = context.oats;
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints c) => Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Expanded(child: transcript),
+          VerticalDivider(width: 1, thickness: 1, color: o.line),
+          SizedBox(
+            width: (c.maxWidth * 0.4).clamp(280, 400),
+            child: const LiveAnswersPanel(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTranscriptArea(LiveTranscriptionState state) {
     final Oats o = context.oats;
     if (state.segments.isEmpty) {
@@ -434,6 +458,15 @@ class _LiveTranscriptionScreenState
                 segment: block.segment,
                 translation: parts.isEmpty ? null : parts.join(' '),
                 speaker: block.speaker,
+                // Phrase en cours : pas encore finale.
+                onAnswer: block.segment.id.startsWith('current_')
+                    ? null
+                    : () => ref
+                          .read(liveAnswersServiceProvider)
+                          .answerSegment(
+                            block.segment,
+                            speaker: block.speaker,
+                          ),
               ),
             ),
           ),
