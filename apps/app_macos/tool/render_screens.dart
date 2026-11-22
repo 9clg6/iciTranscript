@@ -212,6 +212,14 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
     );
   }
 
+  /// Arrêter : l'état « Finalisation… » (rattrapage en cours), sans
+  /// quitter l'écran.
+  @override
+  Future<String?> stopSession() async {
+    state = state.copyWith(finalisingRemaining: const Duration(seconds: 46));
+    return null;
+  }
+
   @override
   Future<void> recheckPermissions() async {}
 }
@@ -602,6 +610,15 @@ void main() {
         await tester.tap(find.text('Nouvelle note'));
         await _pump(tester, 10);
         await _shot(tester, key, 'live-$suffix');
+      });
+
+      shoot('live-finalising', (WidgetTester tester) async {
+        final GlobalKey key = await pumpApp(tester, _sessions);
+        await tester.tap(find.text('Nouvelle note'));
+        await _pump(tester, 10);
+        await tester.tap(find.text('Arrêter'));
+        await _pump(tester, 10);
+        await _shot(tester, key, 'live-finalising-$suffix');
       });
     }
   }

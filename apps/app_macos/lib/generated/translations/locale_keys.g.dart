@@ -84,6 +84,10 @@ abstract class  LocaleKeys {
   static const transcription_live_stop = 'transcription.live.stop';
   static const transcription_live_pause = 'transcription.live.pause';
   static const transcription_live_resume = 'transcription.live.resume';
+  static const transcription_live_finalising = 'transcription.live.finalising';
+  static const transcription_live_finalising_short = 'transcription.live.finalising_short';
+  static const transcription_live_finalising_remaining = 'transcription.live.finalising_remaining';
+  static const transcription_live_skip_finalising = 'transcription.live.skip_finalising';
   static const transcription_live_recording_time = 'transcription.live.recording_time';
   static const transcription_live_speaker_me = 'transcription.live.speaker_me';
   static const transcription_live_speaker_system = 'transcription.live.speaker_system';

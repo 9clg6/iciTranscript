@@ -23,6 +23,10 @@ abstract class LiveTranscriptionState with _$LiveTranscriptionState {
     /// Duree actuelle de la session.
     @Default(Duration.zero) Duration duration,
 
+    /// Après Arrêter : audio restant à transcrire (rattrapage, repères),
+    /// null hors finalisation.
+    Duration? finalisingRemaining,
+
     /// Etat du serveur de transcription.
     @Default(ServerState.stopped) ServerState serverState,
 
