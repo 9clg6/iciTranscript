@@ -174,34 +174,50 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                     ),
                 ],
               ),
-              if (!modelReady) ...<Widget>[
+              if (!modelReady && !state.llmAvailable) ...<Widget>[
                 const SizedBox(height: OatsSpace.xl),
                 OatsNotice(
                   icon: Icons.auto_awesome_outlined,
                   message: LocaleKeys.llm_configure_model.tr(),
                 ),
               ],
-              if (state.isSummaryLoading || state.summary != null)
+              if (state.isSummaryLoading ||
+                  state.summary != null ||
+                  state.summaryError != null)
                 _section(
                   title: LocaleKeys.history_detail_summary.tr(),
-                  onDelete: state.summary == null
+                  onDelete: state.summary == null || state.isSummaryLoading
                       ? null
                       : () => _vm.deleteSummary(),
                   deleteLabel: LocaleKeys.history_detail_summary_delete.tr(),
-                  child: state.isSummaryLoading
-                      ? _Loading(LocaleKeys.history_detail_summary_loading.tr())
-                      : SummaryText(state.summary!),
+                  child: _aiBlock(
+                    loading: state.isSummaryLoading,
+                    loadingLabel: LocaleKeys.history_detail_summary_loading
+                        .tr(),
+                    content: (state.summary ?? '').isEmpty
+                        ? null
+                        : SummaryText(state.summary!),
+                    incomplete: state.summaryIncomplete,
+                    errorKey: state.summaryError,
+                  ),
                 ),
-              if (state.isFeedbackLoading || state.feedback != null)
+              if (state.isFeedbackLoading ||
+                  state.feedback != null ||
+                  state.feedbackError != null)
                 _section(
                   title: LocaleKeys.history_detail_english_coach.tr(),
                   onDelete: state.feedback == null
                       ? null
                       : () => _vm.deleteFeedback(),
                   deleteLabel: LocaleKeys.history_detail_coach_delete.tr(),
-                  child: state.isFeedbackLoading
-                      ? _Loading(LocaleKeys.history_detail_coach_loading.tr())
-                      : CoachFeedbackView(feedback: state.feedback!),
+                  child: _aiBlock(
+                    loading: state.isFeedbackLoading,
+                    loadingLabel: LocaleKeys.history_detail_coach_loading.tr(),
+                    content: state.feedback == null
+                        ? null
+                        : CoachFeedbackView(feedback: state.feedback!),
+                    errorKey: state.feedbackError,
+                  ),
                 ),
               _section(
                 title: LocaleKeys.history_detail_transcript.tr(),
@@ -230,6 +246,41 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       ),
     );
   }
+
+  /// Contenu d'une section IA : chargement, texte (au fil de l'eau), puis
+  /// le signalement d'une réponse coupée ou le message d'erreur.
+  Widget _aiBlock({
+    required bool loading,
+    required String loadingLabel,
+    required Widget? content,
+    bool incomplete = false,
+    String? errorKey,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      ?content,
+      // Au fil de l'eau : le texte reçu, puis l'indicateur sous lui.
+      if (loading) ...<Widget>[
+        if (content != null) const SizedBox(height: OatsSpace.sm),
+        _Loading(loadingLabel),
+      ],
+      if (incomplete) ...<Widget>[
+        const SizedBox(height: OatsSpace.md),
+        OatsNotice(
+          icon: Icons.content_cut_outlined,
+          message: LocaleKeys.llm_incomplete.tr(),
+        ),
+      ],
+      if (errorKey != null) ...<Widget>[
+        const SizedBox(height: OatsSpace.md),
+        OatsNotice(
+          icon: Icons.error_outline,
+          message: errorKey.tr(),
+          danger: true,
+        ),
+      ],
+    ],
+  );
 
   Widget _title(SessionDetailState state, SessionEntity session) {
     final Oats o = context.oats;

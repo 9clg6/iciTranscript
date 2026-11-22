@@ -18,6 +18,13 @@ void main() {
       'settings.ai.key_saved': '•••• {}',
       'settings.ai.replace': 'Remplacer',
       'settings.ai.remove': 'Supprimer',
+      // Résumer et Coach envoient la transcription de n'importe quelle note
+      // demandée, pas seulement celle de la réunion en cours.
+      'settings.ai.privacy_notice':
+          "Quand l'envoi est autorisé, le texte des notes que vous faites "
+          "résumer ou analyser, celui de la réunion en cours et des extraits "
+          "de vos documents partent chez le fournisseur choisi. L'audio reste "
+          'sur votre Mac.',
     };
     exact.forEach((String key, String value) {
       test('$key = « $value »', () => expect(frValue(key), value));
@@ -64,7 +71,10 @@ void main() {
     final String notice = (frValue('settings.ai.privacy_notice') as String?)
             ?.toLowerCase() ??
         '';
-    expect(notice, contains('transcription'));
+    // Nouvelle phrase imposée (revue PR #17) : « le texte des notes … celui
+    // de la réunion en cours » remplace « la transcription ».
+    expect(notice, contains('notes'));
+    expect(notice, contains('réunion en cours'));
     expect(notice, contains('document'));
     expect(notice, contains('audio'));
     expect(notice, contains('mac'));

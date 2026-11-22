@@ -34,6 +34,19 @@ abstract class SessionDetailState with _$SessionDetailState {
 
     /// Tours de parole diarizes du meeting (Interlocuteur N).
     @Default(<SpeakerTurn>[]) List<SpeakerTurn> speakers,
+
+    /// Un modele (en ligne ou local installe) peut repondre ; sinon la note
+    /// invite a en configurer un.
+    @Default(false) bool llmAvailable,
+
+    /// Cle du message d'erreur du dernier resume (`llm.error.*`).
+    String? summaryError,
+
+    /// Le dernier resume semble coupe : affiche, signale, non range.
+    @Default(false) bool summaryIncomplete,
+
+    /// Cle du message d'erreur du dernier retour du coach (`llm.error.*`).
+    String? feedbackError,
   }) = _SessionDetailState;
 
   /// Etat initial par defaut.

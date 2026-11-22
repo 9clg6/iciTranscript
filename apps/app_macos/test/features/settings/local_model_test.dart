@@ -190,7 +190,7 @@ class FakeOllamaService extends OllamaService {
   Completer<void>? installRun;
 
   @override
-  Future<bool> isInstalled() async {
+  Future<bool> isInstalled({String? model}) async {
     detectCalls++;
     return installed;
   }

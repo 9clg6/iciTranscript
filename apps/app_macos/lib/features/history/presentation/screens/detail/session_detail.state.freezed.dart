@@ -22,7 +22,12 @@ mixin _$SessionDetailState {
  EnglishFeedbackEntity? get feedback;/// Indique si la generation du resume est en cours.
  bool get isSummaryLoading;/// Indique si l'analyse du coach d'anglais est en cours.
  bool get isFeedbackLoading;/// Tours de parole diarizes du meeting (Interlocuteur N).
- List<SpeakerTurn> get speakers;
+ List<SpeakerTurn> get speakers;/// Un modele (en ligne ou local installe) peut repondre ; sinon la note
+/// invite a en configurer un.
+ bool get llmAvailable;/// Cle du message d'erreur du dernier resume (`llm.error.*`).
+ String? get summaryError;/// Le dernier resume semble coupe : affiche, signale, non range.
+ bool get summaryIncomplete;/// Cle du message d'erreur du dernier retour du coach (`llm.error.*`).
+ String? get feedbackError;
 /// Create a copy of SessionDetailState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -33,16 +38,16 @@ $SessionDetailStateCopyWith<SessionDetailState> get copyWith => _$SessionDetailS
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionDetailState&&(identical(other.session, session) || other.session == session)&&const DeepCollectionEquality().equals(other.segments, segments)&&(identical(other.isEditing, isEditing) || other.isEditing == isEditing)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isSummaryLoading, isSummaryLoading) || other.isSummaryLoading == isSummaryLoading)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&const DeepCollectionEquality().equals(other.speakers, speakers));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionDetailState&&(identical(other.session, session) || other.session == session)&&const DeepCollectionEquality().equals(other.segments, segments)&&(identical(other.isEditing, isEditing) || other.isEditing == isEditing)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isSummaryLoading, isSummaryLoading) || other.isSummaryLoading == isSummaryLoading)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&const DeepCollectionEquality().equals(other.speakers, speakers)&&(identical(other.llmAvailable, llmAvailable) || other.llmAvailable == llmAvailable)&&(identical(other.summaryError, summaryError) || other.summaryError == summaryError)&&(identical(other.summaryIncomplete, summaryIncomplete) || other.summaryIncomplete == summaryIncomplete)&&(identical(other.feedbackError, feedbackError) || other.feedbackError == feedbackError));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,session,const DeepCollectionEquality().hash(segments),isEditing,summary,feedback,isSummaryLoading,isFeedbackLoading,const DeepCollectionEquality().hash(speakers));
+int get hashCode => Object.hash(runtimeType,session,const DeepCollectionEquality().hash(segments),isEditing,summary,feedback,isSummaryLoading,isFeedbackLoading,const DeepCollectionEquality().hash(speakers),llmAvailable,summaryError,summaryIncomplete,feedbackError);
 
 @override
 String toString() {
-  return 'SessionDetailState(session: $session, segments: $segments, isEditing: $isEditing, summary: $summary, feedback: $feedback, isSummaryLoading: $isSummaryLoading, isFeedbackLoading: $isFeedbackLoading, speakers: $speakers)';
+  return 'SessionDetailState(session: $session, segments: $segments, isEditing: $isEditing, summary: $summary, feedback: $feedback, isSummaryLoading: $isSummaryLoading, isFeedbackLoading: $isFeedbackLoading, speakers: $speakers, llmAvailable: $llmAvailable, summaryError: $summaryError, summaryIncomplete: $summaryIncomplete, feedbackError: $feedbackError)';
 }
 
 
@@ -53,7 +58,7 @@ abstract mixin class $SessionDetailStateCopyWith<$Res>  {
   factory $SessionDetailStateCopyWith(SessionDetailState value, $Res Function(SessionDetailState) _then) = _$SessionDetailStateCopyWithImpl;
 @useResult
 $Res call({
- SessionEntity? session, List<TranscriptSegmentEntity> segments, bool isEditing, String? summary, EnglishFeedbackEntity? feedback, bool isSummaryLoading, bool isFeedbackLoading, List<SpeakerTurn> speakers
+ SessionEntity? session, List<TranscriptSegmentEntity> segments, bool isEditing, String? summary, EnglishFeedbackEntity? feedback, bool isSummaryLoading, bool isFeedbackLoading, List<SpeakerTurn> speakers, bool llmAvailable, String? summaryError, bool summaryIncomplete, String? feedbackError
 });
 
 
@@ -70,7 +75,7 @@ class _$SessionDetailStateCopyWithImpl<$Res>
 
 /// Create a copy of SessionDetailState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? session = freezed,Object? segments = null,Object? isEditing = null,Object? summary = freezed,Object? feedback = freezed,Object? isSummaryLoading = null,Object? isFeedbackLoading = null,Object? speakers = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? session = freezed,Object? segments = null,Object? isEditing = null,Object? summary = freezed,Object? feedback = freezed,Object? isSummaryLoading = null,Object? isFeedbackLoading = null,Object? speakers = null,Object? llmAvailable = null,Object? summaryError = freezed,Object? summaryIncomplete = null,Object? feedbackError = freezed,}) {
   return _then(_self.copyWith(
 session: freezed == session ? _self.session : session // ignore: cast_nullable_to_non_nullable
 as SessionEntity?,segments: null == segments ? _self.segments : segments // ignore: cast_nullable_to_non_nullable
@@ -80,7 +85,11 @@ as String?,feedback: freezed == feedback ? _self.feedback : feedback // ignore: 
 as EnglishFeedbackEntity?,isSummaryLoading: null == isSummaryLoading ? _self.isSummaryLoading : isSummaryLoading // ignore: cast_nullable_to_non_nullable
 as bool,isFeedbackLoading: null == isFeedbackLoading ? _self.isFeedbackLoading : isFeedbackLoading // ignore: cast_nullable_to_non_nullable
 as bool,speakers: null == speakers ? _self.speakers : speakers // ignore: cast_nullable_to_non_nullable
-as List<SpeakerTurn>,
+as List<SpeakerTurn>,llmAvailable: null == llmAvailable ? _self.llmAvailable : llmAvailable // ignore: cast_nullable_to_non_nullable
+as bool,summaryError: freezed == summaryError ? _self.summaryError : summaryError // ignore: cast_nullable_to_non_nullable
+as String?,summaryIncomplete: null == summaryIncomplete ? _self.summaryIncomplete : summaryIncomplete // ignore: cast_nullable_to_non_nullable
+as bool,feedbackError: freezed == feedbackError ? _self.feedbackError : feedbackError // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 /// Create a copy of SessionDetailState
@@ -189,10 +198,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( SessionEntity? session,  List<TranscriptSegmentEntity> segments,  bool isEditing,  String? summary,  EnglishFeedbackEntity? feedback,  bool isSummaryLoading,  bool isFeedbackLoading,  List<SpeakerTurn> speakers)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( SessionEntity? session,  List<TranscriptSegmentEntity> segments,  bool isEditing,  String? summary,  EnglishFeedbackEntity? feedback,  bool isSummaryLoading,  bool isFeedbackLoading,  List<SpeakerTurn> speakers,  bool llmAvailable,  String? summaryError,  bool summaryIncomplete,  String? feedbackError)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _SessionDetailState() when $default != null:
-return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that.feedback,_that.isSummaryLoading,_that.isFeedbackLoading,_that.speakers);case _:
+return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that.feedback,_that.isSummaryLoading,_that.isFeedbackLoading,_that.speakers,_that.llmAvailable,_that.summaryError,_that.summaryIncomplete,_that.feedbackError);case _:
   return orElse();
 
 }
@@ -210,10 +219,10 @@ return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( SessionEntity? session,  List<TranscriptSegmentEntity> segments,  bool isEditing,  String? summary,  EnglishFeedbackEntity? feedback,  bool isSummaryLoading,  bool isFeedbackLoading,  List<SpeakerTurn> speakers)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( SessionEntity? session,  List<TranscriptSegmentEntity> segments,  bool isEditing,  String? summary,  EnglishFeedbackEntity? feedback,  bool isSummaryLoading,  bool isFeedbackLoading,  List<SpeakerTurn> speakers,  bool llmAvailable,  String? summaryError,  bool summaryIncomplete,  String? feedbackError)  $default,) {final _that = this;
 switch (_that) {
 case _SessionDetailState():
-return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that.feedback,_that.isSummaryLoading,_that.isFeedbackLoading,_that.speakers);case _:
+return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that.feedback,_that.isSummaryLoading,_that.isFeedbackLoading,_that.speakers,_that.llmAvailable,_that.summaryError,_that.summaryIncomplete,_that.feedbackError);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -230,10 +239,10 @@ return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( SessionEntity? session,  List<TranscriptSegmentEntity> segments,  bool isEditing,  String? summary,  EnglishFeedbackEntity? feedback,  bool isSummaryLoading,  bool isFeedbackLoading,  List<SpeakerTurn> speakers)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( SessionEntity? session,  List<TranscriptSegmentEntity> segments,  bool isEditing,  String? summary,  EnglishFeedbackEntity? feedback,  bool isSummaryLoading,  bool isFeedbackLoading,  List<SpeakerTurn> speakers,  bool llmAvailable,  String? summaryError,  bool summaryIncomplete,  String? feedbackError)?  $default,) {final _that = this;
 switch (_that) {
 case _SessionDetailState() when $default != null:
-return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that.feedback,_that.isSummaryLoading,_that.isFeedbackLoading,_that.speakers);case _:
+return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that.feedback,_that.isSummaryLoading,_that.isFeedbackLoading,_that.speakers,_that.llmAvailable,_that.summaryError,_that.summaryIncomplete,_that.feedbackError);case _:
   return null;
 
 }
@@ -245,7 +254,7 @@ return $default(_that.session,_that.segments,_that.isEditing,_that.summary,_that
 
 
 class _SessionDetailState implements SessionDetailState {
-  const _SessionDetailState({this.session, required final  List<TranscriptSegmentEntity> segments, this.isEditing = false, this.summary, this.feedback, this.isSummaryLoading = false, this.isFeedbackLoading = false, final  List<SpeakerTurn> speakers = const <SpeakerTurn>[]}): _segments = segments,_speakers = speakers;
+  const _SessionDetailState({this.session, required final  List<TranscriptSegmentEntity> segments, this.isEditing = false, this.summary, this.feedback, this.isSummaryLoading = false, this.isFeedbackLoading = false, final  List<SpeakerTurn> speakers = const <SpeakerTurn>[], this.llmAvailable = false, this.summaryError, this.summaryIncomplete = false, this.feedbackError}): _segments = segments,_speakers = speakers;
   
 
 /// La session affichee.
@@ -278,6 +287,15 @@ class _SessionDetailState implements SessionDetailState {
   return EqualUnmodifiableListView(_speakers);
 }
 
+/// Un modele (en ligne ou local installe) peut repondre ; sinon la note
+/// invite a en configurer un.
+@override@JsonKey() final  bool llmAvailable;
+/// Cle du message d'erreur du dernier resume (`llm.error.*`).
+@override final  String? summaryError;
+/// Le dernier resume semble coupe : affiche, signale, non range.
+@override@JsonKey() final  bool summaryIncomplete;
+/// Cle du message d'erreur du dernier retour du coach (`llm.error.*`).
+@override final  String? feedbackError;
 
 /// Create a copy of SessionDetailState
 /// with the given fields replaced by the non-null parameter values.
@@ -289,16 +307,16 @@ _$SessionDetailStateCopyWith<_SessionDetailState> get copyWith => __$SessionDeta
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionDetailState&&(identical(other.session, session) || other.session == session)&&const DeepCollectionEquality().equals(other._segments, _segments)&&(identical(other.isEditing, isEditing) || other.isEditing == isEditing)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isSummaryLoading, isSummaryLoading) || other.isSummaryLoading == isSummaryLoading)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&const DeepCollectionEquality().equals(other._speakers, _speakers));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionDetailState&&(identical(other.session, session) || other.session == session)&&const DeepCollectionEquality().equals(other._segments, _segments)&&(identical(other.isEditing, isEditing) || other.isEditing == isEditing)&&(identical(other.summary, summary) || other.summary == summary)&&(identical(other.feedback, feedback) || other.feedback == feedback)&&(identical(other.isSummaryLoading, isSummaryLoading) || other.isSummaryLoading == isSummaryLoading)&&(identical(other.isFeedbackLoading, isFeedbackLoading) || other.isFeedbackLoading == isFeedbackLoading)&&const DeepCollectionEquality().equals(other._speakers, _speakers)&&(identical(other.llmAvailable, llmAvailable) || other.llmAvailable == llmAvailable)&&(identical(other.summaryError, summaryError) || other.summaryError == summaryError)&&(identical(other.summaryIncomplete, summaryIncomplete) || other.summaryIncomplete == summaryIncomplete)&&(identical(other.feedbackError, feedbackError) || other.feedbackError == feedbackError));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,session,const DeepCollectionEquality().hash(_segments),isEditing,summary,feedback,isSummaryLoading,isFeedbackLoading,const DeepCollectionEquality().hash(_speakers));
+int get hashCode => Object.hash(runtimeType,session,const DeepCollectionEquality().hash(_segments),isEditing,summary,feedback,isSummaryLoading,isFeedbackLoading,const DeepCollectionEquality().hash(_speakers),llmAvailable,summaryError,summaryIncomplete,feedbackError);
 
 @override
 String toString() {
-  return 'SessionDetailState(session: $session, segments: $segments, isEditing: $isEditing, summary: $summary, feedback: $feedback, isSummaryLoading: $isSummaryLoading, isFeedbackLoading: $isFeedbackLoading, speakers: $speakers)';
+  return 'SessionDetailState(session: $session, segments: $segments, isEditing: $isEditing, summary: $summary, feedback: $feedback, isSummaryLoading: $isSummaryLoading, isFeedbackLoading: $isFeedbackLoading, speakers: $speakers, llmAvailable: $llmAvailable, summaryError: $summaryError, summaryIncomplete: $summaryIncomplete, feedbackError: $feedbackError)';
 }
 
 
@@ -309,7 +327,7 @@ abstract mixin class _$SessionDetailStateCopyWith<$Res> implements $SessionDetai
   factory _$SessionDetailStateCopyWith(_SessionDetailState value, $Res Function(_SessionDetailState) _then) = __$SessionDetailStateCopyWithImpl;
 @override @useResult
 $Res call({
- SessionEntity? session, List<TranscriptSegmentEntity> segments, bool isEditing, String? summary, EnglishFeedbackEntity? feedback, bool isSummaryLoading, bool isFeedbackLoading, List<SpeakerTurn> speakers
+ SessionEntity? session, List<TranscriptSegmentEntity> segments, bool isEditing, String? summary, EnglishFeedbackEntity? feedback, bool isSummaryLoading, bool isFeedbackLoading, List<SpeakerTurn> speakers, bool llmAvailable, String? summaryError, bool summaryIncomplete, String? feedbackError
 });
 
 
@@ -326,7 +344,7 @@ class __$SessionDetailStateCopyWithImpl<$Res>
 
 /// Create a copy of SessionDetailState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? session = freezed,Object? segments = null,Object? isEditing = null,Object? summary = freezed,Object? feedback = freezed,Object? isSummaryLoading = null,Object? isFeedbackLoading = null,Object? speakers = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? session = freezed,Object? segments = null,Object? isEditing = null,Object? summary = freezed,Object? feedback = freezed,Object? isSummaryLoading = null,Object? isFeedbackLoading = null,Object? speakers = null,Object? llmAvailable = null,Object? summaryError = freezed,Object? summaryIncomplete = null,Object? feedbackError = freezed,}) {
   return _then(_SessionDetailState(
 session: freezed == session ? _self.session : session // ignore: cast_nullable_to_non_nullable
 as SessionEntity?,segments: null == segments ? _self._segments : segments // ignore: cast_nullable_to_non_nullable
@@ -336,7 +354,11 @@ as String?,feedback: freezed == feedback ? _self.feedback : feedback // ignore: 
 as EnglishFeedbackEntity?,isSummaryLoading: null == isSummaryLoading ? _self.isSummaryLoading : isSummaryLoading // ignore: cast_nullable_to_non_nullable
 as bool,isFeedbackLoading: null == isFeedbackLoading ? _self.isFeedbackLoading : isFeedbackLoading // ignore: cast_nullable_to_non_nullable
 as bool,speakers: null == speakers ? _self._speakers : speakers // ignore: cast_nullable_to_non_nullable
-as List<SpeakerTurn>,
+as List<SpeakerTurn>,llmAvailable: null == llmAvailable ? _self.llmAvailable : llmAvailable // ignore: cast_nullable_to_non_nullable
+as bool,summaryError: freezed == summaryError ? _self.summaryError : summaryError // ignore: cast_nullable_to_non_nullable
+as String?,summaryIncomplete: null == summaryIncomplete ? _self.summaryIncomplete : summaryIncomplete // ignore: cast_nullable_to_non_nullable
+as bool,feedbackError: freezed == feedbackError ? _self.feedbackError : feedbackError // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
