@@ -15,6 +15,8 @@ class MainFlutterWindow: NSWindow {
     KeychainPlugin.register(with: flutterViewController.registrar(forPlugin: "KeychainPlugin"))
     DocumentTextPlugin.register(with: flutterViewController.registrar(forPlugin: "DocumentTextPlugin"))
     FilePickerPlugin.register(with: flutterViewController.registrar(forPlugin: "FilePickerPlugin"))
+    CalendarPlugin.register(with: flutterViewController.registrar(forPlugin: "CalendarPlugin"))
+    MeetingDetectionPlugin.register(with: flutterViewController.registrar(forPlugin: "MeetingDetectionPlugin"))
 
     super.awakeFromNib()
   }

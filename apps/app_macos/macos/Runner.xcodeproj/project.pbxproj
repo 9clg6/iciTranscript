@@ -29,6 +29,8 @@
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		6E40D55579D1891F55DB1337 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E2BEB4A2ED395989CD5C18E2 /* Pods_Runner.framework */; };
 		A1B2C3D4E5F6A7B8C9D0E1F3 /* AudioCapturePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* AudioCapturePlugin.swift */; };
+		15DF8B1E5A36BDE4D4190969 /* CalendarPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2369EDC0C5307568C58C52C4 /* CalendarPlugin.swift */; };
+		3E6841B4CD2DE57829845C9A /* MeetingDetectionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894A3DE1C64EE6E1AE9E576E /* MeetingDetectionPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0A2 /* KeychainPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0B2 /* DocumentTextPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0C2 /* FilePickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */; };
@@ -87,6 +89,8 @@
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* AudioCapturePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapturePlugin.swift; sourceTree = "<group>"; };
+		2369EDC0C5307568C58C52C4 /* CalendarPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarPlugin.swift; sourceTree = "<group>"; };
+		894A3DE1C64EE6E1AE9E576E /* MeetingDetectionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetectionPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTextPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePickerPlugin.swift; sourceTree = "<group>"; };
@@ -199,6 +203,8 @@
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				A1B2C3D4E5F6A7B8C9D0E1F2 /* AudioCapturePlugin.swift */,
+				2369EDC0C5307568C58C52C4 /* CalendarPlugin.swift */,
+				894A3DE1C64EE6E1AE9E576E /* MeetingDetectionPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */,
@@ -452,6 +458,8 @@
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E1F3 /* AudioCapturePlugin.swift in Sources */,
+				15DF8B1E5A36BDE4D4190969 /* CalendarPlugin.swift in Sources */,
+				3E6841B4CD2DE57829845C9A /* MeetingDetectionPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0A2 /* KeychainPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0B2 /* DocumentTextPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0C2 /* FilePickerPlugin.swift in Sources */,
