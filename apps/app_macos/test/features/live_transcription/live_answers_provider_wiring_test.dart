@@ -79,8 +79,10 @@ void main() {
       c.read(liveTranscriptionViewModelProvider.notifier);
   LiveAnswersService answers() => c.read(liveAnswersServiceProvider);
 
-  Future<void> later() =>
-      Future<void>.delayed(const Duration(milliseconds: 300));
+  // Base Drift, prefs.json et Dio sont de vraies E/S asynchrones : on attend
+  // l'événement attendu (au plus 3 s), jamais une durée fixe.
+  Future<void> requestSent() =>
+      eventually(() => expect(http.requests, hasLength(1)));
 
   Future<String> startRecording() async {
     vm();
@@ -99,7 +101,7 @@ void main() {
         AudioSource.output,
         'Quand est-ce que vous livrez le lot 1 ?',
       );
-      await later();
+      await requestSent();
 
       expect(answers().questions, hasLength(1));
       expect(answers().questions.single.status, LiveQuestionStatus.answering);
@@ -122,13 +124,11 @@ void main() {
       AudioSource.output,
       'Quand est-ce que vous livrez le lot 1 ?',
     );
-    await later();
-    expect(http.requests, hasLength(1));
+    await requestSent();
 
     await vm().stopSession();
-    await later();
 
-    expect(http.aborts, greaterThanOrEqualTo(1));
+    await eventually(() => expect(http.aborts, greaterThanOrEqualTo(1)));
     expect(
       answers().questions.where(
         (LiveQuestion q) => q.status == LiveQuestionStatus.answering,

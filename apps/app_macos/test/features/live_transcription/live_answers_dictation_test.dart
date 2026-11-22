@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:core_data/model/utterance_window.dart';
+import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,9 +43,13 @@ void main() {
   late LiveServiceHarness live;
   late LiveAnswersHarness answers;
   late ProviderContainer c;
+  late List<String> finals;
+  late List<String> dictated;
 
   setUp(() {
     resetPrefs();
+    finals = <String>[];
+    dictated = <String>[];
     live = LiveServiceHarness(FakeAsync());
     answers = LiveAnswersHarness();
     c = ProviderContainer(
@@ -62,33 +67,51 @@ void main() {
     addTearDown(c.dispose);
   });
 
-  Future<void> later() =>
-      Future<void>.delayed(const Duration(milliseconds: 200));
-
   Future<void> startMeeting() async {
     c.read(liveTranscriptionViewModelProvider.notifier);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     await c.read(liveTranscriptionViewModelProvider.notifier).startSession();
+    live.service.finalizedSegmentsStream.listen(
+      (TranscriptSegmentEntity s) => finals.add(s.text),
+    );
   }
 
   int now() => DateTime.now().millisecondsSinceEpoch;
 
-  /// Phrase finale du micro, parole entre [startMs] et [endMs] (ms epoch,
-  /// horloge de la capture).
-  Future<void> mic(String text, {int? startMs, int? endMs}) async {
-    live.fakeRemote.emitDone(
-      AudioSource.input,
-      text,
-      window: startMs == null
-          ? null
-          : UtteranceWindow(startMs: startMs, endMs: endMs ?? startMs + 40),
-    );
-    await later();
+  /// Appui sur le raccourci ; les phrases reçues par la dictée sont notées.
+  MeetingDictation press() {
+    final MeetingDictation d = live.service.beginDictation()!;
+    d.onText = (String text, bool _) => dictated.add(text);
+    return d;
   }
 
+  void micDone(String text, {required int startMs, int? endMs}) =>
+      live.fakeRemote.emitDone(
+        AudioSource.input,
+        text,
+        window: UtteranceWindow(startMs: startMs, endMs: endMs ?? startMs + 40),
+      );
+
+  /// Phrase micro de l'intervalle : attendue côté dictée (preuve du routage),
+  /// donc jamais segment final.
+  Future<void> micDictated(String text, {required int startMs, int? endMs}) {
+    micDone(text, startMs: startMs, endMs: endMs);
+    return eventually(() => expect(dictated, contains(text)));
+  }
+
+  /// Phrase micro hors dictée : attendue comme segment final.
+  Future<void> micToNote(String text, {required int startMs}) {
+    micDone(text, startMs: startMs);
+    return eventually(() => expect(finals, contains(text)));
+  }
+
+  /// Question des autres : attendue jusqu'à sa requête au modèle.
   Future<void> others(String text) async {
     live.fakeRemote.emitDone(AudioSource.output, text);
-    await later();
+    await eventually(() {
+      expect(answers.llm.requests, isNotEmpty);
+      expect(answers.llm.last.request.messages.last.content, contains(text));
+    });
   }
 
   String lastRequest() => requestText(answers.llm.last.request);
@@ -99,27 +122,30 @@ void main() {
       'la question des autres dite pendant ce temps est détectée', () async {
     await startMeeting();
     final int pressAt = now();
-    final MeetingDictation? d = live.service.beginDictation();
-    expect(d, isNotNull);
+    final MeetingDictation d = press();
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
-    await mic('DICTATED-HELD rappelle le fournisseur', startMs: pressAt + 50);
+    await micDictated(
+      'DICTATED-HELD rappelle le fournisseur',
+      startMs: pressAt + 50,
+    );
     await others(q);
 
     expect(answers.questions.map((LiveQuestion x) => x.text), <String>[q]);
     expect(lastRequest(), isNot(contains('DICTATED-HELD')));
-    d!.release();
+    expect(finals, isNot(contains('DICTATED-HELD rappelle le fournisseur')));
+    d.release();
   });
 
   test('phrase dont le `done` arrive après le relâchement mais dont l\'audio '
       'est dans l\'intervalle : exclue aussi', () async {
     await startMeeting();
     final int pressAt = now();
-    final MeetingDictation d = live.service.beginDictation()!;
+    final MeetingDictation d = press();
     await Future<void>.delayed(const Duration(milliseconds: 150));
     d.release();
 
-    await mic(
+    await micDictated(
       'DICTATED-LATE envoie le devis',
       startMs: pressAt + 50,
       endMs: pressAt + 120,
@@ -133,9 +159,9 @@ void main() {
   test('dictée annulée (Échap) : ses mots sont exclus aussi', () async {
     await startMeeting();
     final int pressAt = now();
-    final MeetingDictation d = live.service.beginDictation()!;
+    final MeetingDictation d = press();
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    await mic('DICTATED-CANCELLED mot de passe', startMs: pressAt + 50);
+    await micDictated('DICTATED-CANCELLED mot de passe', startMs: pressAt + 50);
     d.cancel();
 
     await others(q);
@@ -147,16 +173,16 @@ void main() {
       'question, même posée à la main', () async {
     await startMeeting();
     final int pressAt = now();
-    final MeetingDictation d = live.service.beginDictation()!;
+    final MeetingDictation d = press();
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    await mic(
+    await micDictated(
       'Est-ce que DICTATED-QUESTION part au modèle ?',
       startMs: pressAt + 50,
     );
     d.release();
 
     answers.service.answerLatestFromOthers();
-    await later();
+    await Future<void>.delayed(Duration.zero);
 
     expect(answers.questions, isEmpty);
     expect(answers.llm.requests, isEmpty);
@@ -164,13 +190,12 @@ void main() {
 
   test('après le relâchement, le micro revient au contexte', () async {
     await startMeeting();
-    final int pressAt = now();
-    final MeetingDictation d = live.service.beginDictation()!;
+    final MeetingDictation d = press();
     await Future<void>.delayed(const Duration(milliseconds: 100));
     d.release();
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    await mic('CTX-AFTER on reprend le planning', startMs: pressAt + 400);
+    await micToNote('CTX-AFTER on reprend le planning', startMs: now());
     await others(q);
 
     expect(lastRequest(), contains('CTX-AFTER'));
@@ -181,7 +206,7 @@ void main() {
     () async {
       await startMeeting();
 
-      await mic('CTX-MIC on a fini la recette.', startMs: now());
+      await micToNote('CTX-MIC on a fini la recette.', startMs: now());
       await others(q);
 
       expect(lastRequest(), contains('CTX-MIC'));

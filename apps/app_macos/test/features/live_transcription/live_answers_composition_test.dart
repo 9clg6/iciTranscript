@@ -1,3 +1,4 @@
+import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,12 +55,15 @@ void main() {
   LiveTranscriptionViewModel vm() =>
       c.read(liveTranscriptionViewModelProvider.notifier);
 
-  Future<void> later() =>
-      Future<void>.delayed(const Duration(milliseconds: 200));
-
+  // Vraies E/S asynchrones : on attend l'événement, jamais une durée fixe.
   Future<void> say(String text) async {
     live.fakeRemote.emitDone(AudioSource.output, text);
-    await later();
+    await eventually(
+      () => expect(
+        answers.questions.map((LiveQuestion q) => q.text),
+        contains(text),
+      ),
+    );
   }
 
   Future<void> startSession() async {
@@ -73,6 +77,7 @@ void main() {
     await startSession();
 
     await say('Quand est-ce que vous livrez le lot 1 ?');
+    await eventually(() => expect(answers.llm.requests, hasLength(1)));
 
     expect(answers.questions, hasLength(1));
     expect(
@@ -86,24 +91,37 @@ void main() {
   test('en pause rien n\'est détecté ; après la reprise, si', () async {
     await startSession();
 
+    final List<String> finals = <String>[];
+    live.service.finalizedSegmentsStream.listen(
+      (TranscriptSegmentEntity s) => finals.add(s.text),
+    );
     await vm().pauseSession();
-    await say('Quand est-ce que vous livrez le lot 1 ?');
-    expect(answers.questions, isEmpty);
+    live.fakeRemote.emitDone(
+      AudioSource.output,
+      'Quand est-ce que vous livrez le lot 1 ?',
+    );
+    // Finalisée PENDANT la pause (sinon la phrase n'est pas « en pause »).
+    await eventually(
+      () => expect(finals, contains('Quand est-ce que vous livrez le lot 1 ?')),
+    );
 
     await vm().resumeSession();
+    // Même chemin, dans l'ordre : quand la seconde est listée, la première
+    // l'aurait été si la pause ne l'avait pas écartée.
     await say('Combien coûte la licence par utilisateur ?');
-    expect(answers.questions, hasLength(1));
+    expect(answers.questions.map((LiveQuestion q) => q.text), <String>[
+      'Combien coûte la licence par utilisateur ?',
+    ]);
   });
 
   test('arrêter la session annule la réponse en vol', () async {
     await startSession();
     await say('Quand est-ce que vous livrez le lot 1 ?');
+    await eventually(() => expect(answers.llm.requests, hasLength(1)));
     answers.llm.last.delta('La livr');
-    await later();
 
     await vm().stopSession();
-    await later();
 
-    expect(answers.llm.last.cancelled, isTrue);
+    await eventually(() => expect(answers.llm.last.cancelled, isTrue));
   });
 }
