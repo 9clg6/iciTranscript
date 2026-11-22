@@ -235,6 +235,31 @@ void main() {
       expect(transcriber.calls, hasLength(1));
     });
 
+    test('un repère sans réponse du serveur reste, les autres sont '
+        'rattrapés', () async {
+      final TranscriptSegmentEntity first = marker(
+        'm1',
+        AudioSource.input,
+        3000,
+        5000,
+      );
+      await repo.save(first);
+      await repo.save(marker('m2', AudioSource.input, 15000, 20000));
+      transcriber
+        ..failsFirst = true
+        ..reply = <({int offsetMs, String text})>[
+          (offsetMs: 0, text: 'Retrouvé.'),
+        ];
+
+      await service().backfill(sessionId, recordingsDirectory: dir.path);
+
+      expect(transcriber.calls, hasLength(2));
+      expect(sorted(AudioSource.input).map((s) => s.text), <String>[
+        first.text,
+        'Retrouvé.',
+      ]);
+    });
+
     test('WAV absent (supprimé après la réunion) : le repère reste, sans '
         'erreur', () async {
       final TranscriptSegmentEntity m = marker(
@@ -274,10 +299,15 @@ final class _FakeTranscriber implements PcmTranscriber {
       const <({int offsetMs, String text})>[];
   bool fails = false;
 
+  /// Échoue au premier appel seulement (un seul repère sans réponse).
+  bool failsFirst = false;
+
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
     calls.add(Uint8List.fromList(pcm));
-    if (fails) throw StateError('serveur de transcription indisponible');
+    if (fails || (failsFirst && calls.length == 1)) {
+      throw StateError('serveur de transcription indisponible');
+    }
     return reply;
   }
 }
