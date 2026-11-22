@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:io';
+
+import 'package:clock/clock.dart' as wall;
 
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
@@ -7,7 +10,9 @@ import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
+import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
+import 'package:ici_transcript/application/services/live_transcription.service.dart';
 
 import '../../../helpers/dictation_fakes.dart';
 import '../../../helpers/live_service_fakes.dart';
@@ -29,7 +34,16 @@ import '../../../helpers/live_service_fakes.dart';
 /// - dictée annulée pendant la réunion : ses mots sont jetés, ils ne
 ///   reviennent pas dans la note ;
 /// - démarrer un enregistrement pendant une dictée la termine d'abord
-///   (texte produit), puis la réunion démarre : jamais deux captures.
+///   (texte produit), puis la réunion démarre : jamais deux captures ;
+/// - chaque dictée faite pendant une réunion (annulée comprise) est notée
+///   avec la session — micro, début et fin en ms de réunion — dans
+///   `<recordings>/<sessionId>_dictations.json` (pas de changement de
+///   schéma ; supprimé avec les WAV) : aucune passe ultérieure sur le WAV
+///   (rattrapage, diarization) ne remet ces mots dans la note ;
+/// - dictée demandée pendant la finalisation d'une réunion qui vient de
+///   s'arrêter (vidange en cours sur la socket micro) : « démarrage », audio
+///   gardé, aucun flux à elle tant que la vidange court ; dès qu'elle finit
+///   ou est passée, la dictée ouvre son flux et rien n'est perdu.
 ///
 /// Vrai service de réunion et vraie source distante, sockets factices
 /// (`FakeVoxSocket` répond à chaque commit final 400 ms plus tard).
@@ -44,6 +58,12 @@ void main() {
   late LiveServiceHarness h;
   late DictationHarness d;
   int id = 0;
+
+  setUp(() {
+    final Directory dir = Directory(LiveTranscriptionService.recordingsDir);
+    expect(dir.path, startsWith(Directory.systemTemp.path));
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
+  });
 
   void setUpIn(FakeAsync async) {
     clock = async;
@@ -65,7 +85,9 @@ void main() {
   /// [count] × 100 ms d'audio des deux sources, voisé ou non par source.
   void run(int count, {bool mic = false, bool system = false}) {
     for (int i = 0; i < count; i++) {
-      final int ts = h.t0 + id * 100;
+      // Horodatage de capture = horloge : les heures de la dictée et celles
+      // du WAV se comparent directement.
+      final int ts = wall.clock.now().millisecondsSinceEpoch;
       h.audio
         ..emit(chunk(AudioSource.input, id, timestampMs: ts, voiced: mic))
         ..emit(chunk(AudioSource.output, id, timestampMs: ts, voiced: system));
@@ -85,6 +107,13 @@ void main() {
   String Function(int) replies(List<String> texts) =>
       (int n) => n <= texts.length ? texts[n - 1] : 'Phrase en trop $n.';
 
+  /// Position actuelle dans la réunion, en ms.
+  int now() => wall.clock.now().millisecondsSinceEpoch - h.t0;
+
+  List<DictatedInterval> dictated() => DictatedIntervalsStore(
+    LiveTranscriptionService.recordingsDir,
+  ).read(h.session.id);
+
   void micSays(String type, String key, String text) =>
       mic.emit(<String, Object>{'type': type, key: text});
 
@@ -99,6 +128,7 @@ void main() {
       ]);
 
       run(20, mic: true);
+      final int pressedAt = now();
       d.press();
       run(5, mic: true);
       micSays('response.audio_transcript.delta', 'delta', 'Texte dicté en');
@@ -108,6 +138,7 @@ void main() {
         ...onScreen(),
       ];
       expect(midway, isNot(anyElement(contains('dicté'))));
+      final int releasedAt = now();
       d.release();
       run(20, mic: true);
       run(20); // silence : la phrase de réunion suivante se termine
@@ -120,6 +151,10 @@ void main() {
       ]);
       expect(onScreen(), isNot(anyElement(contains('dicté'))));
       expect(d.state, isA<DictationDone>());
+
+      final DictatedInterval interval = dictated().single;
+      expect(interval.startMs, closeTo(pressedAt, 300));
+      expect(interval.endMs, closeTo(releasedAt, 300));
     });
   });
 
@@ -222,6 +257,7 @@ void main() {
         'Réunion après.',
       ]);
       expect(onScreen(), isNot(anyElement(contains('annulé'))));
+      expect(dictated(), hasLength(1), reason: 'annulée : mots exclus aussi');
     });
   });
 
@@ -248,6 +284,57 @@ void main() {
       expect(note(AudioSource.input), <String>['Réunion après.']);
       expect(onScreen(), isNot(anyElement(contains('dicté'))));
       expect(d.output.copies, <String>['Texte dicté.']);
+    });
+  });
+
+  group('dictée pendant la finalisation d une réunion arrêtée', () {
+    void stopWithPendingPhrase() {
+      mic.autoReply = false;
+      run(30, mic: true); // phrase de réunion sans `done`
+      unawaited(h.service.stopTranscription());
+      clock.elapse(const Duration(seconds: 1));
+    }
+
+    test('vidange en cours : « démarrage », aucun flux à elle ; à la fin de '
+        'la vidange, la dictée part sans perte', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        stopWithPendingPhrase();
+
+        d.press();
+        expect(d.state, isA<DictationStarting>());
+        d.say(20);
+        d.release();
+        expect(d.remote.connects, isEmpty);
+        expect(d.output.log, isEmpty);
+
+        micSays('response.audio_transcript.done', 'text', 'Fin de réunion.');
+        async.elapse(const Duration(seconds: 1));
+        expect(d.remote.connects, hasLength(1));
+        expect(d.remote.sentAudio, hasLength(20));
+        d.remote.emitDone('Après la réunion.');
+        async.elapse(Duration.zero);
+
+        expect(d.output.copies, <String>['Après la réunion.']);
+        expect(note(AudioSource.input), <String>['Fin de réunion.']);
+      });
+    });
+
+    test('vidange passée par l utilisateur : la dictée part aussitôt', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        stopWithPendingPhrase();
+        d.press();
+        d.say(10);
+        expect(d.remote.connects, isEmpty);
+
+        h.service.skipFinalising();
+        async.elapse(const Duration(seconds: 1));
+
+        expect(d.remote.connects, hasLength(1));
+        expect(d.remote.sentAudio, hasLength(10));
+        expect(d.state, isA<DictationListening>());
+      });
     });
   });
 
