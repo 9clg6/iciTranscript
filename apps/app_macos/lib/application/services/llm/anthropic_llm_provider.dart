@@ -7,9 +7,13 @@ import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 /// Claude via l'API Messages d'Anthropic, en streaming SSE.
 class AnthropicLlmProvider implements LlmProvider {
   /// Cree un [AnthropicLlmProvider].
-  AnthropicLlmProvider({required Dio dio, required String apiKey})
-    : _dio = dio,
-      _apiKey = apiKey;
+  AnthropicLlmProvider({
+    required Dio dio,
+    required String apiKey,
+    String? model,
+  }) : _dio = dio,
+       _apiKey = apiKey,
+       _model = model ?? defaultModel;
 
   /// Modele rapide par defaut.
   static const String defaultModel = 'claude-haiku-5-5';
@@ -19,6 +23,9 @@ class AnthropicLlmProvider implements LlmProvider {
 
   final Dio _dio;
   final String _apiKey;
+
+  /// Modele utilise quand la requete n'en demande pas.
+  final String _model;
 
   @override
   Stream<String> streamChat(LlmChatRequest request) {
@@ -31,7 +38,7 @@ class AnthropicLlmProvider implements LlmProvider {
         'anthropic-version': apiVersion,
       },
       body: <String, Object?>{
-        'model': request.model ?? defaultModel,
+        'model': request.model ?? _model,
         'max_tokens': request.maxTokens,
         'stream': true,
         'system': request.systemPrompt,
