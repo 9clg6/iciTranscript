@@ -164,6 +164,9 @@ final class LiveTranscriptionService {
   /// demandée ni en cours d'arrêt.
   bool get isRunning => _running;
 
+  /// Démarrage demandé, capture pas encore ouverte.
+  bool get isStarting => _startRequested && !_running;
+
   /// Fin des démarrages et arrêts déjà demandés (vidange comprise).
   Future<void> whenIdle() => _lifecycleTail.catchError((Object _) {});
 
@@ -1312,8 +1315,18 @@ final class LiveTranscriptionService {
     } catch (e) {
       _log.warning('Intervalle dicté non noté: $e');
     }
-    if (d._awaited == null && !d._awaitNext) d._finish();
+    if (d._awaited == null && !d._awaitNext) {
+      d._finish();
+      return;
+    }
+    // Dernier `done` perdu (coupure : fenêtres en attente vidées) : la
+    // dictée finit quand même, le micro revient à la note. Le texte tardif
+    // de son intervalle reste hors de la note.
+    d._giveUp = Timer(_dictationGiveUp, d._finish);
   }
+
+  // Bien au-delà du délai de garde de la dictée (texte tardif encore livré).
+  static const Duration _dictationGiveUp = Duration(seconds: 60);
 
   /// Un `done` micro de la dictée : il ne va pas à la note.
   bool _routeToDictation(TranscriptEventRemoteModel event) {
@@ -1454,6 +1467,7 @@ final class MeetingDictation {
   UtteranceWindow? _awaited;
   bool _awaitNext = false;
   bool _complete = false;
+  Timer? _giveUp;
 
   /// Texte brut de chaque phrase dictée, et si elle avait de la parole.
   void Function(String text, bool hadSpeech)? onText;
@@ -1474,6 +1488,7 @@ final class MeetingDictation {
   void _finish() {
     if (_complete) return;
     _complete = true;
+    _giveUp?.cancel();
     onComplete?.call();
   }
 }

@@ -223,6 +223,15 @@ final class DictationController {
   /// fois en mémoire) : arrêté pendant le travail, relancé dès la fin si la
   /// dictée est activée. Rend le résultat ou l'erreur de [work].
   Future<T> lendServer<T>(Future<T> Function() work) async {
+    // Une dictée hors réunion en cours finit d'abord (son flux est sur ce
+    // serveur), au plus le temps d'un démarrage et d'un texte final.
+    final _Run? running = _run;
+    if (running != null && !running.finished && running.meeting == null) {
+      await running.ended.future.timeout(
+        serverStartTimeout + finalTextTimeout,
+        onTimeout: () {},
+      );
+    }
     final Completer<void> lent = Completer<void>();
     _lending = lent.future;
     _serverReady = false;
@@ -235,7 +244,9 @@ final class DictationController {
       return await work();
     } finally {
       _lending = null;
-      if (_enabled) unawaited(_startServerOnce().catchError((Object _) {}));
+      // Mêmes gardes qu'au lancement : jamais par-dessus une réunion qui a
+      // démarré son serveur entre-temps (un 2e démarrage tue le 1er).
+      if (_enabled) unawaited(_warmServer());
       lent.complete();
     }
   }
@@ -327,6 +338,9 @@ final class DictationController {
   }
 
   void _onPressed() {
+    // Réunion en train de démarrer : sa capture arrive, une capture de la
+    // dictée la ferait échouer (une seule capture à la fois).
+    if (_live.isStarting) return;
     final _Run? current = _run;
     if (current != null && !current.finished) {
       current.ignoreRelease = true;
@@ -523,6 +537,7 @@ final class DictationController {
       // Le flux reste ouvert : un texte tardif ira au presse-papiers.
       run.late = true;
       _end(run, const DictationError(DictationErrorReason.timeout));
+      if (!run.ended.isCompleted) run.ended.complete();
     });
   }
 
@@ -623,6 +638,10 @@ final class DictationController {
   /// Un enregistrement démarre : la dictée hors réunion se termine d'abord
   /// (texte produit), et son flux est fermé.
   Future<void> _handOverToRecording() async {
+    // Démarrage du serveur en vol (lancement, fin d'emprunt) : la réunion
+    // le trouve prêt au lieu d'en lancer un second (qui tuerait le premier).
+    final Future<void>? starting = _serverStart;
+    if (starting != null) await starting.catchError((Object _) {});
     final _Run? run = _run;
     if (run == null || run.meeting != null) return;
     if (!run.finished) {
