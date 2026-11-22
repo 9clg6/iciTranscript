@@ -70,7 +70,6 @@ final class FileStore implements SessionRepository, TranscriptRepository {
         text: m['text'] as String,
         timestampMs: m['timestampMs'] as int,
         createdAt: DateTime.parse(m['createdAt'] as String),
-        isPartial: m['isPartial'] as bool? ?? false,
       );
     }
   }
@@ -104,7 +103,6 @@ final class FileStore implements SessionRepository, TranscriptRepository {
                 'text': s.text,
                 'timestampMs': s.timestampMs,
                 'createdAt': s.createdAt.toIso8601String(),
-                'isPartial': s.isPartial,
               },
           ],
         }),
@@ -345,7 +343,6 @@ void main() {
               'src': s.source == AudioSource.input ? 'mic' : 'sys',
               't': s.timestampMs / 1000,
               'id': s.id,
-              'partial': s.isPartial,
               'text': s.text,
             },
       ],
@@ -430,7 +427,6 @@ void main() {
           'session': s.sessionId,
           'src': s.source == AudioSource.input ? 'mic' : 'sys',
           'ts': s.timestampMs / 1000,
-          'partial': s.isPartial,
           'id': s.id,
           'text': s.text,
         });

@@ -624,13 +624,13 @@ def cmd_svcscore(a):
     seen = {}  # first wall time each final (non-partial, non-marker) id appeared
     for e in ev:
         if e["ev"] == "segment" and e["session"] == sess and not e.get("partial") and e["id"] not in seen \
-                and not e["text"].startswith("Transcription interrompue"):
+                and not e["text"].startswith(("Transcription interrompue", "Passage non transcrit")):
             seen[e["id"]] = (e["t"], e["ts"])
     out = {"run": Path(a.run).stem, "windows": []}
     for src in ("mic", "sys"):
         ref = [s for s in sched[src] if s["end"] <= end_s]
         mine = sorted((g for g in segs if g["session"] == sess and g["src"] == src), key=lambda g: g["t"])
-        markers = [g for g in mine if g["text"].startswith("Transcription interrompue")]
+        markers = [g for g in mine if g["text"].startswith(("Transcription interrompue", "Passage non transcrit"))]
         live = [g for g in mine if g not in markers]
         hyp_all = words(" ".join(g["text"] for g in live))
         hg = grams(hyp_all, 3)
@@ -644,6 +644,13 @@ def cmd_svcscore(a):
                 s = min(ref, key=lambda s: abs(s["start"] - ts), default=None)
                 if s:
                     delays.append(round(t_wall - feed["t"] - s["end"], 1))
+        # Each reference sentence at most once, in order: segment -> nearest sentence start.
+        from collections import Counter
+        near = [min(range(len(ref)), key=lambda i: abs(ref[i]["start"] - g["t"])) for g in live] if ref else []
+        cnt = Counter(near)
+        out[src + "_once"] = {"twice": [ref[i]["i"] for i, n in cnt.items() if n > 1],
+                              "in_order": near == sorted(near),
+                              "late_segments": [(g["t"], g["text"][:60]) for g in live if g["t"] > end_s + 1]}
         out[src] = {"sentences": len(ref), "wer": wer(" ".join(s["text"] for s in ref), " ".join(hyp_all)),
                     "missing": missing, "dup_4grams": dup4, "markers_left": [m["text"] for m in markers],
                     "partial_left": sum(1 for g in live if g.get("partial")),
