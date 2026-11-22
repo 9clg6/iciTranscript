@@ -8,11 +8,22 @@ import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 typedef LlmErrorClassifier =
     LlmException Function(String provider, int status, String body);
 
+/// Délai maximal avant les en-têtes de la réponse.
+const Duration kLlmConnectTimeout = Duration(seconds: 15);
+
+/// Délai maximal sans aucune donnée reçue, une fois la réponse commencée.
+/// Large : un modèle qui réfléchit peut se taire avant son premier mot.
+const Duration kLlmIdleTimeout = Duration(seconds: 45);
+
 /// POST JSON en streaming : emet les lignes du corps de la reponse.
 ///
 /// Un [CancelToken] ferme la connexion quand l'abonnement est annule
 /// (annuler seulement le flux ne la ferme pas avec Dio 5.9). Les erreurs
 /// HTTP et reseau deviennent des [LlmException], sans cle ni corps.
+///
+/// Délais appliqués ici, quel que soit le transport : [kLlmConnectTimeout]
+/// jusqu'aux en-têtes, puis [kLlmIdleTimeout] entre deux morceaux reçus.
+/// Dépassé : connexion fermée et [LlmUnreachableException].
 Stream<String> postLines(
   Dio dio, {
   required String provider,
@@ -23,15 +34,37 @@ Stream<String> postLines(
 }) {
   final CancelToken cancelToken = CancelToken();
   StreamSubscription<String>? subscription;
+  Timer? watchdog;
   late final StreamController<String> controller;
 
+  void stop() {
+    watchdog?.cancel();
+    cancelToken.cancel();
+    unawaited(subscription?.cancel());
+  }
+
+  // Une seule fin : le délai, l'annulation Dio qui suit et l'erreur du flux
+  // peuvent arriver l'un après l'autre.
   void fail(Object error) {
+    if (controller.isClosed) return;
+    stop();
     controller
       ..addError(error)
       ..close();
   }
 
+  void finish() {
+    watchdog?.cancel();
+    if (!controller.isClosed) unawaited(controller.close());
+  }
+
+  void arm(Duration delay) {
+    watchdog?.cancel();
+    watchdog = Timer(delay, () => fail(LlmUnreachableException(provider)));
+  }
+
   Future<void> start() async {
+    arm(kLlmConnectTimeout);
     final Response<ResponseBody> response;
     try {
       response = await dio.post<ResponseBody>(
@@ -49,22 +82,26 @@ Stream<String> postLines(
     }
     if (cancelToken.isCancelled) return;
 
+    arm(kLlmIdleTimeout);
     final Stream<String> lines = response.data!.stream
-        .cast<List<int>>()
+        .map((List<int> chunk) {
+          arm(kLlmIdleTimeout);
+          return chunk;
+        })
         .transform(utf8.decoder)
         .transform(const LineSplitter());
     final int status = response.statusCode ?? 0;
-    if (status != 200) {
-      return fail(classify(provider, status, await lines.join('\n')));
-    }
+    final List<String> errorBody = <String>[];
     subscription = lines.listen(
-      controller.add,
+      status == 200 ? controller.add : errorBody.add,
       onError: (Object e) => fail(
         e is DioException
             ? _fromDio(provider, e)
             : LlmUnreachableException(provider),
       ),
-      onDone: controller.close,
+      onDone: status == 200
+          ? finish
+          : () => fail(classify(provider, status, errorBody.join('\n'))),
     );
   }
 
@@ -73,10 +110,7 @@ Stream<String> postLines(
     onPause: () => subscription?.pause(),
     onResume: () => subscription?.resume(),
     // Ne pas attendre la fin du flux : il peut rester ouvert indefiniment.
-    onCancel: () {
-      cancelToken.cancel();
-      unawaited(subscription?.cancel());
-    },
+    onCancel: stop,
   );
   return controller.stream;
 }
