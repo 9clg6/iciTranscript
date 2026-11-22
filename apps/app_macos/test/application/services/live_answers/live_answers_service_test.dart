@@ -1,11 +1,12 @@
 import 'dart:async';
 
-import 'package:core_data/database/dao/document.dao.dart';
+import 'package:ici_transcript/application/services/documents/document_library.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/live_answers/answer_parser.dart';
+import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
@@ -17,9 +18,13 @@ import '../../../helpers/live_answers_fakes.dart';
 ///
 /// API supposée (lib/application/services/live_answers/) :
 /// - live_answers.service.dart :
-///   `LiveAnswerModel({required LlmProvider provider, required String modelId})`
-///   `typedef ExcerptSearch = Future<List<DocumentSearchResult>> Function(String query, {int limit})`
-///   (même forme que `DocumentDao.search`).
+///   `LiveAnswerModel({required LlmProvider provider, required String modelId, bool isLocal = false})`
+///   `const bool kAutoAnswerWithLocalModel = false` : la seule bascule ; par
+///   défaut, avec le modèle local, réponse à la demande seulement (le
+///   serveur de transcription et le LLM local partagent la machine).
+///   `typedef ExcerptSearch = Future<List<DocumentExcerpt>> Function(String question, {int limit})`
+///   (même forme que `DocumentLibrary.search`, la seule recherche ; le
+///   provider passe `ref.watch(documentLibraryProvider).search`).
 ///   `LiveAnswersService({required Future<LiveAnswerModel?> Function() resolveModel, required ExcerptSearch searchDocuments, required QuestionStore store})`
 ///   - `void start(String sessionId)`, `void pause()`, `void resume()`,
 ///     `Future<void> stop()`.
@@ -29,7 +34,16 @@ import '../../../helpers/live_answers_fakes.dart';
 ///     « Répondre à cette phrase », sur n'importe quelle ligne.
 ///   - `void answerLatestFromOthers()` : « Répondre » à la dernière phrase des
 ///     autres participants, même si la porte n'a rien vu.
-///   - `void retry(String questionId)`, `void dismiss(String questionId)`.
+///   - `void retry(String questionId)` (« Réessayer » / « Proposer une
+///     réponse »), `void dismiss(String questionId)`.
+///   - `void markDictation({required int startMs, int? endMs})` : point de
+///     rencontre avec la dictée. Appelé à l'appui du raccourci (`endMs` null,
+///     plage ouverte) puis au relâchement (même `startMs`, `endMs` posé). Un
+///     segment MICRO dont `timestampMs` tombe dans une plage n'atteint ni la
+///     porte, ni le contexte, ni « Répondre à cette phrase ».
+///   - Un segment dont le texte commence par
+///     `LiveTranscriptionService.gapMarkerPrefix` (repère de perte) n'atteint
+///     ni la porte ni le contexte, même s'il arrive par `onSegmentFinalized`.
 ///   - Stockage : `saveDetected` à la détection ; `saveAnswer` une fois, à
 ///     l'état final (answered, tronquée, declined, failed) ; rien si la
 ///     session s'arrête en cours de flux (reste « sans réponse »).
@@ -40,10 +54,11 @@ import '../../../helpers/live_answers_fakes.dart';
 /// - Constantes choisies : `kQuestionDedupeWindow` = 30 s,
 ///   `kDocumentSearchBudget` = 150 ms, `kContextWindow` = 3 min,
 ///   `kMaxContextChars` = 4000, `kMaxExcerpts` = 3 (limite passée à la
-///   recherche), `kMaxExcerptChars` = 800.
+///   recherche). Extraits : `kMaxExcerptChars` = 400 de
+///   document_library.dart, bornés par la bibliothèque, pas par ce service.
 /// - live_question.dart : `LiveQuestion` (id, sessionId, segmentId, text,
 ///   source, speaker, timestampMs, status, answer, truncated, failure,
-///   sources, model), `enum LiveQuestionStatus { detected, answering,
+///   sources, model, onDemand : retenue pour le modèle local), `enum LiveQuestionStatus { detected, answering,
 ///   answered, declined, failed, needsModel }`, `enum LiveAnswerFailure
 ///   { invalidKey, rateLimited, unreachable, malformed, other }`.
 ///
@@ -59,11 +74,10 @@ import '../../../helpers/live_answers_fakes.dart';
 void main() {
   const String q = 'Est-ce que vous avez prévu une date de livraison ?';
 
-  const DocumentSearchResult contract = DocumentSearchResult(
-    chunkId: 'chunk-1',
+  const DocumentExcerpt contract = DocumentExcerpt(
     documentId: 'doc-contract',
     documentTitle: 'Contrat Acme 2026',
-    content: 'EXCERPT-CONTRACT Livraison du lot 1 le 12 mars 2026.',
+    text: 'EXCERPT-CONTRACT Livraison du lot 1 le 12 mars 2026.',
   );
 
   void run(
@@ -107,8 +121,8 @@ void main() {
     test('recherche plus lente que le budget : la requête part au budget, '
         'sans extrait, et le résultat tardif est ignoré', () {
       run((FakeAsync async, LiveAnswersHarness h) {
-        final Completer<List<DocumentSearchResult>> slow =
-            Completer<List<DocumentSearchResult>>();
+        final Completer<List<DocumentExcerpt>> slow =
+            Completer<List<DocumentExcerpt>>();
         h.search.pending = () => slow.future;
 
         h.hear(q);
@@ -121,7 +135,7 @@ void main() {
         expect(h.llm.requests, hasLength(1));
         expect(requestText(h.llm.last.request), isNot(contains('EXCERPT-')));
 
-        slow.complete(<DocumentSearchResult>[contract]);
+        slow.complete(<DocumentExcerpt>[contract]);
         async.flushMicrotasks();
         h.llm.last.reply('Le lot 1 arrive le 12 mars [S1].');
         async.flushMicrotasks();
@@ -134,9 +148,9 @@ void main() {
     test('recherche dans le budget : la requête l\'attend et porte les '
         'extraits', () {
       run((FakeAsync async, LiveAnswersHarness h) {
-        h.search.pending = () => Future<List<DocumentSearchResult>>.delayed(
+        h.search.pending = () => Future<List<DocumentExcerpt>>.delayed(
           const Duration(milliseconds: 100),
-          () => <DocumentSearchResult>[contract],
+          () => <DocumentExcerpt>[contract],
         );
 
         h.hear(q);
@@ -154,7 +168,7 @@ void main() {
       () {
         run((FakeAsync async, LiveAnswersHarness h) {
           h.search.pending = () =>
-              Future<List<DocumentSearchResult>>.error(StateError('fts'));
+              Future<List<DocumentExcerpt>>.error(StateError('fts'));
 
           h.hear(q);
           async.flushMicrotasks();
@@ -283,13 +297,12 @@ void main() {
 
     test('porte les extraits : titre, contenu et repère [S1], [S2]…', () {
       run((FakeAsync async, LiveAnswersHarness h) {
-        h.search.results = <DocumentSearchResult>[
+        h.search.results = <DocumentExcerpt>[
           contract,
-          const DocumentSearchResult(
-            chunkId: 'chunk-2',
+          const DocumentExcerpt(
             documentId: 'doc-pricing',
             documentTitle: 'Grille tarifaire',
-            content: 'EXCERPT-PRICING 40 € par utilisateur.',
+            text: 'EXCERPT-PRICING 40 € par utilisateur.',
           ),
         ];
         h.hear(q);
@@ -305,35 +318,25 @@ void main() {
       });
     });
 
-    test('jamais un document entier : extrait long coupé, au plus '
-        'kMaxExcerpts extraits', () {
+    test('au plus kMaxExcerpts (3) extraits, tels que rendus par la '
+        'bibliothèque (déjà bornés à 400 caractères)', () {
       run((FakeAsync async, LiveAnswersHarness h) {
-        h.search.results = <DocumentSearchResult>[
-          DocumentSearchResult(
-            chunkId: 'big',
-            documentId: 'doc-big',
-            documentTitle: 'Gros manuel',
-            content: 'EXCERPT-HEAD ${'y' * 5000} EXCERPT-TAIL',
-          ),
-          for (int i = 0; i < 4; i++)
-            DocumentSearchResult(
-              chunkId: 'c$i',
+        h.search.results = <DocumentExcerpt>[
+          for (int i = 0; i < 5; i++)
+            DocumentExcerpt(
               documentId: 'd$i',
               documentTitle: 'Doc $i',
-              content: 'EXCERPT-N$i',
+              text: 'EXCERPT-N$i ${'y' * (kMaxExcerptChars - 20)}',
             ),
         ];
         h.hear(q);
         async.flushMicrotasks();
 
+        expect(kMaxExcerpts, 3);
         final String text = requestText(h.llm.last.request);
-        expect(text, contains('EXCERPT-HEAD'));
-        expect(text, isNot(contains('EXCERPT-TAIL')));
-        expect(
-          'EXCERPT-'.allMatches(text).length,
-          lessThanOrEqualTo(kMaxExcerpts),
-        );
-        expect(text.length, lessThan(5000 + kMaxContextChars));
+        expect(text, contains('EXCERPT-N0 ${'y' * (kMaxExcerptChars - 20)}'));
+        expect('EXCERPT-'.allMatches(text).length, kMaxExcerpts);
+        expect(text, isNot(contains('EXCERPT-N3')));
       });
     });
   });
@@ -404,7 +407,7 @@ void main() {
     test('citations : seules celles vers un extrait fourni deviennent des '
         'sources', () {
       run((FakeAsync async, LiveAnswersHarness h) {
-        h.search.results = <DocumentSearchResult>[contract];
+        h.search.results = <DocumentExcerpt>[contract];
         h.hear(q);
         async.flushMicrotasks();
         h.llm.last.reply(
@@ -416,7 +419,7 @@ void main() {
           AnswerSource(
             documentId: contract.documentId,
             title: contract.documentTitle,
-            excerpt: contract.content,
+            excerpt: contract.text,
           ),
         ]);
         expect(h.only.answer, isNot(contains('[S4]')));
@@ -895,7 +898,7 @@ void main() {
 
     test('à la fin du flux : réponse, modèle et sources sauvés', () {
       run((FakeAsync async, LiveAnswersHarness h) {
-        h.search.results = <DocumentSearchResult>[contract];
+        h.search.results = <DocumentExcerpt>[contract];
         h.hear(q);
         async.flushMicrotasks();
         h.llm.last
@@ -970,6 +973,179 @@ void main() {
         expect(h.only.speaker, 2);
         expect(h.store.saved[h.only.id]!.speaker, 2);
         expect(h.store.saved[h.only.id]!.source, AudioSource.output);
+      });
+    });
+  });
+
+  group('modèle local : réponses à la demande', () {
+    void runLocal(void Function(FakeAsync async, LiveAnswersHarness h) body) {
+      fakeAsync((FakeAsync async) {
+        body(async, LiveAnswersHarness(isLocal: true, modelId: 'mistral'));
+        async.flushMicrotasks();
+      });
+    }
+
+    test('la bascule unique vaut « manuel pour le local »', () {
+      expect(kAutoAnswerWithLocalModel, isFalse);
+    });
+
+    test('question détectée et listée, sans génération automatique', () {
+      runLocal((FakeAsync async, LiveAnswersHarness h) {
+        h.hear(q);
+        async.elapse(const Duration(seconds: 1));
+
+        expect(h.only.text, q);
+        expect(h.only.status, LiveQuestionStatus.detected);
+        expect(h.only.onDemand, isTrue);
+        expect(h.llm.requests, isEmpty);
+        expect(h.store.saved[h.only.id]?.text, q);
+      });
+    });
+
+    test('« Proposer une réponse » la génère avec le modèle local', () {
+      runLocal((FakeAsync async, LiveAnswersHarness h) {
+        h.hear(q);
+        async.flushMicrotasks();
+
+        h.service.retry(h.only.id);
+        async.flushMicrotasks();
+        expect(h.llm.requests, hasLength(1));
+        h.llm.last.reply('Le 12 mars.');
+        async.flushMicrotasks();
+
+        expect(h.only.status, LiveQuestionStatus.answered);
+        expect(h.only.model, 'mistral');
+      });
+    });
+
+    test('les déclencheurs manuels partent tout de suite avec le local', () {
+      runLocal((FakeAsync async, LiveAnswersHarness h) {
+        h.hear('On aimerait une livraison en mars.');
+        h.service.answerLatestFromOthers();
+        async.flushMicrotasks();
+
+        expect(h.llm.requests, hasLength(1));
+        expect(h.only.onDemand, isFalse);
+      });
+    });
+
+    test('modèle en ligne : réponse automatique, rien à la demande', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.hear(q);
+        async.flushMicrotasks();
+
+        expect(h.llm.requests, hasLength(1));
+        expect(h.only.onDemand, isFalse);
+      });
+    });
+  });
+
+  group('seulement la parole finale en direct', () {
+    test('un repère de perte (« Transcription interrompue… ») n\'est ni une '
+        'question ni du contexte', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        final String marker =
+            '${LiveTranscriptionService.gapMarkerPrefix} : 00:01:00 – 00:01:30 ?';
+        // Forme réelle d'un repère en attente : id `<session>_<source>_pending`.
+        h.service.onSegmentFinalized(
+          h.segment(marker, atMs: 60000, id: 's1_output_pending'),
+          speaker: 1,
+        );
+        async.flushMicrotasks();
+        expect(h.questions, isEmpty);
+
+        h.hear(q, atMs: 95000);
+        async.flushMicrotasks();
+        expect(
+          requestText(h.llm.last.request),
+          isNot(contains(LiveTranscriptionService.gapMarkerPrefix)),
+        );
+      });
+    });
+  });
+
+  group('même segment reçu deux fois', () {
+    test('un segment déjà vu (même id, texte retouché) ne déclenche qu\'une '
+        'fois', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.service.onSegmentFinalized(
+          h.segment('Quand est-ce que vous livrez ?', id: 'seg-x', atMs: 60000),
+          speaker: 1,
+        );
+        async.flushMicrotasks();
+        h.service.onSegmentFinalized(
+          h.segment(
+            'Quand est-ce que vous livrez le lot 1 ?',
+            id: 'seg-x',
+            atMs: 60000,
+          ),
+          speaker: 1,
+        );
+        async.flushMicrotasks();
+
+        expect(h.questions, hasLength(1));
+        expect(h.llm.requests, hasLength(1));
+      });
+    });
+  });
+
+  group('dictée pendant la réunion', () {
+    test('les mots dictés (micro, entre appui et relâchement) n\'entrent pas '
+        'dans le contexte', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.service.markDictation(startMs: 60000);
+        h.hear(
+          'DICTATED mot de passe du wifi',
+          source: AudioSource.input,
+          speaker: null,
+          atMs: 61000,
+        );
+        h.service.markDictation(startMs: 60000, endMs: 63000);
+        h.hear(
+          'CTX-AFTER on reprend.',
+          source: AudioSource.input,
+          speaker: null,
+          atMs: 64000,
+        );
+        h.hear(q, atMs: 65000);
+        async.flushMicrotasks();
+
+        final String text = requestText(h.llm.last.request);
+        expect(text, isNot(contains('DICTATED')));
+        expect(text, contains('CTX-AFTER'));
+      });
+    });
+
+    test('plage encore ouverte (raccourci tenu) : exclue aussi', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.service.markDictation(startMs: 60000);
+        h.hear(
+          'DICTATED encore tenu',
+          source: AudioSource.input,
+          speaker: null,
+          atMs: 90000,
+        );
+        h.hear(q, atMs: 91000);
+        async.flushMicrotasks();
+
+        expect(requestText(h.llm.last.request), isNot(contains('DICTATED')));
+      });
+    });
+
+    test('« Répondre à cette phrase » sur une phrase dictée : rien', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.service.markDictation(startMs: 60000, endMs: 63000);
+        final TranscriptSegmentEntity dictated = h.segment(
+          'Est-ce que DICTATED part au modèle ?',
+          source: AudioSource.input,
+          atMs: 61000,
+        );
+        h.service.onSegmentFinalized(dictated);
+        h.service.answerSegment(dictated);
+        async.flushMicrotasks();
+
+        expect(h.questions, isEmpty);
+        expect(h.llm.requests, isEmpty);
       });
     });
   });

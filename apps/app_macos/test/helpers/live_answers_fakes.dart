@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:core_data/database/dao/document.dao.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
+import 'package:ici_transcript/application/services/documents/document_library.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 import 'package:ici_transcript/application/services/live_answers/question_store.dart';
@@ -67,19 +67,20 @@ String requestText(LlmChatRequest r) => <String>[
   ...r.messages.map((LlmMessage m) => m.content),
 ].join('\n');
 
-/// Recherche de documents : résultat fixe, ou futur fourni par le test.
+/// `DocumentLibrary.search` factice : résultat fixe, ou futur fourni par le
+/// test.
 final class FakeDocumentSearch {
-  List<DocumentSearchResult> results = <DocumentSearchResult>[];
+  List<DocumentExcerpt> results = <DocumentExcerpt>[];
 
   /// Si non nul, remplace [results] (recherche lente ou en échec).
-  Future<List<DocumentSearchResult>> Function()? pending;
+  Future<List<DocumentExcerpt>> Function()? pending;
 
   final List<({String query, int limit})> calls =
       <({String query, int limit})>[];
 
-  Future<List<DocumentSearchResult>> call(String query, {int limit = 5}) {
+  Future<List<DocumentExcerpt>> call(String query, {int limit = 5}) {
     calls.add((query: query, limit: limit));
-    return pending?.call() ?? Future<List<DocumentSearchResult>>.value(results);
+    return pending?.call() ?? Future<List<DocumentExcerpt>>.value(results);
   }
 }
 
@@ -116,12 +117,13 @@ final class LiveAnswersHarness {
   LiveAnswersHarness({
     this.modelId = 'claude-haiku-5-5',
     bool modelReady = true,
+    this.isLocal = false,
   }) : _modelReady = modelReady {
     service = LiveAnswersService(
       resolveModel: () async {
         resolveCalls++;
         return _modelReady
-            ? LiveAnswerModel(provider: llm, modelId: modelId)
+            ? LiveAnswerModel(provider: llm, modelId: modelId, isLocal: isLocal)
             : null;
       },
       searchDocuments: search.call,
@@ -133,6 +135,9 @@ final class LiveAnswersHarness {
   final FakeDocumentSearch search = FakeDocumentSearch();
   final InMemoryQuestionStore store = InMemoryQuestionStore();
   final String modelId;
+
+  /// Le modèle actif est le modèle local (Ollama).
+  final bool isLocal;
   bool _modelReady;
   int resolveCalls = 0;
   late final LiveAnswersService service;

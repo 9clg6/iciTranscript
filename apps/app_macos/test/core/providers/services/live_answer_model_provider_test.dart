@@ -24,8 +24,8 @@ import '../../../helpers/settings_fakes.dart';
 /// `@riverpod Future<LiveAnswerModel?> liveAnswerModel(Ref ref)` : le
 /// fournisseur de `activeLlmProviderProvider` et l'id du modèle utilisé
 /// (`LlmSettings.modelFor`) ; null si ce fournisseur est le modèle local et
-/// que `OllamaService.isFullyReady()` est faux. Pas gardé en vie : relu à
-/// chaque question.
+/// que `OllamaService.isInstalled(model: modelId)` est faux ; `isLocal` vrai
+/// pour le modèle local. Pas gardé en vie : relu à chaque question.
 const String _claudeKey = 'sk-ant-test-SECRET-0123456789';
 
 void main() {
@@ -51,14 +51,17 @@ void main() {
       );
   }
 
-  ProviderContainer launch({required bool localInstalled}) {
+  ProviderContainer launch({
+    required bool localInstalled,
+    Set<String>? localModels,
+  }) {
     final ProviderContainer c = ProviderContainer(
       overrides: <Override>[
         apiKeyStoreProvider.overrideWithValue(keys),
         llmDioProvider.overrideWithValue(Dio()..httpClientAdapter = adapter),
         audioCaptureChannelProvider.overrideWithValue(DevicesAudioChannel()),
         ollamaServiceProvider.overrideWithValue(
-          InstantOllamaService(installed: localInstalled),
+          InstantOllamaService(installed: localInstalled, models: localModels),
         ),
       ],
     );
@@ -85,6 +88,7 @@ void main() {
     final LiveAnswerModel? model = await c.read(liveAnswerModelProvider.future);
     expect(model, isNotNull);
     expect(model!.modelId, LlmSettings.defaultModel(LlmProviderId.ollama));
+    expect(model.isLocal, isTrue);
     await sendPing(model.provider);
 
     expect(
@@ -99,8 +103,23 @@ void main() {
 
     final LiveAnswerModel? model = await c.read(liveAnswerModelProvider.future);
     expect(model!.modelId, LlmSettings.defaultModel(LlmProviderId.anthropic));
+    expect(model.isLocal, isFalse);
     await sendPing(model.provider);
 
     expect(adapter.lastHost, kProviderHost[LlmProviderId.anthropic]);
   });
+
+  test(
+    'envoi coupé, Ollama présent mais sans le modèle choisi : aucun modèle',
+    () async {
+      writePrefs(cloudAllowed: false);
+      final ProviderContainer c = launch(
+        localInstalled: true,
+        localModels: <String>{'un-autre-modele'},
+      );
+
+      expect(await c.read(liveAnswerModelProvider.future), isNull);
+      expect(adapter.requests, isEmpty);
+    },
+  );
 }

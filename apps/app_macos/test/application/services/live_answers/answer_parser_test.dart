@@ -1,4 +1,4 @@
-import 'package:core_data/database/dao/document.dao.dart';
+import 'package:ici_transcript/application/services/documents/document_library.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/live_answers/answer_parser.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
@@ -9,7 +9,7 @@ import 'package:ici_transcript/application/services/live_answers/live_question.d
 ///
 /// API supposée :
 /// - lib/application/services/live_answers/answer_parser.dart :
-///   `ParsedAnswer parseAnswer(String raw, List<DocumentSearchResult> excerpts)`
+///   `ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts)`
 ///   avec `ParsedAnswer` : `bool declined`, `String headline`,
 ///   `List<String> bullets` (sans leur marqueur « - », « • », « * »),
 ///   `List<AnswerSource> sources`, `bool truncated`, `String text` (réponse
@@ -28,24 +28,22 @@ import 'package:ici_transcript/application/services/live_answers/live_question.d
 /// - Règle « tronquée » choisie : le texte finit sans ponctuation finale
 ///   (. ! ? … ) » ") ni citation `[S<i>]` après une ponctuation finale.
 void main() {
-  const DocumentSearchResult contract = DocumentSearchResult(
-    chunkId: 'chunk-1',
+  const DocumentExcerpt contract = DocumentExcerpt(
     documentId: 'doc-contract',
     documentTitle: 'Contrat Acme 2026',
-    content: 'Livraison du lot 1 le 12 mars 2026.',
+    text: 'Livraison du lot 1 le 12 mars 2026.',
   );
-  const DocumentSearchResult pricing = DocumentSearchResult(
-    chunkId: 'chunk-9',
+  const DocumentExcerpt pricing = DocumentExcerpt(
     documentId: 'doc-pricing',
     documentTitle: 'Grille tarifaire',
-    content: 'Licence : 40 € par utilisateur et par mois.',
+    text: 'Licence : 40 € par utilisateur et par mois.',
   );
 
   group('refus du modèle', () {
     test('la réponse réservée seule = refus, rien à afficher', () {
       final ParsedAnswer a = parseAnswer(
         kNoAnswerToken,
-        const <DocumentSearchResult>[],
+        const <DocumentExcerpt>[],
       );
       expect(a.declined, isTrue);
       expect(a.text, isEmpty);
@@ -54,10 +52,7 @@ void main() {
 
     test('avec des blancs ou un retour à la ligne autour : refus aussi', () {
       expect(
-        parseAnswer(
-          '  $kNoAnswerToken\n',
-          const <DocumentSearchResult>[],
-        ).declined,
+        parseAnswer('  $kNoAnswerToken\n', const <DocumentExcerpt>[]).declined,
         isTrue,
       );
     });
@@ -71,10 +66,7 @@ void main() {
         'jeton suivi d\'un texte « ${raw.replaceAll('\n', r'\n')} » : refus, '
         'rien à afficher',
         () {
-          final ParsedAnswer a = parseAnswer(
-            raw,
-            const <DocumentSearchResult>[],
-          );
+          final ParsedAnswer a = parseAnswer(raw, const <DocumentExcerpt>[]);
           expect(a.declined, isTrue);
           expect(a.text, isEmpty);
         },
@@ -83,10 +75,7 @@ void main() {
 
     test('une vraie réponse n\'est pas un refus', () {
       expect(
-        parseAnswer(
-          'Non, pas avant mars.',
-          const <DocumentSearchResult>[],
-        ).declined,
+        parseAnswer('Non, pas avant mars.', const <DocumentExcerpt>[]).declined,
         isFalse,
       );
     });
@@ -99,7 +88,7 @@ void main() {
         '- Lot 1 seulement.\n'
         '• Le lot 2 suit en avril.\n'
         '* Recette d\'une semaine.',
-        const <DocumentSearchResult>[],
+        const <DocumentExcerpt>[],
       );
       expect(a.headline, 'La livraison est prévue le 12 mars.');
       expect(a.bullets, <String>[
@@ -113,7 +102,7 @@ void main() {
         'sauvegardées', () {
       final ParsedAnswer a = parseAnswer(
         'Oui.\n- un.\n- deux.\n- trois.\n- QUATRE.\n- CINQ.',
-        const <DocumentSearchResult>[],
+        const <DocumentExcerpt>[],
       );
       expect(a.bullets, hasLength(kMaxBullets));
       expect(a.text, isNot(contains('QUATRE')));
@@ -123,7 +112,7 @@ void main() {
     test('sans puce : la tête seule', () {
       final ParsedAnswer a = parseAnswer(
         'Oui, dès lundi.',
-        const <DocumentSearchResult>[],
+        const <DocumentExcerpt>[],
       );
       expect(a.headline, 'Oui, dès lundi.');
       expect(a.bullets, isEmpty);
@@ -134,7 +123,7 @@ void main() {
     test('une citation valide donne {documentId, titre, extrait}', () {
       final ParsedAnswer a = parseAnswer(
         'Le lot 1 est livré le 12 mars [S1].',
-        const <DocumentSearchResult>[contract, pricing],
+        const <DocumentExcerpt>[contract, pricing],
       );
       expect(a.sources, const <AnswerSource>[
         AnswerSource(
@@ -149,7 +138,7 @@ void main() {
         'comme source', () {
       final ParsedAnswer a = parseAnswer(
         'Le lot 1 est livré le 12 mars [S1] et coûte 3 000 € [S3].',
-        const <DocumentSearchResult>[contract, pricing],
+        const <DocumentExcerpt>[contract, pricing],
       );
       expect(a.sources.map((AnswerSource s) => s.documentId), <String>[
         'doc-contract',
@@ -160,7 +149,7 @@ void main() {
     test('citation sans aucun extrait fourni : aucune source', () {
       final ParsedAnswer a = parseAnswer(
         'Le lot 1 est livré le 12 mars [S1].',
-        const <DocumentSearchResult>[],
+        const <DocumentExcerpt>[],
       );
       expect(a.sources, isEmpty);
       expect(a.text, isNot(contains('[S1]')));
@@ -169,7 +158,7 @@ void main() {
     test('la même source citée deux fois n\'apparaît qu\'une fois', () {
       final ParsedAnswer a = parseAnswer(
         'Livré le 12 mars [S2].\n- Prix par mois [S2].\n- Prix par an [S1].',
-        const <DocumentSearchResult>[contract, pricing],
+        const <DocumentExcerpt>[contract, pricing],
       );
       expect(a.sources.map((AnswerSource s) => s.documentId), <String>[
         'doc-pricing',
@@ -179,7 +168,7 @@ void main() {
 
     test('extraits fournis mais rien de cité : aucune source', () {
       expect(
-        parseAnswer('Oui.', const <DocumentSearchResult>[contract]).sources,
+        parseAnswer('Oui.', const <DocumentExcerpt>[contract]).sources,
         isEmpty,
       );
     });
@@ -193,7 +182,7 @@ void main() {
         () {
           final ParsedAnswer a = parseAnswer(
             'La livraison est prévue pour le lot 1 au début du mo',
-            const <DocumentSearchResult>[],
+            const <DocumentExcerpt>[],
           );
           expect(a.truncated, isTrue);
           expect(
@@ -207,7 +196,7 @@ void main() {
         expect(
           parseAnswer(
             'La livraison est prévue le 12 mars.',
-            const <DocumentSearchResult>[],
+            const <DocumentExcerpt>[],
           ).truncated,
           isFalse,
         );
@@ -215,7 +204,7 @@ void main() {
 
       test('phrase finie suivie d\'une citation : pas tronquée', () {
         expect(
-          parseAnswer('Livré le 12 mars. [S1]', const <DocumentSearchResult>[
+          parseAnswer('Livré le 12 mars. [S1]', const <DocumentExcerpt>[
             contract,
           ]).truncated,
           isFalse,

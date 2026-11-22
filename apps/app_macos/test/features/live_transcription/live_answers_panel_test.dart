@@ -1,4 +1,4 @@
-import 'package:core_data/database/dao/document.dao.dart';
+import 'package:ici_transcript/application/services/documents/document_library.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:easy_localization/easy_localization.dart';
@@ -48,11 +48,10 @@ class _RecordingViewModel extends LiveTranscriptionViewModel {
 
 void main() {
   const String q = 'Est-ce que vous avez prévu une date de livraison ?';
-  const DocumentSearchResult contract = DocumentSearchResult(
-    chunkId: 'chunk-1',
+  const DocumentExcerpt contract = DocumentExcerpt(
     documentId: 'doc-contract',
     documentTitle: 'Contrat Acme 2026',
-    content: 'Livraison du lot 1 le 12 mars 2026.',
+    text: 'Livraison du lot 1 le 12 mars 2026.',
   );
 
   late LiveAnswersHarness h;
@@ -61,8 +60,9 @@ void main() {
     WidgetTester tester, {
     List<TranscriptSegmentEntity> segments = const <TranscriptSegmentEntity>[],
     bool modelReady = true,
+    bool isLocal = false,
   }) async {
-    h = LiveAnswersHarness(modelReady: modelReady);
+    h = LiveAnswersHarness(modelReady: modelReady, isLocal: isLocal);
     await pumpLocalized(
       tester,
       const LiveTranscriptionScreen(),
@@ -144,7 +144,7 @@ void main() {
   testWidgets('sources : le titre du document cité, jamais une source '
       'inventée', (WidgetTester tester) async {
     await pumpLive(tester);
-    h.search.results = <DocumentSearchResult>[contract];
+    h.search.results = <DocumentExcerpt>[contract];
     await ask(tester);
 
     h.llm.last.reply('Le lot 1 arrive le 12 mars [S1], le lot 2 en mai [S2].');
@@ -334,5 +334,24 @@ void main() {
     expect(h.questions.single.source, AudioSource.input);
     expect(h.llm.requests, hasLength(1));
     expect(h.questions.single.status, LiveQuestionStatus.answering);
+  });
+
+  testWidgets('modèle local : la question est listée, l\'écran dit que la '
+      'réponse se demande, et « Proposer une réponse » la lance', (
+    WidgetTester tester,
+  ) async {
+    await pumpLive(tester, isLocal: true);
+    await ask(tester);
+
+    expect(find.text(q), findsOneWidget);
+    expect(
+      find.textContaining('live_answers.local_manual_hint'.tr()),
+      findsOneWidget,
+    );
+    expect(h.llm.requests, isEmpty);
+
+    await tap(tester, action('live_answers.answer'));
+
+    expect(h.llm.requests, hasLength(1));
   });
 }

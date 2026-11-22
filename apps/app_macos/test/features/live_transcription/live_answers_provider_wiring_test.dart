@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:core_data/database/app_database.dart';
 import 'package:core_data/database/dao/detected_question.dao.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -8,6 +10,8 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
+import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/application/services/llm/llm_settings.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
@@ -24,8 +28,9 @@ import '../../helpers/settings_fakes.dart';
 /// (DetectedQuestionDao, DocumentDao), le vrai modèle résolu
 /// (`liveAnswerModelProvider`) ; démarré quand un enregistrement démarre,
 /// arrêté quand il s'arrête. Faux : service de transcription, serveur, micro,
-/// transport HTTP (aucun réseau), Ollama « installé » ; envoi en ligne coupé
-/// (défaut), donc le modèle local répond.
+/// transport HTTP (aucun réseau), Ollama « installé ». Envoi en ligne
+/// autorisé avec une clé Claude : les réponses automatiques ne partent
+/// qu'avec un fournisseur en ligne (le local répond à la demande).
 void main() {
   late LiveServiceHarness live;
   late AppDatabase db;
@@ -34,6 +39,14 @@ void main() {
 
   setUp(() {
     resetPrefs();
+    prefsFile
+      ..createSync(recursive: true)
+      ..writeAsStringSync(
+        jsonEncode(<String, Object?>{
+          LlmSettings.providerKey: LlmProviderId.anthropic.name,
+          LlmSettings.cloudAllowedKey: true,
+        }),
+      );
     live = LiveServiceHarness(FakeAsync());
     db = memoryDatabase();
     // Flux ouvert : la réponse reste en cours jusqu'à l'arrêt.
@@ -48,7 +61,11 @@ void main() {
           ProcessManagerService(channel: live.process),
         ),
         audioCaptureChannelProvider.overrideWithValue(DevicesAudioChannel()),
-        apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
+        apiKeyStoreProvider.overrideWithValue(
+          InMemoryApiKeyStore(<LlmProviderId, String>{
+            LlmProviderId.anthropic: 'sk-ant-test-SECRET-0123456789',
+          }),
+        ),
         llmDioProvider.overrideWithValue(Dio()..httpClientAdapter = http),
       ],
     );
@@ -74,7 +91,7 @@ void main() {
 
   test(
     'enregistrement démarré : une question des autres est détectée, '
-    'sauvée en base pour cette session, et part vers le modèle local',
+    'sauvée en base pour cette session, et part vers le fournisseur choisi',
     () async {
       final String sessionId = await startRecording();
 
@@ -88,7 +105,7 @@ void main() {
       expect(answers().questions.single.status, LiveQuestionStatus.answering);
       expect(
         http.requests.map((RequestOptions r) => r.uri.host).toSet(),
-        <String>{'localhost'},
+        <String>{kProviderHost[LlmProviderId.anthropic]!},
       );
       final List<DetectedQuestion> rows = await DetectedQuestionDao(
         db,
