@@ -543,7 +543,10 @@ final class LiveTranscriptionService {
   }
 
   void _updateHealth() {
-    final TranscriptionHealth next = _restartsExhausted
+    // `error` de la source distante : serveur muet malgré les reprises, la
+    // perte est signalée ; l'enregistrement continue.
+    final TranscriptionHealth next =
+        _restartsExhausted || _remoteState == domain.ConnectionState.error
         ? TranscriptionHealth.failed
         : _restartPending || _remoteState != domain.ConnectionState.connected
         ? TranscriptionHealth.recovering
