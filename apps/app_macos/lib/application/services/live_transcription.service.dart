@@ -280,6 +280,7 @@ final class LiveTranscriptionService {
       _captureOutputEnabled = outputEnabled;
       _capturePaused = false;
       _audioChunkCount = 0;
+      _micAudioEndMs = null;
       _serverCommand = serverCommand;
       _serverArgs = serverArgs;
       _resetServerSupervision();
@@ -864,6 +865,7 @@ final class LiveTranscriptionService {
         }
         if (chunk.source == AudioSource.input) {
           _micRecorder?.append(chunk.data);
+          _micAudioEndMs = chunk.timestampMs + chunk.data.length ~/ 32;
         } else {
           _systemRecorder?.append(chunk.data);
           _traceSystemLevel(chunk.data);
@@ -1269,6 +1271,14 @@ final class LiveTranscriptionService {
     return null;
   }
 
+  // Fin du dernier audio micro relayé, à l'horloge de la capture (celle des
+  // fenêtres de parole) : bornes de la dictée comparables aux phrases, même
+  // si la capture a du retard sur l'horloge murale.
+  int? _micAudioEndMs;
+
+  int _micAudioBoundary() =>
+      _micAudioEndMs ?? clock.now().millisecondsSinceEpoch;
+
   bool get _micDictated =>
       _dictations.any((MeetingDictation d) => !d.isComplete);
 
@@ -1281,7 +1291,7 @@ final class LiveTranscriptionService {
     final MeetingDictation d = MeetingDictation._(
       this,
       session,
-      clock.now().millisecondsSinceEpoch,
+      _micAudioBoundary(),
     );
     _dictations.add(d);
     // Phrase à cheval sur l'appui : ce qui précède reste à la note.
@@ -1295,7 +1305,7 @@ final class LiveTranscriptionService {
 
   void _endDictation(MeetingDictation d, {required bool cancelled}) {
     if (d._endEpochMs != null) return;
-    d._endEpochMs = clock.now().millisecondsSinceEpoch;
+    d._endEpochMs = math.max(d._startEpochMs, _micAudioBoundary());
     if (cancelled) d.onText = null;
     final TranscriptionRemoteDataSource remote = _transcriptionRemoteDataSource;
     final Set<AudioSource> finalized = remote.sendCommit(
