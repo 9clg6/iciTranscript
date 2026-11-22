@@ -224,7 +224,7 @@ final class TranscriptionRemoteDataSourceImpl
     // Les commits partis sur la socket morte n'auront jamais de `done` : ils
     // repartiront depuis le tampon, avec leur fenêtre.
     _pendingWindows[source]!.clear();
-    _unacked[source]!.evictedSentFinals = 0;
+    _unacked[source]!.sentEvictionsLost();
     final _Outage outage = _Outage();
     _outages[source] = outage;
     _connectionStateSubject.add(domain.ConnectionState.connecting);
@@ -476,20 +476,22 @@ class _Outage {
 }
 
 /// Messages d'une source sans `done` (envoyés ou en attente), dans l'ordre,
-/// bornés à [maxBufferedMs] d'audio : au-delà, le plus ancien est jeté et
-/// compté comme perdu.
+/// bornés à [maxBufferedMs] d'audio : au-delà, le plus ancien est jeté.
 class _Unacked {
   _Unacked(this.maxBufferedMs);
 
   final int maxBufferedMs;
   final Queue<_Outgoing> queue = Queue<_Outgoing>();
   int audioMs = 0;
+
+  /// Audio perdu pour la transcription, pas encore signalé.
   int? lostStartMs;
   int? lostEndMs;
 
-  /// Commits finaux jetés alors que leur fenêtre attend encore un `done`
-  /// sur la socket vivante : leur `done` n'acquitte plus rien du tampon.
-  int evictedSentFinals = 0;
+  /// Audio jeté après être parti sur la socket vivante : il sera transcrit
+  /// si son `done` arrive, perdu si la socket tombe avant. Une plage par
+  /// commit final jeté ([_Range.closed]), plus au plus une plage ouverte.
+  final List<_Range> _sentEvicted = <_Range>[];
 
   bool get hasFinalCommit => queue.any((_Outgoing o) => o.window != null);
 
@@ -497,23 +499,23 @@ class _Unacked {
     queue.add(item);
     audioMs += item.audioMs;
     while (audioMs > maxBufferedMs) {
-      _lose(queue.removeFirst(), sent: sent);
-      // Un commit resté en tête ne finaliserait que de l'audio perdu.
+      _evict(queue.removeFirst(), sent: sent);
+      // Un commit resté en tête ne finaliserait que de l'audio jeté.
       while (queue.isNotEmpty && queue.first.timestampMs == null) {
-        _lose(queue.removeFirst(), sent: sent);
+        _evict(queue.removeFirst(), sent: sent);
       }
     }
   }
 
   /// Un `done` acquitte la plus ancienne phrase : jusqu'à son commit final.
-  // ponytail: une phrase jetée de la borne alors qu'elle était partie sur
-  // la socket vivante est comptée perdue même si son `done` arrive ensuite
-  // (serveur bloqué plus de 120 s) ; un faux repère au pire.
+  // ponytail: un `done` qui n'arrive qu'après une coupure ne peut plus
+  // acquitter l'audio jeté avant elle : compté perdu (faux repère au pire).
   void acknowledge() {
-    if (evictedSentFinals > 0) {
-      evictedSentFinals--;
+    if (_sentEvicted.isNotEmpty && _sentEvicted.first.closed) {
+      _sentEvicted.removeAt(0);
       return;
     }
+    _sentEvicted.clear(); // début jeté de cette même phrase
     while (queue.isNotEmpty) {
       final _Outgoing item = queue.removeFirst();
       audioMs -= item.audioMs;
@@ -521,19 +523,49 @@ class _Unacked {
     }
   }
 
-  void loseAll() {
-    while (queue.isNotEmpty) {
-      _lose(queue.removeFirst(), sent: false);
+  /// La socket est tombée : l'audio jeté après envoi ne sera pas transcrit.
+  void sentEvictionsLost() {
+    for (final _Range range in _sentEvicted) {
+      if (range.startMs != null) _markLost(range.startMs!, range.endMs!);
     }
-    evictedSentFinals = 0;
+    _sentEvicted.clear();
   }
 
-  void _lose(_Outgoing item, {required bool sent}) {
-    audioMs -= item.audioMs;
-    if (sent && item.window != null) evictedSentFinals++;
-    final int? at = item.timestampMs;
-    if (at == null) return;
-    lostStartMs ??= at;
-    lostEndMs = at + item.audioMs;
+  void loseAll() {
+    sentEvictionsLost();
+    while (queue.isNotEmpty) {
+      _evict(queue.removeFirst(), sent: false);
+    }
   }
+
+  void _evict(_Outgoing item, {required bool sent}) {
+    audioMs -= item.audioMs;
+    final int? at = item.timestampMs;
+    if (!sent) {
+      if (at != null) _markLost(at, at + item.audioMs);
+      return;
+    }
+    if (_sentEvicted.isEmpty || _sentEvicted.last.closed) {
+      _sentEvicted.add(_Range());
+    }
+    final _Range open = _sentEvicted.last;
+    if (at != null) {
+      open.startMs ??= at;
+      open.endMs = at + item.audioMs;
+    }
+    if (item.window != null) open.closed = true;
+  }
+
+  void _markLost(int startMs, int endMs) {
+    lostStartMs = lostStartMs == null
+        ? startMs
+        : math.min(lostStartMs!, startMs);
+    lostEndMs = lostEndMs == null ? endMs : math.max(lostEndMs!, endMs);
+  }
+}
+
+class _Range {
+  int? startMs;
+  int? endMs;
+  bool closed = false;
 }
