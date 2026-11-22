@@ -78,30 +78,35 @@ class DiarizationService {
     // Mots dictés pendant la réunion : jamais dans la note, donc en silence
     // dans le micro donné à la passe (heures et durée inchangées).
     final String micInput = hasMic
-        ? await _micWithoutDictation(sessionId)
+        ? await micInputWithoutDictation(sessionId)
         : mic;
 
     _log.info('Lancement passe post-session pour $sessionId');
-    final ProcessResult result = await Process.run(
-      _uvBin,
-      <String>[
-        'run',
-        '--python',
-        '3.12',
-        '--with',
-        'parakeet-mlx',
-        '--with',
-        _diarPackage,
-        'python',
-        _scriptPath,
-        hasMic ? micInput : '/dev/null',
-        hasSys ? sys : '/dev/null',
-        _pkModel,
-        modelCacheDir,
-      ],
-      environment: <String, String>{'HOME': _home, 'PATH': extendedPath},
-    );
-    if (micInput != mic) await _delete(micInput);
+    final ProcessResult result;
+    try {
+      result = await Process.run(
+        _uvBin,
+        <String>[
+          'run',
+          '--python',
+          '3.12',
+          '--with',
+          'parakeet-mlx',
+          '--with',
+          _diarPackage,
+          'python',
+          _scriptPath,
+          hasMic ? micInput : '/dev/null',
+          hasSys ? sys : '/dev/null',
+          _pkModel,
+          modelCacheDir,
+        ],
+        environment: <String, String>{'HOME': _home, 'PATH': extendedPath},
+      );
+    } finally {
+      // Copie en silence : jamais laissée sur disque.
+      if (micInput != mic) await _delete(micInput);
+    }
 
     if (result.exitCode != 0) {
       _log.error(
@@ -150,11 +155,12 @@ class DiarizationService {
   String _dictatedPath(String sessionId) =>
       '$_recordingsDir/${sessionId}_dictations.json';
 
-  /// WAV micro avec les intervalles dictés en silence (copie temporaire), ou
-  /// le WAV lui-même sans dictée.
+  /// Chemin du WAV micro à donner à la passe : le WAV lui-même sans dictée,
+  /// sinon une copie avec les intervalles dictés en silence (l'enregistrement
+  /// reste intact ; la copie est supprimée après la passe).
   // ponytail: WAV entier en mémoire (~115 Mo/h) ; lecture par blocs si les
   // réunions s'allongent.
-  Future<String> _micWithoutDictation(String sessionId) async {
+  Future<String> micInputWithoutDictation(String sessionId) async {
     final String mic = micWavPath(sessionId);
     final List<DictatedInterval> dictated = DictatedIntervalsStore(
       _recordingsDir,
