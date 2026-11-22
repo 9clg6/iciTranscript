@@ -577,9 +577,12 @@ final class LiveTranscriptionService {
     if (!_health.isClosed && _health.value != next) _health.add(next);
   }
 
+  /// Début du texte d'un repère de perte (lu par GapBackfillService).
+  static const String gapMarkerPrefix = 'Transcription interrompue';
+
   /// Repère d'une perte d'audio, en heures:minutes:secondes de réunion.
   static String gapMarkerText(int startMs, int endMs) =>
-      'Transcription interrompue : ${TranscriptFormatter.timestamp(startMs)} '
+      '$gapMarkerPrefix : ${TranscriptFormatter.timestamp(startMs)} '
       '– ${TranscriptFormatter.timestamp(endMs)}';
 
   void _onAudioGap(AudioGap gap) {
