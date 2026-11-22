@@ -5,6 +5,15 @@ import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 
+/// Événement émis par la source elle-même (pas par voxmlx) sur le flux d'une
+/// source quand sa socket revient : la phrase sans `done` repart en entier,
+/// le serveur va la retranscrire depuis le début.
+const String utteranceResentEventType = 'client.utterance_resent';
+
+/// Idem, mais le début de l'audio sans `done` a été perdu (tampon plein) :
+/// le texte déjà reçu pour cette phrase ne sera pas retranscrit.
+const String utteranceLostEventType = 'client.utterance_lost';
+
 /// Contrat de la source de donnees distante pour la transcription via WebSocket.
 abstract interface class TranscriptionRemoteDataSource {
   /// Se connecte au serveur WebSocket de transcription.
