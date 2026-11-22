@@ -124,6 +124,14 @@ final class FakeAudioCaptureChannel extends AudioCaptureChannel {
   final StreamController<AudioChunk> _audio =
       StreamController<AudioChunk>.broadcast();
   int startCalls = 0;
+  int stopCalls = 0;
+
+  /// Journal ordonné des démarrages et arrêts ; partageable avec d'autres
+  /// faux pour vérifier un ordre entre eux.
+  List<String> log = <String>[];
+
+  /// Levée (une fois) par le prochain [startCapture], ex. permission micro.
+  Object? startError;
 
   void emit(AudioChunk chunk) => _audio.add(chunk);
 
@@ -138,10 +146,19 @@ final class FakeAudioCaptureChannel extends AudioCaptureChannel {
   Future<void> startCapture({
     String? inputDeviceId,
     bool outputEnabled = false,
-  }) async => startCalls++;
+  }) async {
+    startCalls++;
+    log.add('capture.start(output: $outputEnabled)');
+    final Object? error = startError;
+    startError = null;
+    if (error != null) throw error;
+  }
 
   @override
-  Future<void> stopCapture() async {}
+  Future<void> stopCapture() async {
+    stopCalls++;
+    log.add('capture.stop');
+  }
 
   @override
   Future<List<AudioDeviceEntity>> listDevices() async =>
