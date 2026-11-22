@@ -165,7 +165,9 @@ void main() {
         mic.accepting = false;
         feed(AudioSource.input, 0, 1500); // 150 s de parole pendant la coupure
 
+        // Reconnexion sans audio nouveau : le tampon n'évince plus rien.
         mic.accepting = true;
+        async.elapse(const Duration(seconds: 15));
         feed(AudioSource.input, 1500, 150);
 
         final List<int> delivered = mic.appendedChunkIds;

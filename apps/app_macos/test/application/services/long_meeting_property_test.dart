@@ -188,7 +188,17 @@ void main() {
               )
               .map((TranscriptSegmentEntity s) => s.timestampMs)
               .toList();
-          expect(stamps.length, greaterThan(400), reason: source.name);
+          final FakeVoxSocket socket = source == AudioSource.input
+              ? micSocket
+              : systemSocket;
+          expect(socket.doneSent, greaterThan(400), reason: source.name);
+          expect(
+            stamps.length,
+            socket.doneSent,
+            reason:
+                '${source.name} : chaque phrase finale du serveur est '
+                'sauvée une fois, aucune n en écrase une autre',
+          );
           for (int k = 1; k < stamps.length; k++) {
             expect(
               stamps[k],

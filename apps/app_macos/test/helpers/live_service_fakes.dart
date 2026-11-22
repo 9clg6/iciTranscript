@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:core_data/clients/websocket_client.dart';
@@ -433,6 +434,9 @@ final class FakeVoxSocket extends WebSocketClient {
   int _generation = 0;
   int _phrases = 0;
 
+  /// Phrases finales (`done`) réellement envoyées au client.
+  int doneSent = 0;
+
   /// Numéros des chunks reçus, toutes connexions confondues, dans l'ordre.
   final List<int> receivedIds = <int>[];
 
@@ -448,7 +452,7 @@ final class FakeVoxSocket extends WebSocketClient {
   @override
   Future<void> connect(String url) async {
     if (!server.up || refusing) {
-      throw StateError('Connection refused');
+      throw const SocketException('Connection refused');
     }
     _connected = true;
     _generation++;
@@ -483,6 +487,7 @@ final class FakeVoxSocket extends WebSocketClient {
             'delta': 'phrase $n',
           }),
         );
+        doneSent++;
         _messages.add(
           jsonEncode(<String, Object>{
             'type': 'response.audio_transcript.done',

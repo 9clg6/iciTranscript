@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:core_data/model/audio_gap.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -211,7 +213,7 @@ void main() {
         async.elapse(const Duration(minutes: 30));
 
         final List<Duration> restarts = h.process.startTimes.skip(1).toList();
-        expect(restarts.length, inInclusiveRange(2, 10));
+        expect(restarts.length, inInclusiveRange(3, 10));
         final List<Duration> intervals = <Duration>[
           for (int i = 1; i < restarts.length; i++)
             restarts[i] - restarts[i - 1],
@@ -235,6 +237,46 @@ void main() {
         async.elapse(const Duration(milliseconds: 200));
         expect(mic.bytes, before + 3200);
         expect(h.fakeRemote.sentAudio, isNotEmpty);
+      });
+    });
+    test('un serveur qui retombe après chaque relance est relancé de moins '
+        'en moins souvent, puis l échec est signalé sans couper '
+        'l enregistrement', () {
+      fakeAsync((FakeAsync async) {
+        final LiveServiceHarness h = LiveServiceHarness(async);
+        final List<TranscriptionHealth> health = <TranscriptionHealth>[];
+        h.service.transcriptionHealthStream.listen(health.add);
+        h.start();
+
+        // Chaque relance réussit, puis le serveur meurt 5 s plus tard.
+        h.process.onReady = () {
+          Timer(const Duration(seconds: 5), h.process.crash);
+        };
+        h.process.crash();
+        async.elapse(const Duration(minutes: 30));
+
+        final List<Duration> restarts = h.process.startTimes.skip(1).toList();
+        expect(restarts.length, inInclusiveRange(3, 10));
+        final List<Duration> intervals = <Duration>[
+          for (int i = 1; i < restarts.length; i++)
+            restarts[i] - restarts[i - 1],
+        ];
+        expect(intervals.last, greaterThan(intervals.first));
+        expect(
+          restarts.last,
+          lessThan(async.elapsed - const Duration(minutes: 10)),
+          reason: 'abandon : plus de relance une fois l échec signalé',
+        );
+        expect(health.last, TranscriptionHealth.failed);
+        expect(h.session.status, SessionStatus.active);
+        expect(h.service.isRecording, isTrue);
+        final FakeWavRecorder mic = h.recorders.singleWhere(
+          (FakeWavRecorder r) => r.path!.endsWith('_mic.wav'),
+        );
+        final int before = mic.bytes;
+        h.audio.emit(chunk(AudioSource.input, 1, timestampMs: h.t0 + 1800000));
+        async.elapse(const Duration(milliseconds: 200));
+        expect(mic.bytes, before + 3200);
       });
     });
   });
