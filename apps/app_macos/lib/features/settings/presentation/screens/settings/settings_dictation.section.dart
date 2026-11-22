@@ -16,14 +16,16 @@ final Map<PhysicalKeyboardKey, int> _macKeyCodes = <PhysicalKeyboardKey, int>{
     e.value: e.key,
 };
 
-/// « ⌃⌥Espace » : modificateurs dans l'ordre d'Apple, puis la touche.
-String dictationShortcutLabel(DictationShortcut shortcut) {
+/// « ⌃⌥Espace » : modificateurs dans l'ordre d'Apple (U+2303 ⌃, U+2325 ⌥,
+/// U+21E7 ⇧, U+2318 ⌘), puis la touche telle que la disposition de clavier
+/// courante l'écrit ([keyLabel], du plugin ; null : son code).
+String dictationShortcutLabel(DictationShortcut shortcut, String? keyLabel) {
   final int m = shortcut.modifiers;
   final String mods = <String>[
-    if (m & _carbonControl != 0) '⌃',
-    if (m & _carbonOption != 0) '⌥',
-    if (m & _carbonShift != 0) '⇧',
-    if (m & _carbonCommand != 0) '⌘',
+    if (m & _carbonControl != 0) '\u2303',
+    if (m & _carbonOption != 0) '\u2325',
+    if (m & _carbonShift != 0) '\u21E7',
+    if (m & _carbonCommand != 0) '\u2318',
   ].join();
   // Espace : un seul texte traduit (« ⌃⌥Espace »), modificateurs compris.
   if (shortcut.keyCode == _macSpace) {
@@ -31,24 +33,7 @@ String dictationShortcutLabel(DictationShortcut shortcut) {
       args: <String>[mods],
     );
   }
-  return '$mods${_keyLabel(shortcut.keyCode)}';
-}
-
-// ponytail: libellé de la position US (QWERTY) de la touche ; sur AZERTY une
-// lettre peut s'afficher sous son nom QWERTY. Garder le libellé saisi si cela
-// gêne.
-String _keyLabel(int keyCode) {
-  final PhysicalKeyboardKey? key = kMacOsToPhysicalKey[keyCode];
-  final int usage = (key?.usbHidUsage ?? 0) & 0xFFFF;
-  if (usage >= 0x04 && usage <= 0x1d) {
-    return String.fromCharCode(0x41 + usage - 0x04); // A…Z
-  }
-  if (usage >= 0x1e && usage <= 0x26) {
-    return String.fromCharCode(0x31 + usage - 0x1e); // 1…9
-  }
-  if (usage == 0x27) return '0';
-  if (usage >= 0x3a && usage <= 0x45) return 'F${usage - 0x3a + 1}';
-  return LocaleKeys.settings_dictation_key_code.tr(args: <String>['$keyCode']);
+  return '$mods${keyLabel ?? LocaleKeys.settings_dictation_key_code.tr(args: <String>['${shortcut.keyCode}'])}';
 }
 
 bool _isFunctionKey(PhysicalKeyboardKey key) {
@@ -184,7 +169,10 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
                         _recording
                             ? LocaleKeys.settings_dictation_shortcut_recording
                                   .tr()
-                            : dictationShortcutLabel(settings.shortcut),
+                            : dictationShortcutLabel(
+                                settings.shortcut,
+                                state.keyLabel,
+                              ),
                         style: value,
                       ),
                       const SizedBox(width: OatsSpace.md),

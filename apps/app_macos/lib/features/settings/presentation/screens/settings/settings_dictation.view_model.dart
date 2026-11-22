@@ -12,6 +12,7 @@ final class DictationSettingsState {
   const DictationSettingsState({
     this.settings = const DictationSettings(),
     this.accessibilityTrusted = false,
+    this.keyLabel,
   });
 
   /// Réglages enregistrés (défauts tant que prefs.json n'est pas lu).
@@ -20,12 +21,18 @@ final class DictationSettingsState {
   /// Accessibilité accordée (requise pour coller).
   final bool accessibilityTrusted;
 
+  /// Touche du raccourci dans la disposition de clavier courante (null :
+  /// inconnue).
+  final String? keyLabel;
+
   DictationSettingsState _with({
     DictationSettings? settings,
     bool? accessibilityTrusted,
+    String? Function()? keyLabel,
   }) => DictationSettingsState(
     settings: settings ?? this.settings,
     accessibilityTrusted: accessibilityTrusted ?? this.accessibilityTrusted,
+    keyLabel: keyLabel != null ? keyLabel() : this.keyLabel,
   );
 }
 
@@ -46,8 +53,13 @@ class DictationSettingsViewModel extends _$DictationSettingsViewModel {
   Future<void> _load() async {
     final DictationSettings settings = await _prefs.load();
     final bool trusted = await _output.isAccessibilityTrusted();
+    final String? label = await _keyLabel(settings);
     if (!ref.mounted) return;
-    state = state._with(settings: settings, accessibilityTrusted: trusted);
+    state = state._with(
+      settings: settings,
+      accessibilityTrusted: trusted,
+      keyLabel: () => label,
+    );
   }
 
   /// Active ou coupe la dictée.
@@ -94,8 +106,20 @@ class DictationSettingsViewModel extends _$DictationSettingsViewModel {
       _output.openAccessibilitySettings();
 
   Future<void> _save(DictationSettings settings) async {
-    state = state._with(settings: settings);
+    final bool newKey =
+        settings.shortcut.keyCode != state.settings.shortcut.keyCode;
+    state = state._with(
+      settings: settings,
+      keyLabel: newKey ? () => null : null,
+    );
     await _prefs.save(settings);
     ref.read(dictationSettingsAppliedProvider.notifier).set(settings);
+    if (!newKey) return;
+    final String? label = await _keyLabel(settings);
+    if (ref.mounted) state = state._with(keyLabel: () => label);
   }
+
+  Future<String?> _keyLabel(DictationSettings settings) => ref
+      .read(globalShortcutChannelProvider)
+      .keyLabel(settings.shortcut.keyCode);
 }

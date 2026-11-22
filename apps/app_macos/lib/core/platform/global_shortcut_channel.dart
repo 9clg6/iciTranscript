@@ -45,6 +45,20 @@ class GlobalShortcutChannel {
     }
   }
 
+  /// Caractères de la touche [keyCode] dans la disposition de clavier
+  /// courante, sans modificateur ; null si inconnus ou plugin absent.
+  Future<String?> keyLabel(int keyCode) async {
+    try {
+      return await _method.invokeMethod<String>('keyLabel', <String, int>{
+        'keyCode': keyCode,
+      });
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   /// Retire le raccourci (et la capture d'Échap).
   Future<void> unregister() => _method.invokeMethod<void>('unregister');
 

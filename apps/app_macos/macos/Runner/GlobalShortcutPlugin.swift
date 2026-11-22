@@ -9,6 +9,9 @@ import Foundation
 ///   mask) -> nil; replaces the previous shortcut; FlutterError
 ///   `SHORTCUT_UNAVAILABLE` when Carbon refuses it.
 /// - `unregister` -> nil (also disarms Escape).
+/// - `keyLabel` {keyCode} -> String?: characters the key types in the
+///   current keyboard layout, without modifiers (AZERTY: 13 -> "Z"); nil when
+///   it cannot be translated.
 /// - `setCancelKeyEnabled` {enabled} -> nil: Escape is a hotkey only while
 ///   a dictation runs, so it keeps working in other apps the rest of the time.
 /// Event channel `com.icitranscript/global_shortcut_events`:
@@ -23,7 +26,11 @@ import Foundation
 ///   (direct object = typeEventHotKeyID), GetApplicationEventTarget.
 /// - HIToolbox CarbonEventsCore.h: InstallEventHandler, RemoveEventHandler,
 ///   GetEventParameter, eventHotKeyExistsErr.
-/// - HIToolbox Events.h: kVK_Escape.
+/// - HIToolbox Events.h: kVK_Escape, LMGetKbdType.
+/// - HIToolbox TextInputSources.h: TISCopyCurrentKeyboardLayoutInputSource
+///   (layout used even under an input method), kTISPropertyUnicodeKeyLayoutData
+///   ('uchr' CFData, NULL for KCHR-only layouts).
+/// - https://developer.apple.com/documentation/coreservices/1390584-uckeytranslate
 ///
 /// Limit: Carbon only reports a conflict (eventHotKeyExistsErr) against
 /// another process that also registered the same combination with
@@ -86,6 +93,12 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                 message: "RegisterEventHotKey failed",
                 details: Int(status)
             ))
+        case "keyLabel":
+            guard let keyCode = args?["keyCode"] as? Int else {
+                result(FlutterError(code: "BAD_ARGS", message: "Missing keyCode", details: nil))
+                return
+            }
+            result(Self.keyLabel(UInt16(truncatingIfNeeded: keyCode)))
         case "unregister":
             unregisterMain()
             setCancelKey(false)
@@ -117,6 +130,35 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         sink = nil
         setCancelKey(false)
         return nil
+    }
+
+    // MARK: Key label
+
+    /// Characters typed by [keyCode] alone in the current layout, uppercased
+    /// like menu shortcuts; nil if not translatable or not printable.
+    static func keyLabel(_ keyCode: UInt16) -> String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+            return nil
+        }
+        let data = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
+        var deadKeyState: UInt32 = 0
+        var length = 0
+        var chars = [UniChar](repeating: 0, count: 4)
+        let status = data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> OSStatus in
+            guard let layout = buffer.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else {
+                return OSStatus(paramErr)
+            }
+            return UCKeyTranslate(
+                layout, keyCode, UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
+                OptionBits(kUCKeyTranslateNoDeadKeysBit), &deadKeyState,
+                chars.count, &length, &chars
+            )
+        }
+        guard status == noErr, length > 0 else { return nil }
+        let label = String(utf16CodeUnits: chars, count: length)
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.controlCharacters))
+        return label.isEmpty ? nil : label.uppercased()
     }
 
     // MARK: Carbon
