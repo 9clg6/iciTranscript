@@ -43,10 +43,10 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
 
   static const Duration _yieldPoll = Duration(milliseconds: 100);
 
-  /// Morceaux (octets) de [maxPiece] au plus, coupés après le dernier
-  /// silence de la fenêtre (porte RMS par pas de 100 ms) : une phrase plus
-  /// courte que la borne n'est jamais coupée ; une parole continue plus
-  /// longue l'est à la borne.
+  /// Morceaux (octets) de [maxPiece] au plus, coupés à la fin du plus long
+  /// silence de la fenêtre (porte RMS par pas de 100 ms ; à égalité, le
+  /// plus tardif) : une phrase plus courte que la borne n'est jamais
+  /// coupée ; une parole continue plus longue l'est à la borne.
   static List<({int start, int end})> splitAtSilences(Uint8List pcm) {
     final int chunks = (pcm.length + _chunkBytes - 1) ~/ _chunkBytes;
     final List<bool> speech = <bool>[
@@ -67,13 +67,26 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
       if (end >= chunks) {
         end = chunks;
       } else {
-        // Dernière frontière qui suit un silence ; sinon la borne.
-        for (int b = end; b > start; b--) {
-          if (!speech[b - 1]) {
-            end = b;
-            break;
-          }
+        // Coupe dans le plus long silence de la fenêtre (à égalité, le plus
+        // tardif) : une pause entre phrases, pas une virgule (sonde 5 :
+        // couper au dernier silence tombait 3 fois sur 9 à la virgule). Au
+        // milieu du silence : une phrase commence parfois un pas avant son
+        // énergie mesurable. Un silence qui ouvre le morceau est coupé à sa
+        // fin. Sans silence, la borne.
+        final int windowEnd = end;
+        int bestLength = 0;
+        int run = 0;
+        for (int c = start; c < windowEnd; c++) {
+          run = speech[c] ? 0 : run + 1;
+          final bool runEnds = c + 1 == windowEnd || speech[c + 1];
+          if (run == 0 || !runEnds || run < bestLength) continue;
+          final int runStart = c + 1 - run;
+          final int cut = runStart == start ? c + 1 : (runStart + c + 1) ~/ 2;
+          if (cut <= start) continue;
+          bestLength = run;
+          end = cut;
         }
+        if (bestLength == 0) end = windowEnd;
       }
       pieces.add((
         start: start * _chunkBytes,
