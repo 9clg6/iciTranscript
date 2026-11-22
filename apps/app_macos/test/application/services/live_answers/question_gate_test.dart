@@ -179,10 +179,7 @@ void main() {
     });
 
     test('un tag après une affirmation ne fait pas une question', () {
-      expect(
-        detectQuestions(seg('On livre en mars, d\'accord ?')),
-        isEmpty,
-      );
+      expect(detectQuestions(seg('On livre en mars, d\'accord ?')), isEmpty);
     });
   });
 
