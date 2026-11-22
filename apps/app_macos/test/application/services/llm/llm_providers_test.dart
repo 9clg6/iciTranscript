@@ -427,6 +427,86 @@ void main() {
       });
     }
 
+    // Corps d'erreur generateContent d'apres l'exemple "API key not valid" :
+    // https://ai.google.dev/gemini-api/docs/generate-content/api-errors
+    // (consulte le 2026-11-22). Gemini signale une cle invalide en 400.
+    String geminiError(String status, {String? reason}) =>
+        jsonEncode(<String, Object>{
+          'error': <String, Object>{
+            'code': 400,
+            'message': reason == null
+                ? 'Invalid JSON payload received.'
+                : 'API key not valid. Please pass a valid API key.',
+            'status': status,
+            'details': <Object>[
+              if (reason != null)
+                <String, Object>{
+                  '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+                  'reason': reason,
+                  'domain': 'googleapis.com',
+                  'metadata': <String, String>{
+                    'service': 'generativelanguage.googleapis.com',
+                  },
+                },
+            ],
+          },
+        });
+
+    test('Gemini : 400 INVALID_ARGUMENT / API_KEY_INVALID -> clé invalide',
+        () async {
+      final List<String> printed = <String>[];
+      final Object error = await errorOf(
+        _cases[2],
+        FakeHttpAdapter.respond(
+          400,
+          whole(geminiError('INVALID_ARGUMENT', reason: 'API_KEY_INVALID')),
+          contentType: 'application/json',
+        ),
+        printed,
+      );
+
+      expect(error, isA<LlmInvalidKeyException>());
+      expect(error.toString(), isNot(contains(_key)));
+      expect(printed.join('\n'), isNot(contains(_key)));
+    });
+
+    test('Gemini : 403 -> clé invalide', () async {
+      final Object error = await errorOf(
+        _cases[2],
+        FakeHttpAdapter.respond(
+          403,
+          whole(jsonEncode(<String, Object>{
+            'error': <String, Object>{
+              'code': 403,
+              'message': 'Your API key doesn\'t have the required permissions.',
+              'status': 'PERMISSION_DENIED',
+            },
+          })),
+          contentType: 'application/json',
+        ),
+        <String>[],
+      );
+
+      expect(error, isA<LlmInvalidKeyException>());
+    });
+
+    test('Gemini : 400 sans API_KEY_INVALID -> erreur de requête, pas '
+        '« clé invalide »', () async {
+      final Object error = await errorOf(
+        _cases[2],
+        FakeHttpAdapter.respond(
+          400,
+          whole(geminiError('INVALID_ARGUMENT')),
+          contentType: 'application/json',
+        ),
+        <String>[],
+      );
+
+      expect(error, isA<LlmException>());
+      expect(error, isNot(isA<LlmInvalidKeyException>()));
+      expect(error.toString(), isNot(contains(_key)));
+    });
+
     test('Ollama : serveur local arrêté -> injoignable', () async {
       final Object error =
           await errorOf(_cases[3], FakeHttpAdapter.unreachable(), <String>[]);
