@@ -122,4 +122,40 @@ void main() {
       expect(gaps.single.endMs, t0 + firstKept * 100);
     });
   });
+
+  test('sans done pendant 10 min, le renvoi reste borné et le plus ancien '
+      'tombe dans des pertes signalées', () {
+    fakeAsync((FakeAsync async) {
+      setUpIn(async);
+      feed(
+        0,
+        6000,
+      ); // 10 min de parole, commits toutes les 30 s, jamais de done
+      mic.drop();
+      feed(6000, 10);
+      async.elapse(const Duration(seconds: 15));
+
+      final List<int> resent = mic.connections.last;
+      final Set<int> resentSet = resent.toSet();
+      expect(
+        resent.where((int id) => id < 6000).length,
+        lessThanOrEqualTo(3000),
+        reason: 'au plus 5 min renvoyées',
+      );
+      bool inGap(int id) => gaps.any(
+        (AudioGap g) => t0 + id * 100 >= g.startMs && t0 + id * 100 < g.endMs,
+      );
+      final List<int> unaccounted = <int>[
+        for (int id = 0; id < 6010; id++)
+          if (!resentSet.contains(id) && !inGap(id)) id,
+      ];
+      expect(
+        unaccounted,
+        isEmpty,
+        reason:
+            'audio sans done ni renvoyé ni signalé '
+            '(premier : ${unaccounted.isEmpty ? '-' : unaccounted.first})',
+      );
+    });
+  });
 }
