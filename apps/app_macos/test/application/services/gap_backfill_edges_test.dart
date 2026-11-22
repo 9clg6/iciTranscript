@@ -200,6 +200,67 @@ void main() {
       ]);
     });
 
+    // Règle tenue par l'implémentation (tour 6) : la phrase au bord de fin
+    // n'est remplacée que si son texte est abîmé. Intacte (son début se
+    // retrouve tel quel dans le texte retrouvé), elle est gardée mot pour
+    // mot, sous son id, et seul le doublon est retiré du texte retrouvé.
+    for (final String recoveredTail in <String>[
+      'Le jardinier a photographié le lac au lever du jour.',
+      'Le jardinier a photographié le lac',
+    ]) {
+      test('phrase au bord intacte gardée mot pour mot, doublon retiré '
+          '(« $recoveredTail »)', () async {
+        final TranscriptSegmentEntity edge = seg(
+          'n',
+          20200,
+          'Le jardinier a photographié le lac au lever du jour.',
+        );
+        for (final TranscriptSegmentEntity s in <TranscriptSegmentEntity>[
+          marker('m', 10000, 20000),
+          edge,
+          seg('s', 26000, 'Suite de la réunion.'),
+        ]) {
+          await repo.save(s);
+        }
+
+        await run(<({int offsetMs, String text})>[
+          (offsetMs: 2000, text: 'Nous parlions du budget.'),
+          (offsetMs: 11000, text: recoveredTail),
+        ]);
+
+        expect(texts(), <String>[
+          'Nous parlions du budget.',
+          'Le jardinier a photographié le lac au lever du jour.',
+          'Suite de la réunion.',
+        ]);
+        expect(
+          repo.store['n'],
+          edge,
+          reason: 'même id, même texte, même heure',
+        );
+      });
+    }
+
+    test('phrase au bord abîmée : remplacée, son id disparaît', () async {
+      for (final TranscriptSegmentEntity s in <TranscriptSegmentEntity>[
+        marker('m', 10000, 20000),
+        seg('n', 20200, 'Affiez le lavoir du village.'),
+        seg('s', 26000, 'Suite de la réunion.'),
+      ]) {
+        await repo.save(s);
+      }
+
+      await run(<({int offsetMs, String text})>[
+        (offsetMs: 11000, text: 'Faites visiter le lavoir du village.'),
+      ]);
+
+      expect(repo.store.containsKey('n'), isFalse);
+      expect(texts(), <String>[
+        'Faites visiter le lavoir du village.',
+        'Suite de la réunion.',
+      ]);
+    });
+
     test('rien de retrouvé : la phrase abîmée et le repère restent', () async {
       for (final TranscriptSegmentEntity s in <TranscriptSegmentEntity>[
         seg('p', 40000, 'La boulangère a', partial: true),
