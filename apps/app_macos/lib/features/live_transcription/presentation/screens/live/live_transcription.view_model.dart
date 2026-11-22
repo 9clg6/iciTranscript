@@ -13,6 +13,9 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
+import 'package:ici_transcript/core/platform/owned_processes.dart';
+import 'package:ici_transcript/core/platform/prefs_store.dart';
+import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -39,6 +42,13 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   LiveTranscriptionService? _liveService;
   bool _subscribed = false;
   Future<void>? _postProcessTask;
+  // Un interrupteur touché avant la fin de la lecture de prefs.json garde la
+  // valeur choisie.
+  bool _coachTouched = false;
+  bool _speakersTouched = false;
+
+  static const String _coachKey = 'coach_enabled';
+  static const String _speakersKey = 'live_speakers_enabled';
 
   @override
   LiveTranscriptionState build() {
@@ -50,6 +60,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     if (!_subscribed) {
       _subscribed = true;
       _listenToStreams();
+      unawaited(_loadSwitches());
       Future<void>.microtask(() => recheckPermissions());
     }
 
@@ -76,6 +87,11 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         serverStartupLine: serverState == ServerState.starting
             ? state.serverStartupLine
             : null,
+        // Effacé seulement au prochain démarrage : les états `stopped` puis
+        // `error` d'un échec peuvent arriver après le catch qui le pose.
+        serverPortInUse: serverState == ServerState.starting
+            ? null
+            : state.serverPortInUse,
       );
     });
 
@@ -209,6 +225,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         state = state.copyWith(
           isRecording: false,
           serverState: ServerState.error,
+          serverPortInUse: e is PortInUseException ? e.port : null,
         );
       }
       _durationTimer?.cancel();
@@ -350,15 +367,42 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     }
   }
 
+  /// Interrupteurs « Coach anglais » et « Interlocuteurs en direct » rangés
+  /// dans prefs.json ; défauts de l'état initial si absents ou illisibles.
+  Future<void> _loadSwitches() async {
+    final Map<String, Object?> prefs = await ref
+        .read(prefsStoreProvider)
+        .read();
+    if (!ref.mounted) return;
+    state = state.copyWith(
+      isCoachEnabled: _coachTouched
+          ? state.isCoachEnabled
+          : prefValue<bool>(prefs, _coachKey) ?? state.isCoachEnabled,
+      isLiveSpeakersEnabled: _speakersTouched
+          ? state.isLiveSpeakersEnabled
+          : prefValue<bool>(prefs, _speakersKey) ?? state.isLiveSpeakersEnabled,
+    );
+  }
+
   /// Active ou désactive le coach d'anglais.
   void toggleCoach() {
+    _coachTouched = true;
     state = state.copyWith(isCoachEnabled: !state.isCoachEnabled);
+    unawaited(
+      ref.read(prefsStoreProvider).update(<String, Object?>{
+        _coachKey: state.isCoachEnabled,
+      }),
+    );
   }
 
   /// Active ou désactive l'identification des interlocuteurs en direct.
   void toggleLiveSpeakers() {
-    state = state.copyWith(
-      isLiveSpeakersEnabled: !state.isLiveSpeakersEnabled,
+    _speakersTouched = true;
+    state = state.copyWith(isLiveSpeakersEnabled: !state.isLiveSpeakersEnabled);
+    unawaited(
+      ref.read(prefsStoreProvider).update(<String, Object?>{
+        _speakersKey: state.isLiveSpeakersEnabled,
+      }),
     );
   }
 

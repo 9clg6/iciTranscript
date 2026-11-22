@@ -244,4 +244,103 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 5)),
   );
+
+  // Tour 4, point 5 : serveur réel mesuré (sonde 2026-11-22) — une seule
+  // file pour toutes les sockets, 2× le temps réel au total. Après 60 s de
+  // coupure du micro, le rattrapage dure ; le serveur reste vivant.
+  test('serveur séquentiel lent : rattrapage après 60 s de coupure, rien de '
+      'perdu, aucun recyclage, transcriptions dans l ordre', () {
+    fakeAsync((FakeAsync async) {
+      final FakeVoxServer server = FakeVoxServer(
+        now: () => async.elapsed,
+        speed: 2,
+      );
+      final FakeVoxSocket micSocket = FakeVoxSocket(server);
+      final FakeVoxSocket systemSocket = FakeVoxSocket(server);
+      final TranscriptionRemoteDataSourceImpl remote =
+          TranscriptionRemoteDataSourceImpl(
+            micClient: micSocket,
+            systemClient: systemSocket,
+          );
+      final List<AudioGap> gaps = <AudioGap>[];
+      remote.audioGaps.listen(gaps.add);
+      final LiveServiceHarness h = LiveServiceHarness(async, remote: remote)
+        ..start();
+      final int t0 = h.t0;
+
+      const int tickMs = 100;
+      const int totalTicks = 20 * 60 * 1000 ~/ tickMs; // 20 min
+      const int dropTick = 5 * 60 * 1000 ~/ tickMs;
+      const int restoreTick = dropTick + 600; // 60 s de coupure
+
+      bool micVoiced(int ms) => ms % 10000 < 7000;
+      bool systemVoiced(int ms) => (ms + 5000) % 10000 < 7000;
+      final Map<AudioSource, List<int>> voicedIds = <AudioSource, List<int>>{
+        AudioSource.input: <int>[],
+        AudioSource.output: <int>[],
+      };
+
+      for (int i = 0; i < totalTicks; i++) {
+        final int ms = i * tickMs;
+        if (i == dropTick) {
+          micSocket
+            ..refusing = true
+            ..drop();
+        }
+        if (i == restoreTick) micSocket.refusing = false;
+        final bool mv = micVoiced(ms);
+        final bool sv = systemVoiced(ms);
+        if (mv) voicedIds[AudioSource.input]!.add(i);
+        if (sv) voicedIds[AudioSource.output]!.add(i);
+        h.audio
+          ..emit(chunk(AudioSource.input, i, timestampMs: t0 + ms, voiced: mv))
+          ..emit(
+            chunk(AudioSource.output, i, timestampMs: t0 + ms, voiced: sv),
+          );
+        async.elapse(const Duration(milliseconds: tickMs));
+      }
+      async.elapse(const Duration(seconds: 30));
+
+      expect(gaps, isEmpty, reason: 'aucun audio déclaré perdu');
+      expect(
+        micSocket.connections,
+        hasLength(2),
+        reason: 'une seule reconnexion, celle de la vraie coupure',
+      );
+      expect(systemSocket.connections, hasLength(1), reason: 'aucun recyclage');
+
+      final Map<AudioSource, FakeVoxSocket> sockets =
+          <AudioSource, FakeVoxSocket>{
+            AudioSource.input: micSocket,
+            AudioSource.output: systemSocket,
+          };
+      for (final AudioSource source in AudioSource.values) {
+        final FakeVoxSocket socket = sockets[source]!;
+        expect(socket.transcribedTwice, isEmpty, reason: source.name);
+        final List<int> lost = voicedIds[source]!
+            .where(
+              (int id) =>
+                  id < totalTicks - 100 && !socket.transcribedIds.contains(id),
+            )
+            .toList();
+        expect(
+          lost,
+          isEmpty,
+          reason: '${source.name} : ${lost.length} chunks jamais transcrits',
+        );
+        final List<int> stamps = h.segments
+            .of(source)
+            .map((TranscriptSegmentEntity s) => s.timestampMs)
+            .toList();
+        expect(stamps, hasLength(socket.doneSent), reason: source.name);
+        for (int k = 1; k < stamps.length; k++) {
+          expect(
+            stamps[k],
+            greaterThanOrEqualTo(stamps[k - 1]),
+            reason: '${source.name} : segment $k hors d ordre',
+          );
+        }
+      }
+    });
+  }, timeout: const Timeout(Duration(minutes: 5)));
 }

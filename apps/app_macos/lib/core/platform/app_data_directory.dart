@@ -100,7 +100,10 @@ String resolveLogDirectory(
 }
 
 // Seul endroit qui lit l'environnement et le mode de compilation réels.
-AppBuildMode get _buildMode => kReleaseMode
+AppBuildMode get _buildMode => currentBuildMode;
+
+/// Mode de compilation de ce processus.
+AppBuildMode get currentBuildMode => kReleaseMode
     ? AppBuildMode.release
     : kProfileMode
     ? AppBuildMode.profile

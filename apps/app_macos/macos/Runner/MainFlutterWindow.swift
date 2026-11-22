@@ -12,7 +12,6 @@ class MainFlutterWindow: NSWindow {
 
     // Register IciTranscript native plugins
     AudioCapturePlugin.register(with: flutterViewController.registrar(forPlugin: "AudioCapturePlugin"))
-    ProcessManagerPlugin.register(with: flutterViewController.registrar(forPlugin: "ProcessManagerPlugin"))
     KeychainPlugin.register(with: flutterViewController.registrar(forPlugin: "KeychainPlugin"))
     GlobalShortcutPlugin.register(with: flutterViewController.registrar(forPlugin: "GlobalShortcutPlugin"))
     TextOutputPlugin.register(with: flutterViewController.registrar(forPlugin: "TextOutputPlugin"))

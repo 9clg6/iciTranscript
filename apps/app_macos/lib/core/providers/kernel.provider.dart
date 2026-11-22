@@ -8,6 +8,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
 import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 import 'package:ici_transcript/core/providers/data/database.provider.dart';
+import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'kernel.provider.g.dart';
@@ -30,6 +31,10 @@ Future<void> kernel(Ref ref) async {
   // Une fois au lancement, avant toute session : rien n'enregistre encore.
   // Les dossiers viennent de appDataDirectory() (temporaire sous test).
   await _repairAfterCrash(ref, log);
+
+  // Serveurs laissés par un arrêt brutal : seulement ceux notés par cette
+  // app dont le PID a encore la même identité. Ne lève jamais.
+  await ref.read(ownedProcessRegistryProvider).cleanUpLeftovers();
 
   // Le serveur ML est demarre par LiveTranscriptionService au moment du recording
   // Ollama est initialise par OllamaSetupViewModel au demarrage
