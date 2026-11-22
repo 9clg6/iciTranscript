@@ -4,8 +4,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
+import 'package:ici_transcript/core/platform/prefs_store.dart';
 
-/// Réglages de la dictée (T2) : dans prefs.json, à côté des autres réglages,
+/// Réglages de la dictée (T2) : par le `PrefsStore` partagé, dans prefs.json, à côté des autres réglages,
 /// jamais seulement en mémoire. Raccourci stocké en code de touche macOS +
 /// masque de modificateurs Carbon (⌃⌥Espace = 49 / 4096 | 2048 = 6144).
 ///
@@ -94,4 +95,28 @@ void main() {
     expect(s.shortcut.keyCode, 49);
     expect(s.outputMode, DictationOutputMode.paste);
   });
+
+  test(
+    'passent par le PrefsStore partagé (même fichier, mêmes clés)',
+    () async {
+      final Directory dir = await Directory.systemTemp.createTemp(
+        'oats_prefs_',
+      );
+      addTearDown(() => dir.delete(recursive: true));
+      final PrefsStore store = PrefsStore('${dir.path}/prefs.json');
+      await store.update(<String, Object?>{'llm_active': 'ollama'});
+
+      await DictationPreferences(store).save(
+        const DictationSettings(outputMode: DictationOutputMode.clipboard),
+      );
+
+      final Map<String, Object?> json = await store.read();
+      expect(json, containsPair('llm_active', 'ollama'));
+      expect(json, containsPair('dictation_output_mode', 'clipboard'));
+      expect(
+        (await DictationPreferences(store).load()).outputMode,
+        DictationOutputMode.clipboard,
+      );
+    },
+  );
 }
