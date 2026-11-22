@@ -549,7 +549,14 @@ final class LiveTranscriptionService {
           .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
           .toList(),
     );
-    if (plan.isEmpty) return;
+    if (plan.isEmpty) {
+      // Rien à rattraper ici, mais le serveur se libère : les sessions en
+      // attente d'autres réunions repartent (en tâche de fond).
+      if (retry != null && !_startRequested) {
+        unawaited(retry.afterSession(sessionId));
+      }
+      return;
+    }
     if (_startRequested || skip.isCompleted) {
       // Un enregistrement arrive (ou l'utilisateur a passé) : la session est
       // mise en attente de reprise, sans tentative ; le repère reste.

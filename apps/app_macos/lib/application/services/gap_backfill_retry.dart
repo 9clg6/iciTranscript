@@ -41,8 +41,15 @@ final class GapBackfillRetry {
   File get _pendingFile => File('$_directory/.backfill_pending.json');
 
   /// Première tentative, à la fin d'une session.
-  Future<void> afterSession(String sessionId) =>
-      _serialized(() => _attempt(sessionId));
+  ///
+  /// Si le serveur répond (ou qu'il n'y avait rien à faire), les autres
+  /// sessions en attente sont reprises ensuite, en tâche de fond : le
+  /// serveur vient de se libérer de l'enregistrement.
+  Future<void> afterSession(String sessionId) => _serialized(() async {
+    if (await _attempt(sessionId)) {
+      unawaited(_serialized(() => _retryAllNow(except: sessionId)));
+    }
+  });
 
   /// Au lancement : réessaie les sessions restées en attente.
   Future<void> retryPending() => _serialized(_retryAllNow);
@@ -55,11 +62,23 @@ final class GapBackfillRetry {
 
   Future<void> _retryAll() => _serialized(_retryAllNow);
 
-  Future<void> _retryAllNow() async {
-    for (final String sessionId in (await _read()).keys.toList()) {
+  /// Une session à la fois, la plus ancienne d'abord (les ids sont des
+  /// heures de création) ; on s'arrête dès que le serveur manque ou qu'un
+  /// enregistrement commence.
+  Future<void> _retryAllNow({String? except}) async {
+    final List<String> ids =
+        (await _read()).keys.where((String id) => id != except).toList()
+          ..sort(_olderFirst);
+    for (final String sessionId in ids) {
       if (_isRecording()) return;
-      await _attempt(sessionId);
+      if (!await _attempt(sessionId)) return;
     }
+  }
+
+  static int _olderFirst(String a, String b) {
+    final int? x = int.tryParse(a);
+    final int? y = int.tryParse(b);
+    return x != null && y != null ? x.compareTo(y) : a.compareTo(b);
   }
 
   // Une tentative à la fois : un serveur prêt plusieurs fois de suite ne
@@ -82,19 +101,21 @@ final class GapBackfillRetry {
     await _write(pending);
   });
 
-  Future<void> _attempt(String sessionId) async {
+  /// Rend faux si le serveur n'a pas pu être utilisé (absent, ou un
+  /// enregistrement a la priorité) : inutile alors d'essayer les autres.
+  Future<bool> _attempt(String sessionId) async {
     final Map<String, int> pending = await _read();
     if (!_hasRecording(sessionId)) {
       // WAV supprimé (passe post-session) : plus rien à rattraper.
       pending.remove(sessionId);
       await _write(pending);
-      return;
+      return true;
     }
     if (_isRecording()) {
       // Le serveur est à l'enregistrement : plus tard, sans compter.
       pending.putIfAbsent(sessionId, () => 0);
       await _write(pending);
-      return;
+      return false;
     }
     final BackfillOutcome outcome = await _backfill.backfill(
       sessionId,
@@ -113,6 +134,7 @@ final class GapBackfillRetry {
       pending[sessionId] = attempts;
     }
     await _write(pending);
+    return outcome.markersLeft == 0 || outcome.reachedServer;
   }
 
   bool _hasRecording(String sessionId) =>
