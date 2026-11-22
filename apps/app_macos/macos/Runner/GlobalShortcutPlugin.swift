@@ -36,7 +36,10 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     private static let cancelId: UInt32 = 2
 
     private var mainRef: EventHotKeyRef?
-    private var cancelRef: EventHotKeyRef?
+    /// Escape alone, plus Escape with the shortcut's modifiers: Carbon matches
+    /// the mask exactly and the user is still holding ⌥ of ⌥Space.
+    private var cancelRefs: [EventHotKeyRef] = []
+    private var mainModifiers: UInt32 = 0
     private var handlerRef: EventHandlerRef?
     private var sink: FlutterEventSink?
     /// Pressed seen without its release yet (guards against repeats).
@@ -76,6 +79,7 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                 keyCode: UInt32(keyCode), modifiers: UInt32(modifiers),
                 id: Self.mainId, options: OptionBits(kEventHotKeyExclusive), ref: &mainRef
             )
+            if status == noErr { mainModifiers = UInt32(modifiers) }
             result(status == noErr ? nil : FlutterError(
                 code: "SHORTCUT_UNAVAILABLE",
                 message: "RegisterEventHotKey failed",
@@ -191,14 +195,23 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     @discardableResult
     private func setCancelKey(_ enabled: Bool) -> OSStatus {
         if enabled {
-            guard cancelRef == nil else { return noErr }
+            guard cancelRefs.isEmpty else { return noErr }
             // Non-exclusive: Escape is only borrowed for the length of a dictation.
-            return registerHotKey(
-                keyCode: UInt32(kVK_Escape), modifiers: 0, id: Self.cancelId, options: 0, ref: &cancelRef
-            )
+            for modifiers in Set([0, mainModifiers]) {
+                var ref: EventHotKeyRef?
+                let status = registerHotKey(
+                    keyCode: UInt32(kVK_Escape), modifiers: modifiers, id: Self.cancelId, options: 0, ref: &ref
+                )
+                guard status == noErr, let ref else {
+                    setCancelKey(false)
+                    return status
+                }
+                cancelRefs.append(ref)
+            }
+            return noErr
         }
-        if let ref = cancelRef { UnregisterEventHotKey(ref) }
-        cancelRef = nil
+        cancelRefs.forEach { UnregisterEventHotKey($0) }
+        cancelRefs = []
         return noErr
     }
 

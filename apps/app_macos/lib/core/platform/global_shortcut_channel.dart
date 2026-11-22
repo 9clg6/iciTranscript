@@ -14,8 +14,9 @@ class GlobalShortcutChannel {
   );
 
   /// Appuis, relâchements et annulations ; les types inconnus sont ignorés.
-  /// Écoute le plugin seulement à l'abonnement.
-  Stream<ShortcutEvent> get events => _events
+  /// Un seul abonnement plateforme partagé (le plugin n'a qu'un récepteur),
+  /// ouvert seulement à la première écoute.
+  late final Stream<ShortcutEvent> events = _events
       .receiveBroadcastStream()
       .map(
         (Object? e) => switch (e) {
