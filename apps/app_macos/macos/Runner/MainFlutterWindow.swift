@@ -15,6 +15,8 @@ class MainFlutterWindow: NSWindow {
     KeychainPlugin.register(with: flutterViewController.registrar(forPlugin: "KeychainPlugin"))
     DocumentTextPlugin.register(with: flutterViewController.registrar(forPlugin: "DocumentTextPlugin"))
     FilePickerPlugin.register(with: flutterViewController.registrar(forPlugin: "FilePickerPlugin"))
+    GlobalShortcutPlugin.register(with: flutterViewController.registrar(forPlugin: "GlobalShortcutPlugin"))
+    TextOutputPlugin.register(with: flutterViewController.registrar(forPlugin: "TextOutputPlugin"))
 
     super.awakeFromNib()
   }

@@ -32,6 +32,8 @@
 		B7C1E2F3A4D5B6C7D8E9F0A2 /* KeychainPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0B2 /* DocumentTextPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0C2 /* FilePickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */; };
+		B7C1E2F3A4D5B6C7D8E9F0D2 /* GlobalShortcutPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0D1 /* GlobalShortcutPlugin.swift */; };
+		B7C1E2F3A4D5B6C7D8E9F0E2 /* TextOutputPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0E1 /* TextOutputPlugin.swift */; };
 		D6B09347D08E503666A1C572 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0701AC210FC5A110E73ED748 /* Pods_RunnerTests.framework */; };
 /* End PBXBuildFile section */
 
@@ -90,6 +92,8 @@
 		B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTextPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePickerPlugin.swift; sourceTree = "<group>"; };
+		B7C1E2F3A4D5B6C7D8E9F0D1 /* GlobalShortcutPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalShortcutPlugin.swift; sourceTree = "<group>"; };
+		B7C1E2F3A4D5B6C7D8E9F0E1 /* TextOutputPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextOutputPlugin.swift; sourceTree = "<group>"; };
 		A59261B28BDF5496B977D3F3 /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 		B2D7473397539F4E00359628 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		BA07452BCA165B126E47C287 /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
@@ -202,6 +206,8 @@
 				B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */,
+				B7C1E2F3A4D5B6C7D8E9F0D1 /* GlobalShortcutPlugin.swift */,
+				B7C1E2F3A4D5B6C7D8E9F0E1 /* TextOutputPlugin.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -455,6 +461,8 @@
 				B7C1E2F3A4D5B6C7D8E9F0A2 /* KeychainPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0B2 /* DocumentTextPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0C2 /* FilePickerPlugin.swift in Sources */,
+				B7C1E2F3A4D5B6C7D8E9F0D2 /* GlobalShortcutPlugin.swift in Sources */,
+				B7C1E2F3A4D5B6C7D8E9F0E2 /* TextOutputPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

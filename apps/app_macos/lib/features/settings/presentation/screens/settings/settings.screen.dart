@@ -2,18 +2,24 @@ import 'package:core_domain/domain/entities/audio_device.entity.dart';
 import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
+import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_settings.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
+import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.screen.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
+import 'package:ici_transcript/features/settings/presentation/screens/settings/settings_dictation.view_model.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
 part 'settings_ai.section.dart';
+part 'settings_dictation.section.dart';
 
 /// Largeur de la colonne des réglages.
 const double kSettingsWidth = 610;
@@ -138,6 +144,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
                 const _AiSection(),
+                const _DictationSection(),
                 _Section(
                   title: LocaleKeys.settings_server_title.tr(),
                   rows: <Widget>[

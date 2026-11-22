@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:core_data/database/app_database.dart';
 import 'package:core_domain/domain/usecases/repair_interrupted_sessions.use_case.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
@@ -13,6 +14,8 @@ import 'package:ici_transcript/core/providers/core/repositories/session.reposito
 import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 import 'package:ici_transcript/core/providers/data/database.provider.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
+import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
+import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/core/providers/services/gap_backfill_retry.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -45,9 +48,27 @@ Future<void> kernel(Ref ref) async {
   // app dont le PID a encore la même identité. Ne lève jamais.
   await ref.read(ownedProcessRegistryProvider).cleanUpLeftovers();
 
+  // Dictée : réglages de prefs.json appliqués (raccourci, serveur chaud).
+  // Sans attendre : le démarrage à froid du serveur (~10 s) ne retarde pas
+  // le lancement.
+  unawaited(_startDictation(ref, log));
+
   // Le serveur ML est demarre par LiveTranscriptionService au moment du recording
+  // (ou au lancement si la dictée est activée).
   // Ollama est initialise par OllamaSetupViewModel au demarrage
   log.info('Kernel initialise');
+}
+
+Future<void> _startDictation(Ref ref, Log log) async {
+  try {
+    final DictationSettings settings = await DictationPreferences(
+      ref.read(prefsStoreProvider),
+    ).load();
+    ref.read(dictationControllerProvider);
+    ref.read(dictationSettingsAppliedProvider.notifier).set(settings);
+  } catch (e) {
+    log.warning('Dictée non démarrée: $e');
+  }
 }
 
 /// Répare ce qu'un arrêt brutal en pleine session a laissé : sessions

@@ -46,6 +46,10 @@ import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.sta
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
+import 'package:ici_transcript/features/settings/presentation/screens/settings/settings_dictation.view_model.dart';
+import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
+import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
+import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/presentation/app.dart';
 
 import '../test/helpers/document_fakes.dart';
@@ -224,6 +228,71 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
   Future<void> recheckPermissions() async {}
 }
 
+class _DictationViewModel extends DictationSettingsViewModel {
+  _DictationViewModel(this._state);
+
+  final DictationSettingsState _state;
+
+  @override
+  DictationSettingsState build() => _state;
+}
+
+/// Section Dictée : état montré et état du raccourci.
+typedef _Dictation = ({
+  DictationSettingsState state,
+  ShortcutStatus status,
+  bool cached,
+});
+
+const _Dictation _dictationOn = (
+  state: DictationSettingsState(accessibilityTrusted: true),
+  status: ShortcutStatus.registered,
+  cached: true,
+);
+
+final Map<String, _Dictation> _dictationStates = <String, _Dictation>{
+  'enabled': _dictationOn,
+  'disabled': (
+    state: const DictationSettingsState(
+      settings: DictationSettings(enabled: false),
+      accessibilityTrusted: true,
+    ),
+    status: ShortcutStatus.disabled,
+    cached: true,
+  ),
+  'shortcut-error': (
+    state: const DictationSettingsState(accessibilityTrusted: true),
+    status: ShortcutStatus.unavailable,
+    cached: true,
+  ),
+  'no-accessibility': (
+    state: const DictationSettingsState(),
+    status: ShortcutStatus.registered,
+    cached: true,
+  ),
+  'model-missing': (
+    state: const DictationSettingsState(accessibilityTrusted: true),
+    status: ShortcutStatus.registered,
+    cached: false,
+  ),
+  'model-downloading': (
+    state: const DictationSettingsState(
+      accessibilityTrusted: true,
+      download: ModelDownload.running,
+    ),
+    status: ShortcutStatus.registered,
+    cached: false,
+  ),
+  'model-failed': (
+    state: const DictationSettingsState(
+      accessibilityTrusted: true,
+      download: ModelDownload.failed,
+    ),
+    status: ShortcutStatus.registered,
+    cached: false,
+  ),
+};
+
 /// Note en cours de résumé : début du texte reçu, la suite arrive.
 SessionDetailState _streaming(SessionDetailState s) => s.copyWith(
   summary:
@@ -248,8 +317,18 @@ List<Override> _overrides(
   required FakeFilePicker picker,
   OllamaSetupState ollama = const OllamaSetupState(),
   SettingsState? settings,
+  _Dictation dictation = _dictationOn,
   SessionDetailState Function(SessionDetailState)? detail,
 }) => <Override>[
+  dictationSettingsViewModelProvider.overrideWith(
+    () => _DictationViewModel(dictation.state),
+  ),
+  dictationShortcutStatusProvider.overrideWith(
+    (Ref ref) => Stream<ShortcutStatus>.value(dictation.status),
+  ),
+  transcriptionModelCachedProvider.overrideWith(
+    (Ref ref) async => dictation.cached,
+  ),
   kernelProvider.overrideWith((Ref ref) async {}),
   databaseProvider.overrideWithValue(db),
   filePickerProvider.overrideWithValue(picker),
@@ -352,6 +431,7 @@ void main() {
         List<SessionEntity> sessions, {
         OllamaSetupState ollama = const OllamaSetupState(),
         SettingsState? settings,
+        _Dictation dictation = _dictationOn,
         SessionDetailState Function(SessionDetailState)? detail,
         AppDatabase? db,
         FakeFilePicker? picker,
@@ -376,6 +456,7 @@ void main() {
                 picker: picker ?? FakeFilePicker(),
                 ollama: ollama,
                 settings: settings,
+                dictation: dictation,
                 detail: detail,
               ),
               child: EasyLocalization(
@@ -502,6 +583,32 @@ void main() {
           await tester.drag(title, Offset(0, -(size.value.height - 200)));
           await _pump(tester, 10);
           await _shot(tester, key, 'settings-ai-${ai.key}-blocks-$suffix');
+        });
+      }
+
+      // Section Dictée : activée, coupée, raccourci pris, sans Accessibilité.
+      for (final MapEntry<String, _Dictation> dictation
+          in _dictationStates.entries) {
+        shoot('settings-dictation-${dictation.key}', (
+          WidgetTester tester,
+        ) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            dictation: dictation.value,
+          );
+          await tester.tap(find.text('Réglages'));
+          await _pump(tester, 10);
+          final Finder title = find.text('Dictée');
+          await tester.ensureVisible(title);
+          await _pump(tester, 5);
+          await tester.drag(title, Offset(0, 40 - tester.getTopLeft(title).dy));
+          await _pump(tester, 10);
+          await _shot(
+            tester,
+            key,
+            'settings-dictation-${dictation.key}-$suffix',
+          );
         });
       }
 

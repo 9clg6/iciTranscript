@@ -48,7 +48,13 @@ abstract interface class TranscriptionRemoteDataSource {
   /// Finalise les buffers audio actifs.
   ///
   /// `voxmlx-serve` ne réinitialise une session que si `final` vaut true.
-  Set<AudioSource> sendCommit({bool isFinal = false});
+  /// [sources] null : toutes ; sinon seules celles-ci (la dictée finalise le
+  /// micro sans toucher à l'audio système). Rend les sources dont une phrase
+  /// ouverte a été finalisée (un `done` viendra).
+  Set<AudioSource> sendCommit({
+    bool isFinal = false,
+    Set<AudioSource>? sources,
+  });
 
   /// Stream de l'etat de la connexion WebSocket.
   Stream<domain.ConnectionState> get connectionState;
