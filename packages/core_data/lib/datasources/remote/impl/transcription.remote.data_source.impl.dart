@@ -450,15 +450,23 @@ final class TranscriptionRemoteDataSourceImpl
   }
 
   @override
-  Set<AudioSource> sendCommit({bool isFinal = false}) {
+  Set<AudioSource> sendCommit({
+    bool isFinal = false,
+    Set<AudioSource>? sources,
+  }) {
+    final Set<AudioSource> targets = sources ?? AudioSource.values.toSet();
     if (!isFinal) {
       const String commit = '{"type":"input_audio_buffer.commit"}';
-      _send(AudioSource.input, commit);
-      if (_systemConnected) _send(AudioSource.output, commit);
+      if (targets.contains(AudioSource.input)) {
+        _send(AudioSource.input, commit);
+      }
+      if (_systemConnected && targets.contains(AudioSource.output)) {
+        _send(AudioSource.output, commit);
+      }
       return <AudioSource>{};
     }
     final Set<AudioSource> finalized = <AudioSource>{};
-    for (final AudioSource source in AudioSource.values) {
+    for (final AudioSource source in targets) {
       if (_utteranceActive[source]! &&
           (source == AudioSource.input || _systemConnected)) {
         finalized.add(source);
