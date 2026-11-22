@@ -11,6 +11,7 @@ export 'domain/enum/audio_source.enum.dart';
 export 'domain/enum/connection_state.enum.dart';
 export 'domain/enum/server_state.enum.dart';
 export 'domain/enum/session_status.enum.dart';
+export 'domain/enum/transcription_health.enum.dart';
 // Domain Params
 export 'domain/params/delete_session.param.dart';
 export 'domain/params/get_session_detail.param.dart';
@@ -27,6 +28,7 @@ export 'domain/services/transcription.service.dart';
 export 'domain/usecases/delete_session.use_case.dart';
 export 'domain/usecases/get_session_detail.use_case.dart';
 export 'domain/usecases/get_sessions.use_case.dart';
+export 'domain/usecases/repair_interrupted_sessions.use_case.dart';
 export 'domain/usecases/save_transcript_segment.use_case.dart';
 export 'domain/usecases/start_session.use_case.dart';
 export 'domain/usecases/stop_session.use_case.dart';

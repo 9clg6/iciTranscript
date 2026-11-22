@@ -84,13 +84,18 @@ final class TranscriptionService {
   }
 
   /// Sauvegarde un segment de transcription et met a jour le stream.
+  ///
+  /// Un segment de meme id (provisoire) est remplace, en base et a l'ecran.
   Future<void> saveSegment(TranscriptSegmentEntity segment) async {
     final ResultState<TranscriptSegmentEntity> result =
         await _saveTranscriptSegmentUseCase.execute(segment);
     result.when(
       success: (TranscriptSegmentEntity savedSegment) {
         final List<TranscriptSegmentEntity> currentSegments =
-            List<TranscriptSegmentEntity>.from(segmentsStream.value);
+            List<TranscriptSegmentEntity>.from(segmentsStream.value)
+              ..removeWhere(
+                (TranscriptSegmentEntity s) => s.id == savedSegment.id,
+              );
         currentSegments.add(savedSegment);
         segmentsStream.add(currentSegments);
       },
@@ -98,6 +103,28 @@ final class TranscriptionService {
         _log.error('Erreur sauvegarde segment', e);
       },
     );
+  }
+
+  /// Sauve en base la phrase en cours, sans la montrer : l'ecran garde son
+  /// segment temporaire. La phrase finale la remplacera (meme id).
+  Future<void> saveProvisional(TranscriptSegmentEntity segment) async {
+    final ResultState<TranscriptSegmentEntity> result =
+        await _saveTranscriptSegmentUseCase.execute(segment);
+    result.when(
+      success: (_) {},
+      failure: (Exception e) {
+        _log.error('Erreur sauvegarde segment provisoire', e);
+      },
+    );
+  }
+
+  /// Retire de la base un segment provisoire dont la phrase a ete ecartee.
+  Future<void> discardProvisional(String segmentId) async {
+    try {
+      await _saveTranscriptSegmentUseCase.discard(segmentId);
+    } on Exception catch (e) {
+      _log.error('Erreur suppression segment provisoire', e);
+    }
   }
 
   /// Libere les ressources du service.
