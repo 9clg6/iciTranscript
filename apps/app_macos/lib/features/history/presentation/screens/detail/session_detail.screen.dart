@@ -191,8 +191,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                       : () => _vm.deleteSummary(),
                   deleteLabel: LocaleKeys.history_detail_summary_delete.tr(),
                   child: _aiBlock(
-                    loading:
-                        state.isSummaryLoading && (state.summary ?? '').isEmpty,
+                    loading: state.isSummaryLoading,
                     loadingLabel: LocaleKeys.history_detail_summary_loading
                         .tr(),
                     content: (state.summary ?? '').isEmpty
@@ -259,7 +258,12 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: <Widget>[
-      if (loading) _Loading(loadingLabel) else ?content,
+      ?content,
+      // Au fil de l'eau : le texte reçu, puis l'indicateur sous lui.
+      if (loading) ...<Widget>[
+        if (content != null) const SizedBox(height: OatsSpace.sm),
+        _Loading(loadingLabel),
+      ],
       if (incomplete) ...<Widget>[
         const SizedBox(height: OatsSpace.md),
         OatsNotice(
