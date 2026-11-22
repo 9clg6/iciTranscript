@@ -8,7 +8,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 /// Wrape [WebSocketChannel] et gere la connexion, la deconnexion, l'envoi et
 /// la reception de messages. La reconnexion et le tampon de coupure sont
 /// dans `TranscriptionRemoteDataSourceImpl`, qui lit [isConnected] avant
-/// chaque envoi : il doit donc etre faux des que la socket est fermee.
+/// chaque envoi et écoute [onClosed] : une fermeture côté serveur doit se
+/// voir même quand rien n'est à envoyer (sonde 2 : rattrapage en attente).
 class WebSocketClient {
   /// Cree une instance de [WebSocketClient].
   ///
@@ -28,6 +29,16 @@ class WebSocketClient {
   /// Stream des messages recus depuis le serveur WebSocket.
   Stream<String> get messageStream => _messageSubject.stream;
 
+  final StreamController<void> _closedController =
+      StreamController<void>.broadcast();
+
+  /// Le canal s'est fermé ou a échoué côté serveur (pas après [disconnect]).
+  Stream<void> get onClosed => _closedController.stream;
+
+  /// Poignée de main au-delà de laquelle [connect] échoue (sonde 2 : une
+  /// reconnexion est restée 30 s bloquée sur `ready`).
+  static const Duration connectTimeout = Duration(seconds: 10);
+
   /// Indique si le client est connecte.
   bool get isConnected => _channel != null;
 
@@ -36,8 +47,19 @@ class WebSocketClient {
     await disconnect();
     final WebSocketChannel channel = _connectChannel(Uri.parse(url));
     // Un echec de connexion leve ici : le canal n'est jamais marque connecte.
-    await channel.ready;
+    try {
+      await channel.ready.timeout(connectTimeout);
+    } on TimeoutException {
+      unawaited(channel.sink.close().catchError((Object _) {}));
+      rethrow;
+    }
     _channel = channel;
+    void closedByServer() {
+      if (!identical(_channel, channel)) return;
+      _channel = null;
+      if (!_closedController.isClosed) _closedController.add(null);
+    }
+
     _subscription = channel.stream.listen(
       (dynamic data) {
         if (data is String) {
@@ -45,12 +67,10 @@ class WebSocketClient {
         }
       },
       onError: (Object error) {
-        if (identical(_channel, channel)) _channel = null;
+        closedByServer();
         _messageSubject.addError(error);
       },
-      onDone: () {
-        if (identical(_channel, channel)) _channel = null;
-      },
+      onDone: closedByServer,
     );
   }
 
@@ -71,5 +91,6 @@ class WebSocketClient {
   Future<void> dispose() async {
     await disconnect();
     await _messageSubject.close();
+    await _closedController.close();
   }
 }
