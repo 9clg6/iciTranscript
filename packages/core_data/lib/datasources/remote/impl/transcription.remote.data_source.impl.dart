@@ -187,6 +187,11 @@ final class TranscriptionRemoteDataSourceImpl
   }) {
     final WebSocketClient client = _client(source);
     final _Outage? outage = _outages[source];
+    // ponytail: la coupure n'est vue qu'au prochain envoi (pas d'écoute de
+    // fermeture) ; pendant un silence, la reconnexion attend la parole
+    // suivante. Écouter la fermeture du canal si le délai gêne.
+    // L'audio d'une phrase déjà parti sur la socket morte n'est pas renvoyé
+    // (pas de doublon) : sa transcription est perdue sans repère.
     if (outage == null && client.isConnected) {
       client.send(message);
       if (window != null) _pendingWindows[source]!.add(window);

@@ -432,6 +432,8 @@ final class LiveTranscriptionService {
     // pour la transcription : la perte arrive par `audioGaps` et son repère
     // doit être sauvé avant de clore la session.
     await _transcriptionRemoteDataSource.disconnect();
+    // ponytail: un tour de boucle suffit à livrer la perte (PublishSubject
+    // asynchrone). Faire rendre les pertes par disconnect() si cela change.
     await Future<void>.delayed(Duration.zero);
     if (_pendingFinalizations.isNotEmpty) {
       await Future.wait<void>(List<Future<void>>.from(_pendingFinalizations));
@@ -680,6 +682,9 @@ final class LiveTranscriptionService {
 
   // Phrase en cours sauvée en base (sous son id final) au plus tard 2 s après
   // un nouveau mot ; l'écran garde son segment temporaire `current_*`.
+  // ponytail: si la socket d'une source tombe en pleine phrase, aucun `done`
+  // ne la clôt : le `done` suivant de la source la remplace sous le même id.
+  // Il faut un signal de coupure par source pour sceller la phrase.
   static const Duration _checkpointDelay = Duration(seconds: 2);
   final Map<AudioSource, String> _phraseId = <AudioSource, String>{};
   final Map<AudioSource, Timer> _checkpointTimers = <AudioSource, Timer>{};
