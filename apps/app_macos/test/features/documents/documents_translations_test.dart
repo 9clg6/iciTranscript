@@ -99,6 +99,20 @@ void main() {
     );
   });
 
+  test('la ligne de la page Documents dit la même chose que Réglages : des '
+      'extraits, chez le fournisseur choisi, seulement si l\'envoi est '
+      'autorisé', () {
+    final String cloud = frValue('documents.privacy_cloud')! as String;
+    final String local = frValue('documents.privacy_local')! as String;
+    final String settings = frValue('settings.ai.privacy_notice')! as String;
+    expect(cloud, contains('extraits'));
+    expect(cloud, contains('fournisseur choisi'));
+    expect(cloud, contains('autorisé'));
+    expect(local, contains('restent sur votre Mac'));
+    expect(settings, contains('extraits de vos documents'));
+    expect(settings, contains('fournisseur choisi'));
+  });
+
   test('le nombre d\'extraits a un singulier et un pluriel avec le nombre', () {
     expect(frValue('documents.excerpts.one'), contains('{}'));
     expect(frValue('documents.excerpts.other'), contains('{}'));
