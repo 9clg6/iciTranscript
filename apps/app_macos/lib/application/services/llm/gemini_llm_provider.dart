@@ -7,9 +7,10 @@ import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 /// Gemini via `streamGenerateContent` (API Google AI), en streaming SSE.
 class GeminiLlmProvider implements LlmProvider {
   /// Cree un [GeminiLlmProvider].
-  GeminiLlmProvider({required Dio dio, required String apiKey})
+  GeminiLlmProvider({required Dio dio, required String apiKey, String? model})
     : _dio = dio,
-      _apiKey = apiKey;
+      _apiKey = apiKey,
+      _model = model ?? defaultModel;
 
   /// Modele rapide par defaut.
   static const String defaultModel = 'gemini-3.5-flash-lite';
@@ -17,9 +18,12 @@ class GeminiLlmProvider implements LlmProvider {
   final Dio _dio;
   final String _apiKey;
 
+  /// Modele utilise quand la requete n'en demande pas.
+  final String _model;
+
   @override
   Stream<String> streamChat(LlmChatRequest request) {
-    final String model = request.model ?? defaultModel;
+    final String model = request.model ?? _model;
     final Stream<String> lines = postLines(
       _dio,
       provider: 'Gemini',

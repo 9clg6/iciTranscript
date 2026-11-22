@@ -8,12 +8,17 @@ import 'package:ici_transcript/core/platform/server_ports.dart';
 /// Ollama local via `/api/chat`, en streaming NDJSON. Sans cle.
 class OllamaLlmProvider implements LlmProvider {
   /// Cree un [OllamaLlmProvider].
-  OllamaLlmProvider({required Dio dio}) : _dio = dio;
+  OllamaLlmProvider({required Dio dio, String? model})
+    : _dio = dio,
+      _model = model ?? defaultModel;
 
   /// Modele par defaut (celui qu'installe `OllamaService`).
   static const String defaultModel = 'mistral';
 
   final Dio _dio;
+
+  /// Modele utilise quand la requete n'en demande pas.
+  final String _model;
 
   @override
   Stream<String> streamChat(LlmChatRequest request) {
@@ -22,7 +27,7 @@ class OllamaLlmProvider implements LlmProvider {
       provider: 'Ollama',
       url: '${ollamaBaseUrl.resolve('/api/chat')}',
       body: <String, Object?>{
-        'model': request.model ?? defaultModel,
+        'model': request.model ?? _model,
         'stream': true,
         'messages': <Map<String, String>>[
           <String, String>{'role': 'system', 'content': request.systemPrompt},
