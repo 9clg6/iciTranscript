@@ -74,8 +74,15 @@ final class GapBackfillRetry {
     return run;
   }
 
+  /// Met [sessionId] en attente sans tentative (ex. session tuée net,
+  /// retrouvée au lancement avec ses repères).
+  Future<void> enqueue(String sessionId) => _serialized(() async {
+    final Map<String, int> pending = await _read();
+    pending.putIfAbsent(sessionId, () => 0);
+    await _write(pending);
+  });
+
   Future<void> _attempt(String sessionId) async {
-    if (_isRecording()) return;
     final Map<String, int> pending = await _read();
     if (!_hasRecording(sessionId)) {
       // WAV supprimé (passe post-session) : plus rien à rattraper.
@@ -83,20 +90,27 @@ final class GapBackfillRetry {
       await _write(pending);
       return;
     }
-    final int attempts = (pending[sessionId] ?? 0) + 1;
-    final int left = await _backfill.backfill(
+    if (_isRecording()) {
+      // Le serveur est à l'enregistrement : plus tard, sans compter.
+      pending.putIfAbsent(sessionId, () => 0);
+      await _write(pending);
+      return;
+    }
+    final BackfillOutcome outcome = await _backfill.backfill(
       sessionId,
       recordingsDirectory: _directory,
     );
-    if (left > 0 && attempts < maxAttempts) {
-      pending[sessionId] = attempts;
-    } else {
-      if (left > 0) {
-        _log.warning(
-          'Session $sessionId : $attempts tentatives, repères gardés',
-        );
-      }
+    // Seule une tentative qui a atteint le serveur compte : une panne du
+    // serveur ne doit pas épuiser les reprises avant son retour.
+    final int attempts =
+        (pending[sessionId] ?? 0) + (outcome.reachedServer ? 1 : 0);
+    if (outcome.markersLeft == 0) {
       pending.remove(sessionId);
+    } else if (attempts >= maxAttempts) {
+      _log.warning('Session $sessionId : $attempts tentatives, repères gardés');
+      pending.remove(sessionId);
+    } else {
+      pending[sessionId] = attempts;
     }
     await _write(pending);
   }

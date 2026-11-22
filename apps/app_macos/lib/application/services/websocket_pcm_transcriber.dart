@@ -19,8 +19,16 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
   WebSocketPcmTranscriber({
     String? url,
     WebSocketClient Function()? createClient,
+    bool Function()? shouldYield,
   }) : url = url ?? serverPorts().transcriptionWebSocket.toString(),
-       _createClient = createClient ?? WebSocketClient.new;
+       _createClient = createClient ?? WebSocketClient.new,
+       _shouldYield = shouldYield ?? _never;
+
+  static bool _never() => false;
+
+  /// Lu avant la connexion et avant chaque morceau : vrai (un enregistrement
+  /// démarre) → la retranscription s'arrête, socket fermée, sans compter.
+  final bool Function() _shouldYield;
 
   /// Point d'entrée du serveur de transcription (ports de ce lancement).
   final String url;
@@ -32,12 +40,21 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
 
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
+    if (_shouldYield()) throw const TranscriberUnavailable('enregistrement');
     final WebSocketClient client = _createClient();
-    await client.connect(url);
+    try {
+      await client.connect(url);
+    } on Exception catch (e) {
+      await client.dispose();
+      throw TranscriberUnavailable('connexion refusée ($e)');
+    }
     try {
       final List<({int offsetMs, String text})> pieces =
           <({int offsetMs, String text})>[];
       for (int start = 0; start < pcm.length; start += _pieceBytes) {
+        if (_shouldYield()) {
+          throw const TranscriberUnavailable('enregistrement');
+        }
         final int end = (start + _pieceBytes).clamp(0, pcm.length);
         final Future<String> done = client.messageStream
             .map((String m) => jsonDecode(m) as Map<String, dynamic>)

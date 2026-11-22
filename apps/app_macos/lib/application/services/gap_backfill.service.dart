@@ -8,6 +8,23 @@ import 'package:core_domain/domain/repositories/transcript.repository.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 
+/// Le transcripteur n'a pas atteint le serveur (connexion refusée) ou a
+/// cédé la place à un enregistrement : la tentative ne compte pas.
+final class TranscriberUnavailable implements Exception {
+  /// Cree une instance de [TranscriberUnavailable].
+  const TranscriberUnavailable(this.reason);
+
+  /// Pourquoi.
+  final String reason;
+
+  @override
+  String toString() => 'TranscriberUnavailable: $reason';
+}
+
+/// Issue d'un rattrapage : repères restants, et si le serveur a été atteint
+/// (sinon la tentative ne compte pas pour la limite de reprises).
+typedef BackfillOutcome = ({int markersLeft, bool reachedServer});
+
 /// Transcrit un PCM16 mono 16 kHz hors réunion ; morceaux datés depuis le
 /// début du PCM.
 abstract interface class PcmTranscriber {
@@ -70,27 +87,28 @@ final class GapBackfillService {
   /// Retranscrit les repères de [sessionId] depuis
   /// `<recordingsDirectory>/<sessionId>_mic.wav` / `_system.wav`.
   ///
-  /// Rend le nombre de repères gardés faute de transcripteur (erreur ou
-  /// enregistrement commencé) : ceux qu'une nouvelle tentative peut
-  /// rattraper. Un WAV absent ou rien de retrouvé ne compte pas.
-  Future<int> backfill(
+  /// Rend les repères restants (WAV présent) et si le serveur a été atteint :
+  /// une connexion refusée ou un enregistrement qui commence n'est pas une
+  /// tentative ; une réponse sans rien de neuf en est une.
+  Future<BackfillOutcome> backfill(
     String sessionId, {
     required String recordingsDirectory,
   }) async {
-    if (_isRecording()) {
-      return plan(await _transcripts.getBySessionId(sessionId)).length;
-    }
     final List<TranscriptSegmentEntity> segments = await _transcripts
         .getBySessionId(sessionId);
     final List<({String markerId, AudioSource source, int startMs, int endMs})>
     gaps = plan(segments);
-    int retryable = 0;
+    if (_isRecording()) return (markersLeft: gaps.length, reachedServer: false);
+    int left = 0;
+    bool reached = false;
     for (int g = 0; g < gaps.length; g++) {
       final ({String markerId, AudioSource source, int startMs, int endMs})
       gap = gaps[g];
       // Le serveur ne tient pas un troisième flux (sonde) : on s'arrête dès
       // qu'un enregistrement commence.
-      if (_isRecording()) return retryable + gaps.length - g;
+      if (_isRecording()) {
+        return (markersLeft: left + gaps.length - g, reachedServer: reached);
+      }
       final String track = gap.source == AudioSource.input ? 'mic' : 'system';
       final Uint8List? pcm = await _readPcm(
         '$recordingsDirectory/${sessionId}_$track.wav',
@@ -101,11 +119,21 @@ final class GapBackfillService {
       List<({int offsetMs, String text})> pieces;
       try {
         pieces = await _transcriber.transcribe(pcm);
+      } on TranscriberUnavailable catch (e) {
+        _log.info('Rattrapage de ${gap.markerId} reporté: $e');
+        left++;
+        continue;
+      } on SocketException catch (e) {
+        _log.info('Rattrapage de ${gap.markerId} reporté (serveur absent): $e');
+        left++;
+        continue;
       } catch (e) {
         _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
-        retryable++;
+        reached = true;
+        left++;
         continue;
       }
+      reached = true;
       final TranscriptSegmentEntity marker = segments.firstWhere(
         (TranscriptSegmentEntity s) => s.id == gap.markerId,
       );
@@ -116,7 +144,10 @@ final class GapBackfillService {
       );
       // Tout ce qui a été retrouvé était déjà dans les voisins : rien de
       // nouveau, le repère reste (jamais de texte en double).
-      if (kept.isEmpty) continue;
+      if (kept.isEmpty) {
+        left++;
+        continue;
+      }
       pieces = kept;
       for (int k = 0; k < pieces.length; k++) {
         await _transcripts.save(
@@ -132,7 +163,7 @@ final class GapBackfillService {
       }
       await _transcripts.deleteById(gap.markerId);
     }
-    return retryable;
+    return (markersLeft: left, reachedServer: reached);
   }
 
   /// Segment en direct (non repère) de la même source juste avant ou juste
