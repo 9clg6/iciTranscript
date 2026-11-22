@@ -38,6 +38,28 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
   static const int _chunkBytes = 3200; // 100 ms
   static const Duration _doneTimeout = Duration(seconds: 60);
 
+  static const Duration _yieldPoll = Duration(milliseconds: 100);
+
+  /// [done], ou [TranscriberUnavailable] dès qu'un enregistrement démarre :
+  /// la socket se ferme sans attendre la fin du morceau en vol.
+  Future<String> _unlessYield(Future<String> done) {
+    final Completer<String> result = Completer<String>();
+    final Timer poll = Timer.periodic(_yieldPoll, (_) {
+      if (_shouldYield() && !result.isCompleted) {
+        result.completeError(const TranscriberUnavailable('enregistrement'));
+      }
+    });
+    done.then(
+      (String text) {
+        if (!result.isCompleted) result.complete(text);
+      },
+      onError: (Object e, StackTrace st) {
+        if (!result.isCompleted) result.completeError(e, st);
+      },
+    );
+    return result.future.whenComplete(poll.cancel);
+  }
+
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
     if (_shouldYield()) throw const TranscriberUnavailable('enregistrement');
@@ -75,7 +97,9 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
           );
         }
         client.send('{"type":"input_audio_buffer.commit","final":true}');
-        final String text = TranscriptTextNormalizer.normalize(await done);
+        final String text = TranscriptTextNormalizer.normalize(
+          await _unlessYield(done),
+        );
         if (text.isNotEmpty &&
             !TranscriptTextNormalizer.isForeignScript(text)) {
           pieces.add((offsetMs: start ~/ 32, text: text));
