@@ -11,6 +11,13 @@ typedef LlmErrorClassifier =
 /// Délai maximal avant les en-têtes de la réponse.
 const Duration kLlmConnectTimeout = Duration(seconds: 15);
 
+/// Délai maximal avant les en-têtes pour le modèle local : Ollama n'envoie
+/// ses en-têtes qu'avec le premier morceau, donc après le chargement du
+/// modèle en mémoire et l'évaluation du prompt (server/routes.go,
+/// ChatHandler : scheduleRunner puis streamResponse). Un premier appel à
+/// froid dépasse souvent [kLlmConnectTimeout].
+const Duration kLlmLocalHeaderTimeout = Duration(minutes: 3);
+
 /// Délai maximal sans aucune donnée reçue, une fois la réponse commencée.
 /// Large : un modèle qui réfléchit peut se taire avant son premier mot.
 const Duration kLlmIdleTimeout = Duration(seconds: 45);
@@ -21,8 +28,8 @@ const Duration kLlmIdleTimeout = Duration(seconds: 45);
 /// (annuler seulement le flux ne la ferme pas avec Dio 5.9). Les erreurs
 /// HTTP et reseau deviennent des [LlmException], sans cle ni corps.
 ///
-/// Délais appliqués ici, quel que soit le transport : [kLlmConnectTimeout]
-/// jusqu'aux en-têtes, puis [kLlmIdleTimeout] entre deux morceaux reçus.
+/// Délais appliqués ici, quel que soit le transport : [headerTimeout]
+/// ([kLlmConnectTimeout] par défaut) jusqu'aux en-têtes, puis [kLlmIdleTimeout] entre deux morceaux reçus.
 /// Dépassé : connexion fermée et [LlmUnreachableException].
 Stream<String> postLines(
   Dio dio, {
@@ -31,6 +38,7 @@ Stream<String> postLines(
   required Map<String, Object?> body,
   Map<String, String> headers = const <String, String>{},
   LlmErrorClassifier classify = classifyHttpError,
+  Duration headerTimeout = kLlmConnectTimeout,
 }) {
   final CancelToken cancelToken = CancelToken();
   StreamSubscription<String>? subscription;
@@ -64,7 +72,7 @@ Stream<String> postLines(
   }
 
   Future<void> start() async {
-    arm(kLlmConnectTimeout);
+    arm(headerTimeout);
     final Response<ResponseBody> response;
     try {
       response = await dio.post<ResponseBody>(

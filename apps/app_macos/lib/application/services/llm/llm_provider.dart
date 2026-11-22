@@ -99,3 +99,10 @@ class LlmUnreachableException extends LlmException {
   const LlmUnreachableException(String provider)
     : super('$provider : injoignable');
 }
+
+/// Réponse reçue mais illisible (JSON attendu absent, coupé ou d'une autre
+/// forme).
+class LlmMalformedAnswerException extends LlmException {
+  /// Crée une [LlmMalformedAnswerException].
+  const LlmMalformedAnswerException() : super('réponse du modèle illisible');
+}

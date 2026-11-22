@@ -10,10 +10,18 @@ import 'package:ici_transcript/core/providers/services/ollama.service.provider.d
 ///
 /// [ensureReady] compte les appels (installation / téléchargement possible) ;
 /// quand [installed] est faux, un tel appel est précisément le défaut.
+///
+/// [models] : modèles locaux présents sur le disque. Null = [installed] vaut
+/// pour tout modèle ; sinon `isInstalled(model: m)` n'est vrai que si `m`
+/// (défaut `mistral`) y figure.
+///
+/// API supposée : `OllamaService.isInstalled({String? model})`, null = modèle
+/// par défaut (`mistral`).
 class InstantOllamaService extends OllamaService {
-  InstantOllamaService({required this.installed});
+  InstantOllamaService({required this.installed, this.models});
 
   final bool installed;
+  final Set<String>? models;
   int ensureReadyCalls = 0;
   int summarizeCalls = 0;
   int analyzeCalls = 0;
@@ -32,7 +40,8 @@ class InstantOllamaService extends OllamaService {
   );
 
   @override
-  Future<bool> isInstalled() async => installed;
+  Future<bool> isInstalled({String? model}) async =>
+      installed && (models?.contains(model ?? 'mistral') ?? true);
 
   @override
   Future<bool> isFullyReady() async => installed;

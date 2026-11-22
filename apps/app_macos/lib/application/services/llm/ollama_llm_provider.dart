@@ -15,6 +15,11 @@ class OllamaLlmProvider implements LlmProvider {
   /// Modele par defaut (celui qu'installe `OllamaService`).
   static const String defaultModel = 'mistral';
 
+  /// Contexte du modèle local. Borné : le défaut d'Ollama peut allouer un
+  /// cache de plusieurs Go en mémoire unifiée. Assez pour une requête de
+  /// 10 000 caractères (~3 500 jetons) plus une réponse longue.
+  static const int contextTokens = 8192;
+
   final Dio _dio;
 
   /// Modele utilise quand la requete n'en demande pas.
@@ -34,8 +39,12 @@ class OllamaLlmProvider implements LlmProvider {
           for (final LlmMessage m in request.messages)
             <String, String>{'role': m.role.name, 'content': m.content},
         ],
-        'options': <String, Object?>{'num_predict': request.maxTokens},
+        'options': <String, Object?>{
+          'num_predict': request.maxTokens,
+          'num_ctx': contextTokens,
+        },
       },
+      headerTimeout: kLlmLocalHeaderTimeout,
     );
     return lines.expand(_texts);
   }

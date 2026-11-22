@@ -1,11 +1,15 @@
+import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/application/services/llm/llm_settings.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
+import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/ollama.service.provider.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'ollama_setup.view_model.g.dart';
 
-/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
+/// ViewModel du modèle local (moteur Ollama + modèle choisi dans Réglages,
+/// Mistral par défaut).
 ///
 /// [build] détecte seulement (aucun téléchargement) ; [install] lance
 /// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
@@ -17,8 +21,19 @@ class OllamaSetupViewModel extends _$OllamaSetupViewModel {
     return const OllamaSetupState();
   }
 
+  /// Le service vise le modèle local choisi dans Réglages.
+  Future<OllamaService> _selected() async {
+    final String model = LlmSettings.fromPrefs(
+      await ref.read(prefsStoreProvider).read(),
+    ).modelFor(LlmProviderId.ollama);
+    final OllamaService service = ref.read(ollamaServiceProvider);
+    service.model = model;
+    return service;
+  }
+
   Future<void> _detect() async {
-    final bool installed = await ref.read(ollamaServiceProvider).isInstalled();
+    final OllamaService service = await _selected();
+    final bool installed = await service.isInstalled(model: service.model);
     if (installed) {
       state = state.copyWith(
         stage: OllamaSetupStage.ready,
@@ -32,9 +47,7 @@ class OllamaSetupViewModel extends _$OllamaSetupViewModel {
   Future<void> install() async {
     state = const OllamaSetupState(stage: OllamaSetupStage.downloadingBinary);
     try {
-      await ref
-          .read(ollamaServiceProvider)
-          .ensureReady(
+      await (await _selected()).ensureReady(
             onProgress: (OllamaSetupStage stage, double progress) {
               state = state.copyWith(stage: stage, progress: progress);
             },

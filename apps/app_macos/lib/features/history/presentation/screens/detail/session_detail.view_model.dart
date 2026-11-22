@@ -4,14 +4,16 @@ import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/services/session_history.service.dart';
 import 'package:core_domain/domain/usecases/get_session_detail.use_case.dart';
-import 'package:ici_transcript/application/services/ollama.service.dart';
+import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/summary.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
-import 'package:ici_transcript/core/providers/services/ollama.service.provider.dart';
+import 'package:ici_transcript/core/providers/services/ready_llm.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
+import 'package:ici_transcript/features/shared/presentation/llm_error_key.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'session_detail.view_model.g.dart';
@@ -25,13 +27,12 @@ part 'session_detail.view_model.g.dart';
 class SessionDetailViewModel extends _$SessionDetailViewModel {
   late SessionHistoryService _sessionHistoryService;
   late SummaryService _summaryService;
-  late OllamaService _ollamaService;
+  final Log _log = Log.named('SessionDetailViewModel');
 
   @override
   Future<SessionDetailState> build({required String sessionId}) async {
     _sessionHistoryService = ref.watch(sessionHistoryServiceProvider);
     _summaryService = ref.watch(summaryServiceProvider);
-    _ollamaService = ref.watch(ollamaServiceProvider);
     return _loadSession(sessionId);
   }
 
@@ -46,12 +47,22 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
     );
     final SessionAnalysis analysis = SessionAnalysis.fromStored(stored);
     return SessionDetailState(
+      llmAvailable: await _llmAvailable(),
       session: detail.session,
       segments: detail.segments,
       summary: analysis.summary,
       feedback: analysis.feedback,
       speakers: analysis.speakers,
     );
+  }
+
+  /// Un fournisseur peut-il repondre ? Detection seule (rien ne demarre).
+  Future<bool> _llmAvailable() async {
+    try {
+      return await readyLlm(ref, start: false) != null;
+    } on Object {
+      return false;
+    }
   }
 
   /// Met a jour le titre de la session.
@@ -102,7 +113,12 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
     return _transcript(currentState);
   }
 
-  /// Genere (a la demande) un resume IA en francais de la session.
+  /// Genere (a la demande) un resume IA en francais de la session, par le
+  /// fournisseur actif ; le texte s'affiche au fil de l'eau.
+  ///
+  /// Rien d'utilisable : rien n'est envoye ni telecharge (invite de la
+  /// note). Erreur : message, rien range. Reponse qui semble coupee :
+  /// affichee et signalee, pas rangee comme un resume complet.
   Future<void> generateSummary() async {
     final SessionDetailState? current = state.value;
     final SessionEntity? session = current?.session;
@@ -110,27 +126,61 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
 
     final String transcript = _transcript(current);
     if (transcript.trim().isEmpty) return;
-    // Sans modèle installé : rien à télécharger d'ici, la note affiche
-    // l'invite « configurer un modèle » (installation depuis Réglages).
-    if (!await _ollamaService.isInstalled()) return;
 
-    state = AsyncData<SessionDetailState>(
-      current.copyWith(isSummaryLoading: true),
+    _set(
+      (SessionDetailState s) => s.copyWith(
+        isSummaryLoading: true,
+        summaryError: null,
+        summaryIncomplete: false,
+      ),
     );
     try {
-      await _ollamaService.ensureReady();
-      final String summary = await _ollamaService.summarize(transcript);
-      await _persist(session.id, summary: summary);
-      _emit(summary: summary, isSummaryLoading: false);
-    } catch (e) {
-      _emit(
-        summary: 'Erreur lors de la génération du résumé : $e',
-        isSummaryLoading: false,
+      final ReadyLlm? ready = await readyLlm(ref);
+      if (ready == null) {
+        return _set(
+          (SessionDetailState s) =>
+              s.copyWith(isSummaryLoading: false, llmAvailable: false),
+        );
+      }
+      final StringBuffer text = StringBuffer();
+      await for (final String chunk in summarizeMeeting(
+        ready.llm,
+        transcript,
+      )) {
+        if (!ref.mounted) return;
+        text.write(chunk);
+        _set((SessionDetailState s) => s.copyWith(summary: text.toString()));
+      }
+      final String summary = text.toString();
+      final bool incomplete = looksTruncated(summary);
+      if (!incomplete) {
+        await _store(
+          session.id,
+          (SessionAnalysis a) => a.copyWith(summary: summary),
+          model: ready.model,
+        );
+      }
+      _set(
+        (SessionDetailState s) => s.copyWith(
+          summary: summary,
+          summaryIncomplete: incomplete,
+          isSummaryLoading: false,
+        ),
+      );
+    } on Object catch (e) {
+      _log.error('Résumé échoué : $e');
+      _set(
+        (SessionDetailState s) => s.copyWith(
+          summary: current.summary,
+          summaryError: llmErrorKey(e),
+          isSummaryLoading: false,
+        ),
       );
     }
   }
 
-  /// Analyse (a la demande) l'anglais parle de la session.
+  /// Analyse (a la demande) l'anglais parle de la session, par le
+  /// fournisseur actif.
   Future<void> analyzeEnglish() async {
     final SessionDetailState? current = state.value;
     final SessionEntity? session = current?.session;
@@ -139,21 +189,38 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
     // Coach = micro de l'utilisateur UNIQUEMENT (pas l'audio du meeting).
     final String transcript = _micTranscript(current);
     if (transcript.trim().isEmpty) return;
-    if (!await _ollamaService.isInstalled()) return;
 
-    state = AsyncData<SessionDetailState>(
-      current.copyWith(isFeedbackLoading: true),
+    _set(
+      (SessionDetailState s) =>
+          s.copyWith(isFeedbackLoading: true, feedbackError: null),
     );
     try {
-      await _ollamaService.ensureReady();
-      final EnglishFeedbackEntity feedback = await _ollamaService
-          .analyzeEnglish(transcript);
-      await _persist(session.id, feedback: feedback);
-      _emit(feedback: feedback, isFeedbackLoading: false);
-    } catch (e) {
-      _emit(
-        feedback: EnglishFeedbackEntity(overall: 'Erreur Ollama : $e'),
-        isFeedbackLoading: false,
+      final ReadyLlm? ready = await readyLlm(ref);
+      if (ready == null) {
+        return _set(
+          (SessionDetailState s) =>
+              s.copyWith(isFeedbackLoading: false, llmAvailable: false),
+        );
+      }
+      final EnglishFeedbackEntity feedback = await coachEnglish(
+        ready.llm,
+        transcript,
+      );
+      if (!ref.mounted) return;
+      // Le coach garde le modele du resume deja range (pas de `model`).
+      await _store(
+        session.id,
+        (SessionAnalysis a) => a.copyWith(feedback: feedback),
+      );
+      _set(
+        (SessionDetailState s) =>
+            s.copyWith(feedback: feedback, isFeedbackLoading: false),
+      );
+    } on Object catch (e) {
+      _log.error('Coach anglais échoué : $e');
+      _set(
+        (SessionDetailState s) =>
+            s.copyWith(feedbackError: llmErrorKey(e), isFeedbackLoading: false),
       );
     }
   }
@@ -162,16 +229,30 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
   Future<void> deleteSummary() async {
     final SessionEntity? session = state.value?.session;
     if (session == null) return;
-    await _persist(session.id, clearSummary: true);
-    _emit(clearSummary: true);
+    await _store(
+      session.id,
+      (SessionAnalysis a) => a.copyWith(clearSummary: true),
+    );
+    _set(
+      (SessionDetailState s) => s.copyWith(
+        summary: null,
+        summaryIncomplete: false,
+        summaryError: null,
+      ),
+    );
   }
 
   /// Supprime le retour du coach d'anglais de la session.
   Future<void> deleteFeedback() async {
     final SessionEntity? session = state.value?.session;
     if (session == null) return;
-    await _persist(session.id, clearFeedback: true);
-    _emit(clearFeedback: true);
+    await _store(
+      session.id,
+      (SessionAnalysis a) => a.copyWith(clearFeedback: true),
+    );
+    _set(
+      (SessionDetailState s) => s.copyWith(feedback: null, feedbackError: null),
+    );
   }
 
   /// Active ou desactive le mode edition du titre.
@@ -197,51 +278,35 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
       .map((TranscriptSegmentEntity seg) => seg.text)
       .join('\n');
 
-  /// Persiste l'enveloppe (resume + coach) en fusionnant avec l'etat courant.
-  Future<void> _persist(
-    String sessionId, {
-    String? summary,
-    EnglishFeedbackEntity? feedback,
-    bool clearSummary = false,
-    bool clearFeedback = false,
+  /// Range l'enveloppe stockee modifiee par [change] : on part de la base,
+  /// pas de l'etat affiche (qui peut porter un resume coupe), et on garde
+  /// transcription propre et interlocuteurs.
+  Future<void> _store(
+    String sessionId,
+    SessionAnalysis Function(SessionAnalysis stored) change, {
+    String? model,
   }) async {
-    final SessionDetailState s = state.value ?? SessionDetailState.initial();
-    final SessionAnalysis analysis = SessionAnalysis(
-      summary: clearSummary ? null : (summary ?? s.summary),
-      feedback: clearFeedback ? null : (feedback ?? s.feedback),
+    final SessionAnalysis next = change(
+      SessionAnalysis.fromStored(
+        await _summaryService.getSummaryForSession(sessionId),
+      ),
     );
-    if (analysis.isEmpty) {
+    if (next.isEmpty) {
       await _summaryService.deleteSummaryForSession(sessionId);
     } else {
       await _summaryService.saveSummary(
         sessionId: sessionId,
-        content: analysis.toStored(),
+        content: next.toStored(),
+        model: model,
       );
     }
   }
 
-  /// Reconstruit l'etat (les copyWith freezed ne permettent pas de remettre un
-  /// champ nullable a null ; on reconstruit donc explicitement).
-  void _emit({
-    String? summary,
-    EnglishFeedbackEntity? feedback,
-    bool clearSummary = false,
-    bool clearFeedback = false,
-    bool? isSummaryLoading,
-    bool? isFeedbackLoading,
-  }) {
-    final SessionDetailState s = state.value ?? SessionDetailState.initial();
+  /// Applique [change] a l'etat courant, si le view model vit encore.
+  void _set(SessionDetailState Function(SessionDetailState s) change) {
+    if (!ref.mounted) return;
     state = AsyncData<SessionDetailState>(
-      SessionDetailState(
-        session: s.session,
-        segments: s.segments,
-        isEditing: s.isEditing,
-        summary: clearSummary ? null : (summary ?? s.summary),
-        feedback: clearFeedback ? null : (feedback ?? s.feedback),
-        isSummaryLoading: isSummaryLoading ?? s.isSummaryLoading,
-        isFeedbackLoading: isFeedbackLoading ?? s.isFeedbackLoading,
-        speakers: s.speakers,
-      ),
+      change(state.value ?? SessionDetailState.initial()),
     );
   }
 }
