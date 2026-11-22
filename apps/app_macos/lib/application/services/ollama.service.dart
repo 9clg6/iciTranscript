@@ -61,9 +61,10 @@ class OllamaService {
   // Paths
   // ---------------------------------------------------------------------------
 
-  String get _appSupportDir => appDataDirectory();
+  // Runtime et modèles : cache d'outils partagé avec la release.
+  String get _toolsDir => toolsDirectory();
 
-  String get _binDir => '$_appSupportDir/bin';
+  String get _binDir => '$_toolsDir/bin';
   String get _ollamaBin => '$_binDir/ollama';
 
   // ---------------------------------------------------------------------------
@@ -111,7 +112,7 @@ class OllamaService {
     if (!await _isBinaryAvailable()) return false;
     if (await _isServerRunning()) return _isModelAvailable();
     return Directory(
-      '$_appSupportDir/models/manifests/registry.ollama.ai/library/$_model',
+      '$_toolsDir/models/manifests/registry.ollama.ai/library/$_model',
     ).exists();
   }
 
@@ -373,7 +374,7 @@ class OllamaService {
         'HOME': Platform.environment['HOME'] ?? '/tmp',
         'PATH': _extendedPath(),
         // Stocker les modèles dans le répertoire de l'app
-        'OLLAMA_MODELS': '$_appSupportDir/models',
+        'OLLAMA_MODELS': '$_toolsDir/models',
       },
       mode: ProcessStartMode.detachedWithStdio,
     );

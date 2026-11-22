@@ -42,14 +42,15 @@ class DiarizationService {
       'nemotron-diar-mlx[server] @ $_diarArchive';
 
   static String get _home => Platform.environment['HOME'] ?? '/tmp';
-  static String get _appSupportDir => appDataDirectory();
-  String get _recordingsDir => '$_appSupportDir/recordings';
-  static String get _diarDir => '$_appSupportDir/diar';
-  String get _scriptPath => '$_diarDir/process_session.py';
+  // Enregistrements : données de l'utilisateur. Poids et anciens modèles :
+  // cache d'outils partagé avec la release.
+  String get _recordingsDir => '${appDataDirectory()}/recordings';
+  static String get _toolsDiarDir => '${toolsDirectory()}/diar';
+  String get _scriptPath => '${scriptsDirectory()}/process_session.py';
 
   /// Poids Nemotron convertis en MLX (téléchargés une fois depuis Hugging
   /// Face), partagés par la passe post-session et la diarization en direct.
-  static String get modelCacheDir => '$_diarDir/nemotron';
+  static String get modelCacheDir => '$_toolsDiarDir/nemotron';
   String get _uvBin => '$_home/.local/bin/uv';
 
   /// Chemins WAV par session (écrits par [LiveTranscriptionService]).
@@ -158,10 +159,12 @@ class DiarizationService {
   }
 
   /// Supprime les modèles sherpa-onnx (pyannote + TitaNet) des versions
-  /// précédentes, remplacés par Nemotron 3 Diarization.
+  /// précédentes, remplacés par Nemotron 3 Diarization. Jamais depuis un
+  /// lancement de dev : le dossier des outils appartient à la release.
   Future<void> _removeLegacyModels() async {
+    if (runsOnDevDataDirectory()) return;
     for (final String name in <String>['segmentation.onnx', 'embedding.onnx']) {
-      await _delete('$_diarDir/$name');
+      await _delete('$_toolsDiarDir/$name');
     }
   }
 
