@@ -96,13 +96,16 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
     final LiveTranscriptionState live = ref.read(
       liveTranscriptionViewModelProvider,
     );
-    // Oats enregistre ou dicte : son propre micro n'est jamais un appel.
-    final bool ownCapture =
-        live.isRecording || live.isPaused || ref.read(dictationActiveProvider);
+    final bool recording = live.isRecording || live.isPaused;
+    // Oats enregistre ou dicte : son propre micro n'est jamais un appel, et
+    // rien de nouveau n'apparaît ni ne démarre seul.
+    final bool ownCapture = recording || ref.read(dictationActiveProvider);
 
     final MeetingSuggestion? current = state;
     if (current != null) {
-      if (ownCapture ||
+      // Une invite déjà affichée reste pendant une dictée (l'utilisateur
+      // ne l'a pas ignorée) ; un enregistrement la retire.
+      if (recording ||
           !prefs.detectionEnabled ||
           !suggestionStillValid(
             current,

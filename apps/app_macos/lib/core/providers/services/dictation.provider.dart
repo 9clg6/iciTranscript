@@ -56,6 +56,13 @@ bool isDictating(DictationState s) =>
     s is DictationListening ||
     s is DictationTranscribing;
 
+/// Appelle [onChange] avec [isDictating] à chaque changement de [states]
+/// (branchement stateStream → [dictationActiveProvider]).
+StreamSubscription<bool> followDictation(
+  Stream<DictationState> states,
+  void Function(bool dictating) onChange,
+) => states.map(isDictating).distinct().listen(onChange);
+
 /// La dictée : raccourci global, flux propre hors réunion (micro seul, sur
 /// le serveur partagé), micro de la réunion pendant un enregistrement.
 @Riverpod(keepAlive: true)
@@ -88,10 +95,10 @@ DictationController dictationController(Ref ref) {
       Log.named('Dictation').warning('Réglages de dictée non appliqués: $e');
     });
   }, fireImmediately: true);
-  final StreamSubscription<bool> dictating = controller.stateStream
-      .map(isDictating)
-      .distinct()
-      .listen(ref.read(dictationActiveProvider.notifier).set);
+  final StreamSubscription<bool> dictating = followDictation(
+    controller.stateStream,
+    ref.read(dictationActiveProvider.notifier).set,
+  );
   ref.onDispose(() async {
     await dictating.cancel();
     await controller.dispose();
