@@ -188,7 +188,8 @@ class AnswerText extends StatelessWidget {
     final List<Widget> lines = <Widget>[];
     for (final String line in answer.split('\n')) {
       if (!line.startsWith('- ')) {
-        lines.add(_line(line, o));
+        // Phrase de tête en semi-gras, puces en texte courant.
+        lines.add(_line(line, lines.isEmpty ? o.bodyEmphasis : o.body));
         continue;
       }
       // Puce à retrait suspendu : la suite de la ligne s'aligne sur le texte.
@@ -198,7 +199,7 @@ class AnswerText extends StatelessWidget {
           children: <Widget>[
             Text('•', style: o.body.copyWith(color: o.muted)),
             const SizedBox(width: OatsSpace.sm),
-            Expanded(child: _line(line.substring(2), o)),
+            Expanded(child: _line(line.substring(2), o.body)),
           ],
         ),
       );
@@ -210,7 +211,7 @@ class AnswerText extends StatelessWidget {
     );
   }
 
-  Widget _line(String text, Oats o) {
+  Widget _line(String text, TextStyle style) {
     final List<InlineSpan> spans = <InlineSpan>[];
     int at = 0;
     for (final RegExpMatch m in kCitation.allMatches(text)) {
@@ -232,7 +233,7 @@ class AnswerText extends StatelessWidget {
       );
     }
     spans.add(TextSpan(text: text.substring(at)));
-    return Text.rich(TextSpan(children: spans), style: o.body);
+    return Text.rich(TextSpan(children: spans), style: style);
   }
 }
 

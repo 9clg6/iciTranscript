@@ -6,6 +6,20 @@ import 'package:ici_transcript/application/services/live_answers/live_question.d
 /// refus, quoi qui suive.
 const String kNoAnswerToken = 'NO_ANSWER';
 
+/// Habillage autour du jeton réservé (markdown, citation, guillemets).
+final RegExp _tokenDressing = RegExp('^[\\s>*_`"\'«»“”]+');
+
+/// [raw] commence par [kNoAnswerToken], une fois l'habillage retiré.
+bool isDeclined(String raw) =>
+    raw.replaceFirst(_tokenDressing, '').startsWith(kNoAnswerToken);
+
+/// Début de flux qui peut encore devenir le jeton (habillé) : à ne pas
+/// afficher.
+bool mayBecomeDeclined(String raw) {
+  final String t = raw.replaceFirst(_tokenDressing, '');
+  return t.startsWith(kNoAnswerToken) || kNoAnswerToken.startsWith(t);
+}
+
 /// Puces gardées sous la phrase de tête.
 const int kMaxBullets = 3;
 
@@ -56,7 +70,7 @@ final RegExp _trailingCitations = RegExp(r'(\s*\[S\d+\])+\s*$');
 /// Les autres sont renumérotées dans l'ordre de première citation.
 ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts) {
   final String trimmed = raw.trim();
-  if (trimmed.startsWith(kNoAnswerToken)) {
+  if (isDeclined(trimmed)) {
     return const ParsedAnswer(
       declined: true,
       headline: '',
@@ -95,11 +109,39 @@ ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts) {
   final String last = cited.isEmpty
       ? ''
       : cited.last.replaceFirst(_trailingCitations, '');
+  final bool emptyLastBullet = RegExp(
+    r'(^|\n)\s*([-*•]|\d+[.)])\s*$',
+  ).hasMatch(trimmed);
   return ParsedAnswer(
     declined: false,
     headline: cited.isEmpty ? '' : cited.first,
     bullets: cited.skip(1).toList(),
     sources: sources,
-    truncated: last.isNotEmpty && !_finalStop.hasMatch(last),
+    truncated:
+        emptyLastBullet ||
+        (cited.length > 1
+            ? _bulletLooksCut(last)
+            : last.isNotEmpty && !_finalStop.hasMatch(last)),
   );
+}
+
+/// Mots outils après lesquels une puce ne peut pas finir.
+const Set<String> _functionWords = <String>{
+  'de', 'du', 'des', 'le', 'la', 'les', 'un', 'une', 'et', 'ou', 'à', 'au', //
+  'aux', 'pour', 'par', 'avec', 'en', 'sur', 'the', 'a', 'an', 'of', 'to', //
+  'and', 'or', 'for', 'with', 'in', 'on', 'at', //
+};
+
+/// Dernière puce coupée ? Sans signal de fin de longueur du fournisseur :
+/// seulement si elle finit sur un signe de suite (, ; : - – ou parenthèse
+/// ouverte) ou sur un mot outil. Une puce finie par un mot plein est
+/// complète, même sans point.
+bool _bulletLooksCut(String bullet) {
+  if (_finalStop.hasMatch(bullet)) return false;
+  if (RegExp(r'[,;:\-–(]$').hasMatch(bullet)) return true;
+  if ('('.allMatches(bullet).length > ')'.allMatches(bullet).length) {
+    return true;
+  }
+  final String lastWord = bullet.split(RegExp(r'\s+')).last.toLowerCase();
+  return _functionWords.contains(lastWord);
 }

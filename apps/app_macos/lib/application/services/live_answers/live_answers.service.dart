@@ -352,11 +352,7 @@ class LiveAnswersService {
   /// Texte partiel affichable : le jeton réservé ne s'affiche jamais, même
   /// en partie.
   static String _visible(String raw) {
-    final String t = raw.trimLeft();
-    if (t.startsWith(kNoAnswerToken) || kNoAnswerToken.startsWith(t)) {
-      return '';
-    }
-    return raw;
+    return mayBecomeDeclined(raw) ? '' : raw;
   }
 
   void _complete(
