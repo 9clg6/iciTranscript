@@ -55,6 +55,15 @@ void main() {
   void serverSays(String type, String key, String text) =>
       mic.emit(<String, Object>{'type': type, key: text});
 
+  /// Laisse la reconnexion se faire (15 s au plus, plafond de 10 s compris)
+  /// avant que le serveur réponde.
+  void untilConnected() {
+    for (int i = 0; i < 150 && !mic.isConnected; i++) {
+      clock.elapse(const Duration(milliseconds: 100));
+    }
+    expect(mic.isConnected, isTrue, reason: 'reconnexion attendue');
+  }
+
   List<String> texts() => h.segments
       .of(AudioSource.input)
       .map((TranscriptSegmentEntity s) => s.text)
@@ -79,6 +88,7 @@ void main() {
           ..drop();
         say(40, 20);
         mic.refusing = false;
+        untilConnected();
         say(60, 30);
         say(90, 20, level: _Level.silence); // commit final
         serverSays(
@@ -110,7 +120,8 @@ void main() {
           ..drop();
         say(40, 20);
         mic.refusing = false;
-        say(60, 20); // reconnexion et renvoi pendant ce temps
+        untilConnected(); // renvoi de la phrase sur la nouvelle connexion
+        say(60, 20);
         serverSays(
           'response.audio_transcript.delta',
           'delta',
@@ -139,6 +150,7 @@ void main() {
         mic
           ..refusing = false
           ..autoReply = true;
+        untilConnected();
         say(1530, 50);
         say(1580, 30, level: _Level.silence);
         async.elapse(const Duration(seconds: 2));
@@ -159,20 +171,39 @@ void main() {
   });
 
   group('phrase sans parole et hallucination connue (point 4)', () {
-    test('moins de 300 ms au-dessus du seuil de parole : « Thank you. » '
-        'n est pas sauvé', () {
+    test('200 ms de parole puis silence : « Thank you. » n est pas sauvé', () {
       fakeAsync((FakeAsync async) {
         setUpIn(async);
         mic.reply = (_) => 'Thank you.';
-        say(0, 1); // 100 ms de parole
-        say(1, 10, level: _Level.weak); // bruit sous le seuil, phrase ouverte
-        say(11, 25, level: _Level.silence);
+        say(0, 2);
+        say(2, 25, level: _Level.silence);
         async.elapse(const Duration(seconds: 2));
 
         expect(mic.doneSent, 1);
         expect(texts(), isEmpty);
       });
     });
+
+    // Lecture du besoin (« jamais 300 ms au-dessus du seuil de parole ») :
+    // un audio entre 180 et 300 de RMS prolonge la phrase mais ne compte
+    // pas comme parole. À confirmer.
+    test(
+      'interprétation : moins de 300 ms au-dessus du seuil, même '
+      'prolongé par un bruit plus faible, « Thank you. » n est pas sauvé',
+      () {
+        fakeAsync((FakeAsync async) {
+          setUpIn(async);
+          mic.reply = (_) => 'Thank you.';
+          say(0, 1); // 100 ms de parole
+          say(1, 10, level: _Level.weak); // bruit sous le seuil, phrase ouverte
+          say(11, 25, level: _Level.silence);
+          async.elapse(const Duration(seconds: 2));
+
+          expect(mic.doneSent, 1);
+          expect(texts(), isEmpty);
+        });
+      },
+    );
 
     test('avec de la parole, le même « Thank you. » est sauvé', () {
       fakeAsync((FakeAsync async) {
@@ -230,6 +261,66 @@ void main() {
         async.elapse(const Duration(minutes: 5));
         expect(mic.connectCalls, connectsAtStop);
         expect(h.process.starts, hasLength(1));
+      });
+    });
+
+    test('crash du serveur puis arrêt avant la relance : arrêt rapide, '
+        'session close, aucune relance', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        say(0, 30);
+        server.up = false;
+        mic.drop();
+        h.process.crash();
+        say(30, 5);
+
+        bool stopped = false;
+        final Duration askedAt = async.elapsed;
+        unawaited(h.service.stopTranscription().then((_) => stopped = true));
+        while (!stopped &&
+            async.elapsed - askedAt < const Duration(seconds: 30)) {
+          async.elapse(const Duration(milliseconds: 100));
+        }
+
+        expect(stopped, isTrue);
+        expect(
+          async.elapsed - askedAt,
+          lessThanOrEqualTo(const Duration(seconds: 10)),
+        );
+        expect(h.session.status, SessionStatus.completed);
+        async.elapse(const Duration(minutes: 10));
+        expect(h.process.starts, hasLength(1));
+      });
+    });
+
+    test('arrêt pendant une relance lente : arrêt rapide, session close, '
+        'aucune relance de plus', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        say(0, 30);
+        h.process.startDuration = const Duration(seconds: 200);
+        server.up = false;
+        mic.drop();
+        h.process.crash();
+        say(30, 100); // la relance part et charge le modèle
+        expect(h.process.starts, hasLength(2));
+
+        bool stopped = false;
+        final Duration askedAt = async.elapsed;
+        unawaited(h.service.stopTranscription().then((_) => stopped = true));
+        while (!stopped &&
+            async.elapsed - askedAt < const Duration(seconds: 30)) {
+          async.elapse(const Duration(milliseconds: 100));
+        }
+
+        expect(stopped, isTrue);
+        expect(
+          async.elapsed - askedAt,
+          lessThanOrEqualTo(const Duration(seconds: 10)),
+        );
+        expect(h.session.status, SessionStatus.completed);
+        async.elapse(const Duration(minutes: 10));
+        expect(h.process.starts, hasLength(2));
       });
     });
   });
