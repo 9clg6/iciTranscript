@@ -1,7 +1,10 @@
+import 'dart:ui' show Tristate;
+
 import 'package:core_presentation/core_presentation.dart';
 import 'package:dio/dio.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -265,6 +268,58 @@ void main() {
     await open(tester);
 
     expect(inSection(find.text('⌃⌥⇧⌘Z')), findsOneWidget);
-    expect(find.textContaining('W'), findsNothing);
+    // Jamais le nom QWERTY de la touche (W), seulement dans la section : le
+    // chemin du dossier de données, affiché ailleurs, peut contenir un W.
+    expect(inSection(find.textContaining('⌘W')), findsNothing);
+    expect(inSection(find.textContaining('W')), findsNothing);
+  });
+
+  Finder changeFinder() => inSection(
+    find.widgetWithText(OatsButton, 'settings.dictation.shortcut_change'.tr()),
+  );
+
+  /// Ce que VoiceOver lit du bouton « Modifier » (sans `isSemantics`, absent
+  /// de Flutter 3.38.4).
+  SemanticsData changeSemantics(WidgetTester tester) => tester
+      .getSemantics(
+        find
+            .descendant(of: changeFinder(), matching: find.byType(Semantics))
+            .first,
+      )
+      .getSemanticsData();
+
+  Color? changeLabelColor(WidgetTester tester) => tester
+      .renderObject<RenderParagraph>(
+        find.descendant(of: changeFinder(), matching: find.byType(RichText)),
+      )
+      .text
+      .style
+      ?.color;
+
+  testWidgets('dictée coupée : « Modifier » exposé et dessiné comme '
+      'désactivé', (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    await open(tester);
+    expect(changeSemantics(tester).flagsCollection.isEnabled, Tristate.isTrue);
+    final Color? enabledColor = changeLabelColor(tester);
+
+    await tester.ensureVisible(enabledSwitch());
+    await tester.tap(enabledSwitch());
+    await tester.pump();
+    await io(tester);
+
+    expect(changeSemantics(tester).flagsCollection.isEnabled, Tristate.isFalse);
+    expect(
+      changeLabelColor(tester),
+      isNot(enabledColor),
+      reason: 'un bouton inactif ne doit pas avoir l air actif',
+    );
+    await tester.tap(changeFinder(), warnIfMissed: false);
+    await tester.pump();
+    expect(
+      find.text('settings.dictation.shortcut_recording'.tr()),
+      findsNothing,
+    );
+    semantics.dispose();
   });
 }
