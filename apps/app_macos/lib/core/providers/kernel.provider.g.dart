@@ -56,4 +56,4 @@ final class KernelProvider
   }
 }
 
-String _$kernelHash() => r'71e047969645870cddd857e7a00d2994059c92f3';
+String _$kernelHash() => r'fba244b71d9a0b3a95652e25b4a2b31944aa700e';

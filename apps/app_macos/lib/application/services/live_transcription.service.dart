@@ -19,6 +19,7 @@ import 'package:core_domain/domain/enum/transcription_health.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
+import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
@@ -53,8 +54,10 @@ final class LiveTranscriptionService {
     LiveDiarizationService? liveDiarization,
     WavRecorder Function()? createWavRecorder,
     GapBackfillService? gapBackfill,
+    GapBackfillRetry? gapBackfillRetry,
     ServerPorts? ports,
   }) : _gapBackfill = gapBackfill,
+       _gapBackfillRetry = gapBackfillRetry,
        _ports = ports ?? serverPorts(),
        _processManagerService = processManagerService,
        _audioCaptureChannel = audioCaptureChannel,
@@ -71,6 +74,9 @@ final class LiveTranscriptionService {
   final LiveDiarizationService? _liveDiarization;
   final WavRecorder Function() _createWavRecorder;
   final GapBackfillService? _gapBackfill;
+  // Si présent, la première tentative passe par lui : un serveur absent
+  // laisse la session en attente de reprise.
+  final GapBackfillRetry? _gapBackfillRetry;
 
   // Interlocuteurs en direct : id de segment système -> index (0, 1, …).
   final BehaviorSubject<Map<String, int>> _speakerLabels =
@@ -494,7 +500,8 @@ final class LiveTranscriptionService {
 
   Future<void> _backfillGaps(String sessionId) async {
     final GapBackfillService? backfill = _gapBackfill;
-    if (backfill == null) return;
+    final GapBackfillRetry? retry = _gapBackfillRetry;
+    if (backfill == null && retry == null) return;
     final List<({String markerId, AudioSource source, int startMs, int endMs})>
     plan = GapBackfillService.plan(
       segmentsStream.value
@@ -514,8 +521,12 @@ final class LiveTranscriptionService {
       ),
     );
     try {
-      await backfill
-          .backfill(sessionId, recordingsDirectory: recordingsDir)
+      await (retry != null
+              ? retry.afterSession(sessionId)
+              : backfill!.backfill(
+                  sessionId,
+                  recordingsDirectory: recordingsDir,
+                ))
           .timeout(_backfillLimit);
     } catch (e) {
       _log.warning('Rattrapage des repères interrompu, repères gardés: $e');

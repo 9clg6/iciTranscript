@@ -1,15 +1,13 @@
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
-import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
-import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
-import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/platform/server_ports.dart';
 import 'package:ici_transcript/core/providers/data/datasource/transcription.remote.data_source.provider.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
+import 'package:ici_transcript/core/providers/services/gap_backfill_retry.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/transcription.service.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -51,13 +49,7 @@ LiveTranscriptionService liveTranscriptionService(Ref ref) {
       ports: ports,
     ),
     ports: ports,
-    gapBackfill: GapBackfillService(
-      transcriber: WebSocketPcmTranscriber(
-        url: ports.transcriptionWebSocket.toString(),
-      ),
-      transcripts: ref.watch(transcriptRepositoryProvider),
-      isRecording: () => transcriptionService.isTranscribingStream.value,
-    ),
+    gapBackfillRetry: ref.watch(gapBackfillRetryProvider),
   );
 
   ref.onDispose(service.dispose);
