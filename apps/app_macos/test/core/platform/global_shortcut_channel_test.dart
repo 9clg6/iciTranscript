@@ -15,6 +15,8 @@ import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
 /// - `setCancelKeyEnabled` {enabled: bool} : Échap n'est capturée que
 ///   pendant une dictée, sinon elle serait volée à toutes les apps.
 ///
+/// - `keyLabel` : voir global_shortcut_key_label_test.dart.
+///
 /// EventChannel `com.icitranscript/global_shortcut_events`
 /// - {type: 'pressed' | 'released' | 'cancel'} ; tout autre type est ignoré.
 void main() {

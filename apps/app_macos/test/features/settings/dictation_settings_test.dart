@@ -16,15 +16,17 @@ import 'package:ici_transcript/features/live_transcription/presentation/screens/
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.screen.dart';
 
+import '../../helpers/dictation_fakes.dart';
 import '../../helpers/fake_view_models.dart';
 import '../../helpers/localized_app.dart';
 import '../../helpers/settings_fakes.dart';
 
 /// Section « Dictée » de Réglages (T2), bâtie comme la section IA : titre de
 /// section, lignes libellé + commande (`OatsSwitch`, `DropdownButton`).
-/// Vrai SettingsViewModel, vrai prefs.json (dossier temporaire des tests)
-/// lu et écrit par le `PrefsStore` partagé (clés `dictation_*`, voir
-/// dictation_preferences_test).
+/// Vrai SettingsViewModel pour la page et vrai `DictationSettingsViewModel`
+/// pour la section (un view model à part, choix de l'implémenteur), vrai
+/// prefs.json (dossier temporaire des tests) lu et écrit par le `PrefsStore`
+/// partagé (clés `dictation_*`, voir dictation_preferences_test).
 ///
 /// Repères supposés (en plus des textes de fr.json) :
 /// - la section porte `ValueKey<String>('settings-dictation')` ;
@@ -34,11 +36,24 @@ import '../../helpers/settings_fakes.dart';
 /// - sortie : `DropdownButton<DictationOutputMode>`, entrées
 ///   `settings.dictation.output_paste` et `settings.dictation.output_clipboard` ;
 /// - raccourci refusé : `settings.dictation.shortcut_unavailable`, lu de
-///   `dictationShortcutStatusProvider` (`@riverpod Stream<ShortcutStatus>`).
+///   `dictationShortcutStatusProvider` (`@riverpod Stream<ShortcutStatus>`) ;
+/// - « Modifier » (`OatsButton` `settings.dictation.shortcut_change`) :
+///   inactif tant que la dictée est coupée ;
+/// - raccourci affiché avec les caractères de la disposition de clavier
+///   courante (pas la position QWERTY) : modificateurs ⌃⌥⇧⌘ dans l'ordre
+///   d'Apple, puis le caractère rendu par
+///   `GlobalShortcutChannel.keyLabel(keyCode)` (`globalShortcutChannelProvider`) ;
+///   Espace reste le mot traduit.
 void main() {
-  setUp(resetPrefs);
+  late FakeGlobalShortcutChannel shortcuts;
+
+  setUp(() {
+    resetPrefs();
+    shortcuts = FakeGlobalShortcutChannel();
+  });
 
   List<Override> overrides(ShortcutStatus status) => <Override>[
+    globalShortcutChannelProvider.overrideWithValue(shortcuts),
     apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
     llmDioProvider.overrideWithValue(
       Dio()..httpClientAdapter = RecordingHttpAdapter(),
@@ -209,5 +224,47 @@ void main() {
       find.text('settings.dictation.shortcut_unavailable'.tr()),
       findsNothing,
     );
+  });
+
+  OatsButton changeButton(WidgetTester tester) => tester.widget<OatsButton>(
+    inSection(
+      find.widgetWithText(
+        OatsButton,
+        'settings.dictation.shortcut_change'.tr(),
+      ),
+    ),
+  );
+
+  testWidgets('« Modifier » inactif tant que la dictée est coupée', (
+    WidgetTester tester,
+  ) async {
+    await open(tester);
+    expect(changeButton(tester).onPressed, isNotNull);
+
+    await tester.ensureVisible(enabledSwitch());
+    await tester.tap(enabledSwitch());
+    await tester.pump();
+    await io(tester);
+
+    expect(changeButton(tester).onPressed, isNull);
+  });
+
+  testWidgets('raccourci affiché selon la disposition de clavier courante, '
+      'modificateurs dans l ordre ⌃⌥⇧⌘', (WidgetTester tester) async {
+    // Touche 13 : W en QWERTY, Z en AZERTY.
+    await DictationPreferences().save(
+      const DictationSettings(
+        shortcut: DictationShortcut(
+          keyCode: 13,
+          modifiers: 256 | 512 | 2048 | 4096,
+        ),
+      ),
+    );
+    shortcuts.keyLabels[13] = 'Z';
+
+    await open(tester);
+
+    expect(inSection(find.text('⌃⌥⇧⌘Z')), findsOneWidget);
+    expect(find.textContaining('W'), findsNothing);
   });
 }
