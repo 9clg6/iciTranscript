@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:core_data/clients/websocket_client.dart';
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
+import 'package:core_data/model/remote/transcript_event.remote.model.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 import 'package:test/test.dart';
@@ -116,6 +117,49 @@ void main() {
     expect(server.channels.last.receivedIds, range(0, 30));
     expect(states.last, domain.ConnectionState.connected);
   });
+
+  test('un done reçu sur la deuxième socket devient un événement de la bonne '
+      'source', () async {
+    final _FakeServer micServer = _FakeServer();
+    final _FakeServer systemServer = _FakeServer();
+    final TranscriptionRemoteDataSourceImpl both =
+        TranscriptionRemoteDataSourceImpl(
+          micClient: WebSocketClient(connectChannel: micServer.connect),
+          systemClient: WebSocketClient(connectChannel: systemServer.connect),
+        );
+    addTearDown(both.dispose);
+    final List<TranscriptEventRemoteModel> micEvents =
+        <TranscriptEventRemoteModel>[];
+    final List<TranscriptEventRemoteModel> systemEvents =
+        <TranscriptEventRemoteModel>[];
+    bool isDone(TranscriptEventRemoteModel e) =>
+        e.type == 'response.audio_transcript.done';
+    both.transcriptionStream.where(isDone).listen(micEvents.add);
+    both.systemTranscriptionStream.where(isDone).listen(systemEvents.add);
+    await both.connect();
+
+    for (int id = 0; id < 10; id++) {
+      both.sendAudio(chunk(AudioSource.input, id, timestampMs: t0 + id * 100));
+    }
+    micServer.channels.last.closeFromServer();
+    await Future<void>.delayed(Duration.zero);
+    for (int id = 10; id < 20; id++) {
+      both.sendAudio(chunk(AudioSource.input, id, timestampMs: t0 + id * 100));
+    }
+    await eventually(() => micServer.channels.length == 2);
+    await eventually(() => micServer.channels.last.receivedIds.isNotEmpty);
+
+    micServer.channels.last.sendFromServer(<String, Object>{
+      'type': 'response.audio_transcript.done',
+      'text': 'Bonjour à tous.',
+    });
+    await eventually(() => micEvents.isNotEmpty);
+
+    expect(micEvents.map((TranscriptEventRemoteModel e) => e.text), <String?>[
+      'Bonjour à tous.',
+    ]);
+    expect(systemEvents, isEmpty);
+  });
 }
 
 /// Serveur factice : ouvre un canal par connexion, accepte ou refuse.
@@ -162,6 +206,9 @@ final class _FakeChannel implements WebSocketChannel {
   String? get closeReason => null;
 
   void closeFromServer() => unawaited(_fromServer.close());
+
+  void sendFromServer(Map<String, Object> event) =>
+      _fromServer.add(jsonEncode(event));
 
   void failFromServer() {
     _fromServer.addError(const SocketException('Connection reset by peer'));
