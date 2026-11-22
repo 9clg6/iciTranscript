@@ -587,6 +587,11 @@ final class LiveTranscriptionService {
     // (sans serveur).
     if (plan.isEmpty &&
         GapBackfillService.dictatedMarkers(segments, dictated).isEmpty) {
+      // Rien à rattraper ici, mais le serveur se libère : les sessions en
+      // attente d'autres réunions repartent (en tâche de fond).
+      if (retry != null && !_startRequested) {
+        unawaited(retry.afterSession(sessionId));
+      }
       return;
     }
     if (_startRequested || skip.isCompleted) {
