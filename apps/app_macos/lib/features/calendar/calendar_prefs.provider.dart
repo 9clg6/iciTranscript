@@ -91,7 +91,7 @@ class CalendarPrefsController extends _$CalendarPrefsController {
     required List<String> allIds,
   }) async {
     final CalendarPrefs p = await _current();
-    final Set<String> ids = <String>{...?p.calendarIds ?? allIds};
+    final Set<String> ids = <String>{...p.calendarIds ?? allIds};
     included ? ids.add(id) : ids.remove(id);
     final bool all = allIds.every(ids.contains);
     final List<String>? next = all ? null : allIds.where(ids.contains).toList();
