@@ -11,6 +11,8 @@ import 'package:drift/native.dart';
 /// utilisateurs.
 QueryExecutor v1DatabaseWithData() {
   return NativeDatabase.memory(
+    // ponytail: type `Database` de package:sqlite3, non dependance directe.
+    // ignore: always_specify_types
     setup: (raw) {
       raw.execute(
         'CREATE TABLE "sessions" ("id" TEXT NOT NULL, "title" TEXT NOT NULL, '
