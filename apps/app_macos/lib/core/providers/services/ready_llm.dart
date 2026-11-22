@@ -24,13 +24,16 @@ Future<ReadyLlm?> readyLlm(Ref ref, {bool start = true}) async {
     await ref.read(prefsStoreProvider).read(),
   );
   final LlmProviderId id = await resolveActiveLlmProvider(keys, settings);
+  final String model = settings.modelFor(id);
   if (id == LlmProviderId.ollama) {
     final OllamaService ollama = ref.read(ollamaServiceProvider);
-    if (!await ollama.isInstalled()) return null;
-    if (start) await ollama.ensureReady();
+    // Le modèle choisi, pas seulement mistral ; présent, ensureReady ne
+    // fait que démarrer le serveur.
+    if (!await ollama.isInstalled(model: model)) return null;
+    if (start) await (ollama..model = model).ensureReady();
   }
   return (
     llm: await ref.read(activeLlmProviderProvider.future),
-    model: settings.modelFor(id),
+    model: model,
   );
 }

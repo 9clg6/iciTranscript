@@ -49,7 +49,11 @@ class OllamaService {
   static final String _baseUrl = '$ollamaBaseUrl';
   // Mistral 7B : ~3-5x plus rapide que mistral-small (24B) sur Mac, qualite
   // suffisante pour le coaching et le resume.
-  static const String _model = 'mistral';
+  static const String defaultModel = 'mistral';
+
+  /// Modèle local choisi dans Réglages : celui que [ensureReady] installe
+  /// et que [unloadModel] décharge.
+  String model = defaultModel;
 
   /// Garde le modele charge en RAM 15 min entre deux requetes (evite le
   /// rechargement a froid ~14s qui rend la 1re analyse tres lente).
@@ -111,16 +115,21 @@ class OllamaService {
     onProgress?.call(OllamaSetupStage.ready, 1);
   }
 
-  /// Le moteur et le modèle sont-ils déjà sur le disque ?
+  /// Le moteur et le modèle [model] (null : [defaultModel]) sont-ils déjà
+  /// sur le disque ?
   ///
   /// Détection seule : ne télécharge rien et ne démarre aucun process. Si un
   /// serveur tourne déjà, on lui demande ses modèles ; sinon on cherche le
   /// manifeste du modèle dans `models/` (là où [_startServer] les range).
-  Future<bool> isInstalled() async {
+  Future<bool> isInstalled({String? model}) async {
+    final String name = model ?? defaultModel;
     if (!await _isBinaryAvailable()) return false;
-    if (await _isServerRunning()) return _isModelAvailable();
+    if (await _isServerRunning()) return _isModelAvailable(name);
+    // `nom[:tag]` → library/nom[/tag] ; `espace/nom[:tag]` → espace/nom[/tag].
+    final String path = name.contains('/') ? name : 'library/$name';
     return Directory(
-      '$_toolsDir/models/manifests/registry.ollama.ai/library/$_model',
+      '$_toolsDir/models/manifests/registry.ollama.ai/'
+      '${path.replaceFirst(':', '/')}',
     ).exists();
   }
 
@@ -182,7 +191,7 @@ class OllamaService {
       ..receiveTimeout = const Duration(seconds: 15);
     await dio.post<void>(
       '$_baseUrl/api/generate',
-      data: <String, dynamic>{'model': _model, 'keep_alive': 0},
+      data: <String, dynamic>{'model': model, 'keep_alive': 0},
       options: Options(
         headers: <String, String>{'content-type': 'application/json'},
       ),
@@ -198,7 +207,7 @@ class OllamaService {
   }) async {
     final Dio dio = Dio()..options.receiveTimeout = const Duration(minutes: 5);
     final Map<String, dynamic> payload = <String, dynamic>{
-      'model': _model,
+      'model': model,
       'stream': false,
       'keep_alive': _keepAlive,
       // Contexte borné : le défaut 32768 alloue un KV cache de plusieurs Go
@@ -420,7 +429,8 @@ class OllamaService {
   // Model
   // ---------------------------------------------------------------------------
 
-  Future<bool> _isModelAvailable() async {
+  Future<bool> _isModelAvailable([String? name]) async {
+    final String wanted = name ?? model;
     try {
       final Dio dio = Dio();
       final Response<Map<String, dynamic>> res = await dio
@@ -430,7 +440,7 @@ class OllamaService {
       return models.any((dynamic m) {
         final String name =
             (m as Map<String, dynamic>)['name'] as String? ?? '';
-        return name.startsWith(_model);
+        return name == wanted || name.startsWith('$wanted:');
       });
     } catch (_) {
       return false;
@@ -439,7 +449,7 @@ class OllamaService {
 
   /// Tire le modèle via l'API REST Ollama (NDJSON stream) pour avoir la progression.
   Future<void> _pullModel({void Function(double progress)? onProgress}) async {
-    _log.info('Téléchargement du modèle $_model via Ollama API...');
+    _log.info('Téléchargement du modèle $model via Ollama API...');
 
     final HttpClient client = HttpClient();
     final HttpClientRequest request = await client.postUrl(
@@ -447,7 +457,7 @@ class OllamaService {
     );
     request.headers.contentType = ContentType.json;
     request.write(
-      jsonEncode(<String, dynamic>{'name': _model, 'stream': true}),
+      jsonEncode(<String, dynamic>{'name': model, 'stream': true}),
     );
 
     final HttpClientResponse response = await request.close();
@@ -470,7 +480,7 @@ class OllamaService {
             onProgress?.call(completed / total);
           } else if (status == 'success') {
             onProgress?.call(1.0);
-            _log.info('Modèle $_model téléchargé');
+            _log.info('Modèle $model téléchargé');
           }
         } catch (_) {
           // Ligne non-JSON, ignorer

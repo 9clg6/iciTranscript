@@ -8,7 +8,8 @@ part of 'ollama_setup.view_model.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
+/// ViewModel du modèle local (moteur Ollama + modèle choisi dans Réglages,
+/// Mistral par défaut).
 ///
 /// [build] détecte seulement (aucun téléchargement) ; [install] lance
 /// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
@@ -16,13 +17,15 @@ part of 'ollama_setup.view_model.dart';
 @ProviderFor(OllamaSetupViewModel)
 const ollamaSetupViewModelProvider = OllamaSetupViewModelProvider._();
 
-/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
+/// ViewModel du modèle local (moteur Ollama + modèle choisi dans Réglages,
+/// Mistral par défaut).
 ///
 /// [build] détecte seulement (aucun téléchargement) ; [install] lance
 /// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
 final class OllamaSetupViewModelProvider
     extends $NotifierProvider<OllamaSetupViewModel, OllamaSetupState> {
-  /// ViewModel du modèle local (moteur Ollama + modèle Mistral).
+  /// ViewModel du modèle local (moteur Ollama + modèle choisi dans Réglages,
+  /// Mistral par défaut).
   ///
   /// [build] détecte seulement (aucun téléchargement) ; [install] lance
   /// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
@@ -54,9 +57,10 @@ final class OllamaSetupViewModelProvider
 }
 
 String _$ollamaSetupViewModelHash() =>
-    r'f2a3998cea7ed277488bc8f8c6f6f06e53551362';
+    r'858d710c55bed90027d59cf922c33a8a5d46d34d';
 
-/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
+/// ViewModel du modèle local (moteur Ollama + modèle choisi dans Réglages,
+/// Mistral par défaut).
 ///
 /// [build] détecte seulement (aucun téléchargement) ; [install] lance
 /// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
