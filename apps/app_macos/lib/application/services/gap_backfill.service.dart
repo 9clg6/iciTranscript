@@ -6,6 +6,7 @@ import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/repositories/transcript.repository.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 
 /// Le transcripteur n'a pas atteint le serveur (connexion refusée) ou a
@@ -42,13 +43,16 @@ final class GapBackfillService {
     required PcmTranscriber transcriber,
     required TranscriptRepository transcripts,
     required bool Function() isRecording,
+    DictatedIntervalsStore? dictatedIntervals,
   }) : _transcriber = transcriber,
        _transcripts = transcripts,
-       _isRecording = isRecording;
+       _isRecording = isRecording,
+       _dictated = dictatedIntervals;
 
   final PcmTranscriber _transcriber;
   final TranscriptRepository _transcripts;
   final bool Function() _isRecording;
+  final DictatedIntervalsStore? _dictated;
   final Log _log = Log.named('GapBackfillService');
 
   /// Élargissement de l'intervalle de chaque perte (mots coupés aux bords).
@@ -61,23 +65,26 @@ final class GapBackfillService {
   );
 
   /// Intervalles à retranscrire : un par repère, élargi de [margin], jamais
-  /// avant le début de la réunion.
+  /// avant le début de la réunion. Les repères micro sont coupés autour des
+  /// intervalles [dictated] (jamais la dictée dans la note) : un repère peut
+  /// donner plusieurs morceaux, ou aucun.
   static List<({String markerId, AudioSource source, int startMs, int endMs})>
-  plan(List<TranscriptSegmentEntity> segments) =>
-      <({String markerId, AudioSource source, int startMs, int endMs})>[
-        for (final TranscriptSegmentEntity s in segments)
-          if (s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix))
-            if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
-              (
-                markerId: s.id,
-                source: s.source,
-                startMs: (s.timestampMs - margin.inMilliseconds).clamp(
-                  0,
-                  s.timestampMs,
-                ),
-                endMs: _ms(m, 4) + margin.inMilliseconds,
-              ),
-      ];
+  plan(
+    List<TranscriptSegmentEntity> segments, {
+    List<DictatedInterval> dictated = const <DictatedInterval>[],
+  }) => <({String markerId, AudioSource source, int startMs, int endMs})>[
+    for (final TranscriptSegmentEntity s in segments)
+      if (s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix))
+        if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
+          for (final (int start, int end) in subtractIntervals(
+            (s.timestampMs - margin.inMilliseconds).clamp(0, s.timestampMs),
+            _ms(m, 4) + margin.inMilliseconds,
+            s.source == AudioSource.input
+                ? dictated
+                : const <DictatedInterval>[],
+          ))
+            (markerId: s.id, source: s.source, startMs: start, endMs: end),
+  ];
 
   static int _ms(RegExpMatch m, int first) =>
       ((int.parse(m.group(first)!) * 60 + int.parse(m.group(first + 1)!)) * 60 +
@@ -97,73 +104,120 @@ final class GapBackfillService {
     final List<TranscriptSegmentEntity> segments = await _transcripts
         .getBySessionId(sessionId);
     final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    gaps = plan(segments);
-    if (_isRecording()) return (markersLeft: gaps.length, reachedServer: false);
+    gaps = plan(
+      segments,
+      dictated: _dictated?.read(sessionId) ?? const <DictatedInterval>[],
+    );
+    if (_isRecording()) {
+      return (markersLeft: _markers(gaps, 0), reachedServer: false);
+    }
     int left = 0;
     bool reached = false;
+    // Un repère coupé par une dictée a plusieurs morceaux, à la suite : son
+    // sort se décide après le dernier.
+    final List<_Part> parts = <_Part>[];
     for (int g = 0; g < gaps.length; g++) {
       final ({String markerId, AudioSource source, int startMs, int endMs})
       gap = gaps[g];
       // Le serveur ne tient pas un troisième flux (sonde) : on s'arrête dès
-      // qu'un enregistrement commence.
+      // qu'un enregistrement (ou une dictée) commence.
       if (_isRecording()) {
-        return (markersLeft: left + gaps.length - g, reachedServer: reached);
+        return (markersLeft: left + _markers(gaps, g), reachedServer: reached);
       }
-      final String track = gap.source == AudioSource.input ? 'mic' : 'system';
-      final Uint8List? pcm = await _readPcm(
-        '$recordingsDirectory/${sessionId}_$track.wav',
-        gap.startMs,
-        gap.endMs,
+      final _Part part = await _backfillPart(
+        sessionId,
+        gap,
+        parts.length,
+        segments,
+        recordingsDirectory,
       );
-      if (pcm == null || pcm.isEmpty) continue;
-      List<({int offsetMs, String text})> pieces;
-      try {
-        pieces = await _transcriber.transcribe(pcm);
-      } on TranscriberUnavailable catch (e) {
-        _log.info('Rattrapage de ${gap.markerId} reporté: $e');
+      parts.add(part);
+      if (part != _Part.noAudio && part != _Part.unavailable) reached = true;
+      final bool lastPart =
+          g == gaps.length - 1 || gaps[g + 1].markerId != gap.markerId;
+      if (!lastPart) continue;
+      if (parts.contains(_Part.unavailable) || parts.contains(_Part.failed)) {
         left++;
-        continue;
-      } on SocketException catch (e) {
-        _log.info('Rattrapage de ${gap.markerId} reporté (serveur absent): $e');
+      } else if (parts.contains(_Part.saved)) {
+        await _transcripts.deleteById(gap.markerId);
+      } else if (parts.contains(_Part.nothingNew)) {
+        // Tout ce qui a été retrouvé était déjà dans les voisins : rien de
+        // nouveau, le repère reste (jamais de texte en double).
         left++;
-        continue;
-      } catch (e) {
-        _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
-        reached = true;
-        left++;
-        continue;
       }
-      reached = true;
-      final TranscriptSegmentEntity marker = segments.firstWhere(
-        (TranscriptSegmentEntity s) => s.id == gap.markerId,
-      );
-      final List<({int offsetMs, String text})> kept = trimOverlaps(
-        pieces,
-        before: _neighbour(segments, marker, before: true)?.text,
-        after: _neighbour(segments, marker, before: false)?.text,
-      );
-      // Tout ce qui a été retrouvé était déjà dans les voisins : rien de
-      // nouveau, le repère reste (jamais de texte en double).
-      if (kept.isEmpty) {
-        left++;
-        continue;
-      }
-      pieces = kept;
-      for (int k = 0; k < pieces.length; k++) {
-        await _transcripts.save(
-          TranscriptSegmentEntity(
-            id: '${gap.markerId}_backfill_$k',
-            sessionId: sessionId,
-            source: gap.source,
-            text: pieces[k].text,
-            timestampMs: gap.startMs + pieces[k].offsetMs,
-            createdAt: clock.now(),
-          ),
-        );
-      }
-      await _transcripts.deleteById(gap.markerId);
+      parts.clear();
     }
     return (markersLeft: left, reachedServer: reached);
+  }
+
+  /// Repères distincts de [gaps] à partir de l'indice [from].
+  static int _markers(
+    List<({String markerId, AudioSource source, int startMs, int endMs})> gaps,
+    int from,
+  ) => gaps
+      .skip(from)
+      .map(
+        (({String markerId, AudioSource source, int startMs, int endMs}) g) =>
+            g.markerId,
+      )
+      .toSet()
+      .length;
+
+  /// Retranscrit un morceau [part] du repère de [gap] et sauve ce qui est
+  /// neuf ; le repère n'est pas retiré ici.
+  Future<_Part> _backfillPart(
+    String sessionId,
+    ({String markerId, AudioSource source, int startMs, int endMs}) gap,
+    int part,
+    List<TranscriptSegmentEntity> segments,
+    String recordingsDirectory,
+  ) async {
+    final String track = gap.source == AudioSource.input ? 'mic' : 'system';
+    final Uint8List? pcm = await _readPcm(
+      '$recordingsDirectory/${sessionId}_$track.wav',
+      gap.startMs,
+      gap.endMs,
+    );
+    if (pcm == null || pcm.isEmpty) return _Part.noAudio;
+    List<({int offsetMs, String text})> pieces;
+    try {
+      pieces = await _transcriber.transcribe(pcm);
+    } on TranscriberUnavailable catch (e) {
+      _log.info('Rattrapage de ${gap.markerId} reporté: $e');
+      return _Part.unavailable;
+    } on SocketException catch (e) {
+      _log.info('Rattrapage de ${gap.markerId} reporté (serveur absent): $e');
+      return _Part.unavailable;
+    } catch (e) {
+      _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
+      return _Part.failed;
+    }
+    final TranscriptSegmentEntity marker = segments.firstWhere(
+      (TranscriptSegmentEntity s) => s.id == gap.markerId,
+    );
+    final List<({int offsetMs, String text})> kept = trimOverlaps(
+      pieces,
+      before: _neighbour(segments, marker, before: true)?.text,
+      after: _neighbour(segments, marker, before: false)?.text,
+    );
+    if (kept.isEmpty) return _Part.nothingNew;
+    // Ids d'avant pour le premier morceau (un repère non coupé ne change pas).
+    final String prefix = part == 0
+        ? '${gap.markerId}_backfill_'
+        : '${gap.markerId}_backfill_p${part}_';
+    for (int k = 0; k < kept.length; k++) {
+      await _transcripts.save(
+        TranscriptSegmentEntity(
+          id: '$prefix$k',
+          sessionId: sessionId,
+          source: gap.source,
+          text: kept[k].text,
+          timestampMs: gap.startMs + kept[k].offsetMs,
+          createdAt: clock.now(),
+        ),
+      );
+    }
+    return _Part.saved;
   }
 
   /// Segment en direct (non repère) de la même source juste avant ou juste
@@ -308,3 +362,6 @@ final class GapBackfillService {
     }
   }
 }
+
+/// Issue d'un morceau de repère.
+enum _Part { noAudio, unavailable, failed, nothingNew, saved }
