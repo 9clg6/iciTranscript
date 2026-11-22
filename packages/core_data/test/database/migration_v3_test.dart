@@ -178,4 +178,46 @@ void main() {
       expect(await _count(db, 'summaries'), 2);
     });
   });
+
+  group('cas réel : base v1 qui avait déjà les objets v2 (chemin 1 -> 2 '
+      'rejouable), puis passage en v3', () {
+    // Objets v2 créés comme sur le vrai fichier : colonnes ajoutées par
+    // ALTER aux tables v1, tables v2 créées ensuite.
+    final List<String> v2ObjectsOnV1 = <String>[
+      'ALTER TABLE "sessions" ADD COLUMN "calendar_event_id" TEXT NULL',
+      'ALTER TABLE "sessions" ADD COLUMN "calendar_event_title" TEXT NULL',
+      'ALTER TABLE "sessions" ADD COLUMN "attendees" TEXT NULL',
+      'ALTER TABLE "transcript_segments" ADD COLUMN "speaker" TEXT NULL',
+      ...kV2Schema.sublist(3),
+      ...kV2Rows.sublist(3),
+    ];
+
+    for (final int version in <int>[1, 2]) {
+      test(
+        'user_version = $version : v3, lignes gardées, questions rangées',
+        () async {
+          final AppDatabase db = AppDatabase(
+            v1DatabaseWithData(
+              extraStatements: v2ObjectsOnV1,
+              userVersion: version,
+            ),
+          );
+          addTearDown(db.close);
+
+          await expectV3(db);
+          expect(await _count(db, 'sessions'), 1);
+          expect(await _count(db, 'transcript_segments'), 2);
+          expect(await _count(db, 'summaries'), 2);
+          expect(await _count(db, 'detected_questions'), 2);
+          expect(
+            (await DocumentDao(db).search('marketing')).single.documentTitle,
+            'Budget 2027',
+          );
+          final Map<String, Map<String, Object?>> q = await _questions(db);
+          expect(q['q-answered']!['status'], 'answered');
+          expect(q['q-open']!['status'], 'unanswered');
+        },
+      );
+    }
+  });
 }
