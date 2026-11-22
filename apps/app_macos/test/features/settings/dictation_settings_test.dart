@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/presentation/app.dart';
 
@@ -18,6 +21,12 @@ import '../../helpers/localized_app.dart';
 /// `@riverpod Stream<ShortcutStatus>` dans
 /// lib/core/providers/services/dictation.provider.dart.
 void main() {
+  final File prefs = File('${appDataDirectory()}/prefs.json');
+  setUp(() {
+    expect(prefs.path, startsWith(Directory.systemTemp.path));
+    if (prefs.existsSync()) prefs.deleteSync();
+  });
+
   final Finder sidebar = find.byKey(const ValueKey<String>('oats-sidebar'));
   // Évalué à l'usage : .tr() doit tourner après le chargement des traductions.
   Finder unavailable() =>
@@ -61,5 +70,14 @@ void main() {
     await openSettings(tester, ShortcutStatus.registered);
 
     expect(unavailable(), findsNothing);
+  });
+
+  testWidgets('raccourci par défaut affiché dans Réglages : ⌃⌥Espace', (
+    WidgetTester tester,
+  ) async {
+    await openSettings(tester, ShortcutStatus.registered);
+
+    expect(find.textContaining('⌃⌥Espace'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'(?<!⌃)⌥Espace')), findsNothing);
   });
 }

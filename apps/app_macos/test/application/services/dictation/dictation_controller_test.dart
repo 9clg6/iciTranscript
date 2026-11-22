@@ -816,20 +816,18 @@ void main() {
       });
     });
 
-    test(
-      'raccourci par défaut ⌥Espace : code 49, modificateurs Carbon 2048',
-      () {
-        fakeAsync((FakeAsync async) {
-          final DictationHarness d = DictationHarness(async)
-            ..launch(const DictationSettings());
+    test('raccourci par défaut ⌃⌥Espace : code 49, modificateurs Carbon '
+        'control | option (6144)', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = DictationHarness(async)
+          ..launch(const DictationSettings());
 
-          expect(d.shortcuts.registered, <({int keyCode, int modifiers})>[
-            (keyCode: 49, modifiers: 2048),
-          ]);
-          expect(d.controller.shortcutStatus, ShortcutStatus.registered);
-        });
-      },
-    );
+        expect(d.shortcuts.registered, <({int keyCode, int modifiers})>[
+          (keyCode: 49, modifiers: 4096 | 2048),
+        ]);
+        expect(d.controller.shortcutStatus, ShortcutStatus.registered);
+      });
+    });
 
     test(
       'raccourci déjà pris : état d erreur visible, pas d échec silencieux',
