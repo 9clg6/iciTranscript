@@ -8,4 +8,8 @@ This probe runs the app's protocol against a real `voxmlx-serve`, on its own por
 3. Generate the audio (macOS `say` and `afconvert`, 16 kHz mono PCM16): `uv run --with websockets python tool/server_probe/probe.py gen`
 4. Run one question at a time: `probe.py q1|q2|q3|q4|q5`, `q6 [--load]`, and `q7 --minutes 15 --server-pid <python pid>`.
 5. Each run writes `<run>.jsonl` (every message, timestamped) and `<run>.summary.json`. The summary gives commit-to-`done` time, first text delta after speech onset, and WER.
-6. Stop the server by killing its process group only: `kill -- -<pgid>`. Then check that `lsof -iTCP:8017` is empty.
+6. Real client with injected faults:
+   - Build the timeline: `probe.py timeline`.
+   - From `packages/core_data`, run `dart run tool/live_probe.dart <A-F> $PROBE_DIR/audio/live <run.jsonl> $PROBE_DIR`. The proxy listens on 8018 (mic) and 8019 (sys). Scenario F kills the server group in `$PROBE_DIR/server.pid` and restarts it.
+   - Score the runs: `probe.py score <run.jsonl>...`
+7. Stop the server by killing its process group only: `kill -- -<pgid>`. Then check that `lsof -iTCP:8017` is empty.

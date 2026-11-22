@@ -466,6 +466,112 @@ async def q7(a):
     print(mem)
 
 
+# ---------- live client harness: corpus + scoring ----------
+
+FR_S = ["Le jardinier", "La boulangère", "Le facteur", "La voisine", "Le maire", "La musicienne", "Le libraire", "La gardienne"]
+FR_V = ["a repeint", "a déplacé", "a nettoyé", "a réparé", "a décoré", "a mesuré", "a rangé", "a photographié"]
+FR_O = ["la vieille barrière", "le banc vert", "la fontaine ronde", "le kiosque à journaux", "la serre", "le portail", "la cabane", "le lavoir"]
+FR_E = ["avant la pluie du soir", "pendant la fête du village", "sous un ciel gris", "avec beaucoup de patience",
+        "sans prévenir personne", "au lever du soleil", "pour la rentrée des classes", "malgré le vent froid"]
+EN_S = ["The baker", "The postman", "My neighbour", "The teacher", "The gardener", "The librarian", "The painter", "The mayor"]
+EN_V = ["repaired", "painted", "cleaned", "moved", "measured", "decorated", "photographed", "tidied"]
+EN_O = ["the wooden fence", "the green bench", "the round fountain", "the old greenhouse", "the garden gate", "the small cabin", "the bus shelter", "the stone wall"]
+EN_E = ["before the evening rain", "during the village fair", "under a grey sky", "with a lot of patience",
+        "without telling anyone", "at sunrise", "for the start of school", "despite the cold wind"]
+
+
+def sentences(rnd, s, v, o, e, n, seen):
+    out = []
+    while len(out) < n:
+        a = f"{rnd.choice(s)} {rnd.choice(v)} {rnd.choice(o)} {rnd.choice(e)}"
+        b = f"{rnd.choice(s)} {rnd.choice(v)} {rnd.choice(o)} {rnd.choice(e)}"
+        t = f"{a}, and then {b[0].lower()}{b[1:]}." if s is EN_S else f"{a}, puis {b[0].lower()}{b[1:]}."
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def cmd_timeline(a):
+    """Two 16 kHz mono PCM16 timelines (mic, sys) of unique sentences + schedule."""
+    out = AUDIO / "live"
+    out.mkdir(parents=True, exist_ok=True)
+    rnd, seen, sched = random.Random(11), set(), {}
+    for src, voices in (("mic", (FR[0], EN[0])), ("sys", (EN[1], FR[1]))):
+        pcm, items, i = bytearray(), [], 0
+        while len(pcm) < a.seconds * RATE * 2:
+            voice = voices[i % 2]
+            fr = voice in FR
+            text = sentences(rnd, FR_S if fr else EN_S, FR_V if fr else EN_V, FR_O if fr else EN_O,
+                             FR_E if fr else EN_E, 1, seen)[0]
+            name = f"live/{src}{i}"
+            gen_one(name, voice, text)
+            clip = load(name)
+            (AUDIO / f"{name}.wav").unlink()
+            start = len(pcm) / 2 / RATE
+            pcm += clip
+            items.append({"i": i, "text": text, "start": round(start, 2), "end": round(len(pcm) / 2 / RATE, 2)})
+            pcm += silence(rnd.choice((2000, 2500, 3000)))
+            i += 1
+        with wave.open(str(out / f"{src}.wav"), "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(RATE)
+            w.writeframes(bytes(pcm))
+        sched[src] = items
+        print(src, len(items), "sentences", round(len(pcm) / 2 / RATE, 1), "s")
+    (out / "schedule.json").write_text(json.dumps(sched, ensure_ascii=False, indent=1))
+
+
+def cmd_score(a):
+    """Score live-harness JSONL runs against the schedule (sentence match by text)."""
+    sched = json.loads((AUDIO / "live" / "schedule.json").read_text())
+    rows = []
+    for path in a.runs:
+        ev = [json.loads(l) for l in open(path)]
+        meta_ev = next(e for e in ev if e["ev"] == "start")
+        end_s = meta_ev["seconds"]
+        res = {"run": Path(path).stem}
+        for src in ("mic", "sys"):
+            ref = [s for s in sched[src] if s["end"] <= end_s]
+            dones = [e for e in ev if e["ev"] == "done" and e["src"] == src]
+            matched, partial, unmatched = [], 0, []
+            for d in dones:
+                if not words(d["text"]):
+                    continue
+                if d.get("win_start_s") is not None:  # the client's own capture window
+                    ws_, we_ = d["win_start_s"], d["win_end_s"]
+                    best = max(ref, key=lambda s: min(s["end"], we_ + 0.1) - max(s["start"], ws_))
+                else:
+                    best = min(ref, key=lambda s: wer(s["text"], d["text"]))
+                w_ = wer(best["text"], d["text"])
+                if w_ <= 0.5:
+                    matched.append((best["i"], w_, d))
+                    partial += w_ > 0.2
+                else:
+                    unmatched.append(d["text"][:80])
+            ids = [m[0] for m in matched]
+            delays = [d["t"] - d["win_end_s"] for _, _, d in matched if d.get("win_end_s") is not None]
+            gaps = [e for e in ev if e["ev"] == "gap" and e["src"] == src]
+            res[src] = {
+                "ref_words": sum(len(words(s["text"])) for s in ref),
+                "got_words": sum(len(words(d["text"])) for d in dones),
+                "wer_all": wer(" ".join(s["text"] for s in ref), " ".join(d["text"] for d in dones)),
+                "sentences": len(ref), "dup": len(ids) - len(set(ids)),
+                "missing": sorted({s["i"] for s in ref} - set(ids)),
+                "partial": partial, "unmatched": unmatched,
+                "in_order": ids == sorted(ids),
+                "gaps": [(round(g["start_s"], 1), round(g["end_s"] - g["start_s"], 1)) for g in gaps],
+                "connects": sum(1 for e in ev if e["ev"] == "connect" and e["src"] == src),
+                "control": [e["type"] for e in ev if e["ev"] == "control" and e["src"] == src],
+                "max_buffered_s": max((e[src] for e in ev if e["ev"] == "buffered"), default=0),
+                "max_delay_s": round(max(delays, default=0), 1),
+                "last_done_after_end_s": round(max((d["t"] for d in dones), default=0) - end_s, 1),
+            }
+        rows.append(res)
+        print(json.dumps(res, ensure_ascii=False))
+    if a.out:
+        Path(a.out).write_text(json.dumps(rows, ensure_ascii=False, indent=1))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--url", default="ws://127.0.0.1:8017/v1/realtime")
@@ -478,9 +584,13 @@ def main():
     q7p = sub.add_parser("q7")
     q7p.add_argument("--minutes", type=float, default=15)
     q7p.add_argument("--server-pid", type=int, required=True)
+    sub.add_parser("timeline").add_argument("--seconds", type=int, default=300)
+    sc = sub.add_parser("score")
+    sc.add_argument("runs", nargs="+")
+    sc.add_argument("--out")
     a = p.parse_args()
-    if a.cmd == "gen":
-        return cmd_gen(a)
+    if a.cmd in ("gen", "timeline", "score"):
+        return globals()[f"cmd_{a.cmd}"](a)
     asyncio.run(globals()[a.cmd](a))
 
 
