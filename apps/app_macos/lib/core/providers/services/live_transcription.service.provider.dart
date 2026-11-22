@@ -1,6 +1,9 @@
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
+import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
+import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
+import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/data/datasource/transcription.remote.data_source.provider.dart';
@@ -40,6 +43,11 @@ LiveTranscriptionService liveTranscriptionService(Ref ref) {
     transcriptionRemoteDataSource: transcriptionRemoteDataSource,
     transcriptionService: transcriptionService,
     liveDiarization: LiveDiarizationService(),
+    gapBackfill: GapBackfillService(
+      transcriber: WebSocketPcmTranscriber(),
+      transcripts: ref.watch(transcriptRepositoryProvider),
+      isRecording: () => transcriptionService.isTranscribingStream.value,
+    ),
   );
 
   ref.onDispose(service.dispose);

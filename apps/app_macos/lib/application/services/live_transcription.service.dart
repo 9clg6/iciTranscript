@@ -18,6 +18,7 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/enum/transcription_health.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
@@ -50,7 +51,9 @@ final class LiveTranscriptionService {
     required TranscriptionService transcriptionService,
     LiveDiarizationService? liveDiarization,
     WavRecorder Function()? createWavRecorder,
-  }) : _processManagerService = processManagerService,
+    GapBackfillService? gapBackfill,
+  }) : _gapBackfill = gapBackfill,
+       _processManagerService = processManagerService,
        _audioCaptureChannel = audioCaptureChannel,
        _transcriptionRemoteDataSource = transcriptionRemoteDataSource,
        _transcriptionService = transcriptionService,
@@ -63,6 +66,7 @@ final class LiveTranscriptionService {
   final TranscriptionService _transcriptionService;
   final LiveDiarizationService? _liveDiarization;
   final WavRecorder Function() _createWavRecorder;
+  final GapBackfillService? _gapBackfill;
 
   // Interlocuteurs en direct : id de segment système -> index (0, 1, …).
   final BehaviorSubject<Map<String, int>> _speakerLabels =
@@ -470,7 +474,21 @@ final class LiveTranscriptionService {
     _connectionSubscription = null;
 
     // Arreter la session
+    final String? closedSessionId = currentSessionStream.valueOrNull?.id;
     await _transcriptionService.stopSession();
+
+    // Session close : ses repères de perte sont retranscrits depuis les WAV,
+    // en tâche de fond (le service s'interrompt si un enregistrement repart).
+    // ponytail: la passe post-session du coach peut supprimer les WAV avant ;
+    // le repère reste alors, sans perte de plus.
+    final GapBackfillService? backfill = _gapBackfill;
+    if (backfill != null && closedSessionId != null) {
+      unawaited(
+        backfill
+            .backfill(closedSessionId, recordingsDirectory: recordingsDir)
+            .catchError((Object e) => _log.warning('Rattrapage: $e')),
+      );
+    }
 
     _log.info('Transcription en direct arretee');
   }
