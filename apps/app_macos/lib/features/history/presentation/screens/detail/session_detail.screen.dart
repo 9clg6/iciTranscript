@@ -1,37 +1,39 @@
 import 'dart:io';
 
-import 'package:auto_route/auto_route.dart';
+import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
+import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gap/gap.dart';
-import 'package:ici_transcript/application/services/transcript_grouping.dart';
+import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
-import 'package:ici_transcript/application/services/session_analysis.dart';
-import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
+import 'package:ici_transcript/features/history/presentation/screens/detail/transcript_turns.dart';
+import 'package:ici_transcript/features/history/presentation/screens/detail/widgets/summary_text.widget.dart';
+import 'package:ici_transcript/features/home/presentation/agenda.dart';
+import 'package:ici_transcript/features/home/presentation/screens/home/home.screen.dart';
+import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.state.dart';
+import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
-/// Ecran de detail d'une session de transcription.
-///
-/// Affiche le titre editable, la date et la duree, les boutons d'action
-/// (Copier, Exporter, Resumer, Supprimer) et la transcription complete.
-@RoutePage()
+/// Note d'une réunion : la page entière défile (titre, puces, résumé,
+/// coach, transcription par tour de parole). Actions dans la barre du haut.
 class SessionDetailScreen extends ConsumerStatefulWidget {
-  /// Cree une instance de [SessionDetailScreen].
+  /// Crée l'écran pour [sessionId].
   const SessionDetailScreen({
-    @PathParam('sessionId') required this.sessionId,
-    this.onClose,
+    required this.sessionId,
+    required this.onClose,
     super.key,
   });
 
-  /// Identifiant de la session a afficher.
+  /// Identifiant de la note.
   final String sessionId;
 
-  /// Callback pour fermer l'overlay (optionnel, utilisé hors routing).
-  final VoidCallback? onClose;
+  /// Retour à la page précédente (aussi appelé après suppression).
+  final VoidCallback onClose;
 
   @override
   ConsumerState<SessionDetailScreen> createState() =>
@@ -41,636 +43,423 @@ class SessionDetailScreen extends ConsumerStatefulWidget {
 class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   final TextEditingController _titleController = TextEditingController();
 
+  SessionDetailViewModel get _vm => ref.read(
+    sessionDetailViewModelProvider(sessionId: widget.sessionId).notifier,
+  );
+
   @override
   void dispose() {
     _titleController.dispose();
     super.dispose();
   }
 
-  String _formatDuration(int? durationSeconds) {
-    if (durationSeconds == null) return '';
-    final int hours = durationSeconds ~/ 3600;
-    final int minutes = (durationSeconds % 3600) ~/ 60;
-    final int seconds = durationSeconds % 60;
-    if (hours > 0) {
-      return '${hours}h ${minutes}m ${seconds}s';
-    }
-    return '${minutes}m ${seconds}s';
-  }
-
-  String _formatDate(DateTime date) {
-    return DateFormat('d MMMM yyyy, HH:mm', 'fr').format(date);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<SessionDetailState> asyncState = ref.watch(
+    final AsyncValue<SessionDetailState> async = ref.watch(
       sessionDetailViewModelProvider(sessionId: widget.sessionId),
     );
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final TextTheme textTheme = Theme.of(context).textTheme;
-
-    return asyncState.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (Object error, StackTrace stackTrace) =>
-          Center(child: Text(LocaleKeys.common_error_generic.tr())),
-      data: (SessionDetailState state) {
-        if (state.session == null) {
-          return Center(
-            child: Text(
-              LocaleKeys.history_detail_no_session.tr(),
-              style: textTheme.bodyLarge?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          );
-        }
-
-        return _buildContent(state, colorScheme, textTheme);
-      },
-    );
-  }
-
-  Widget _buildContent(
-    SessionDetailState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    final session = state.session!;
+    final SessionDetailState? data = async.value;
+    final bool loaded = data?.session != null && !async.hasError;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        // Header with title and metadata
-        _buildHeader(state, session, colorScheme, textTheme),
-        // Action buttons bar
-        _buildActionBar(colorScheme),
-        // Divider
-        Divider(
-          height: 1,
-          color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+        _TopBar(
+          onBack: widget.onClose,
+          actions: loaded ? _actions() : const <Widget>[],
         ),
-        // Resume IA (genere a la demande)
-        if (state.isSummaryLoading || state.summary != null) ...<Widget>[
-          const Gap(16),
-          _buildSummaryPanel(state, colorScheme, textTheme),
-        ],
-        // Retour du coach d'anglais (genere a la demande)
-        if (state.isFeedbackLoading || state.feedback != null) ...<Widget>[
-          const Gap(16),
-          _buildCoachPanel(state, colorScheme, textTheme),
-        ],
-        // Interlocuteurs (diarization post-session)
-        if (state.speakers.isNotEmpty) ...<Widget>[
-          const Gap(16),
-          _buildSpeakersPanel(state, colorScheme, textTheme),
-        ],
-        // Transcript content
         Expanded(
-          child: Builder(
-            builder: (BuildContext context) {
-              final List<TranscriptBlock> blocks = groupTranscript(
-                state.segments,
-              );
-              return ListView.builder(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 48,
-                  vertical: 32,
-                ),
-                itemCount: blocks.length,
-                itemBuilder: (BuildContext context, int index) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    child: TranscriptLineWidget(
-                      segment: blocks[index].segment,
-                    ),
-                  );
-                },
-              );
-            },
+          child: async.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (Object e, StackTrace st) => OatsEmptyState(
+              icon: Icons.error_outline,
+              message: LocaleKeys.common_error_generic.tr(),
+            ),
+            data: (SessionDetailState s) => s.session == null
+                ? OatsEmptyState(
+                    icon: Icons.description_outlined,
+                    message: LocaleKeys.history_detail_no_session.tr(),
+                  )
+                : _content(s, s.session!),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildCoachPanel(
-    SessionDetailState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(48, 0, 48, 0),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.secondaryContainer.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.secondary.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Icon(
-                Icons.school_outlined,
-                size: 16,
-                color: colorScheme.secondary,
-              ),
-              const Gap(8),
-              Text(
-                'Coach d\'anglais',
-                style: textTheme.labelLarge?.copyWith(
-                  color: colorScheme.secondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              if (state.feedback != null)
-                IconButton(
-                  icon: Icon(
-                    Icons.delete_outline,
-                    size: 16,
-                    color: colorScheme.error.withValues(alpha: 0.7),
-                  ),
-                  tooltip: 'Supprimer le retour',
-                  onPressed: () {
-                    ref
-                        .read(
-                          sessionDetailViewModelProvider(
-                            sessionId: widget.sessionId,
-                          ).notifier,
-                        )
-                        .deleteFeedback();
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-            ],
-          ),
-          const Gap(12),
-          if (state.isFeedbackLoading)
-            _loadingRow('Analyse de votre anglais...', colorScheme, textTheme)
-          else if (state.feedback != null)
-            CoachFeedbackView(feedback: state.feedback!),
-        ],
-      ),
-    );
-  }
+  List<Widget> _actions() => <Widget>[
+    OatsButton(
+      icon: Icons.copy_outlined,
+      label: LocaleKeys.history_detail_copy.tr(),
+      onPressed: _copy,
+    ),
+    OatsButton(
+      icon: Icons.file_download_outlined,
+      label: LocaleKeys.history_detail_export_markdown.tr(),
+      onPressed: _exportMarkdown,
+    ),
+    OatsButton(
+      icon: Icons.auto_awesome_outlined,
+      label: LocaleKeys.history_detail_summarize.tr(),
+      onPressed: () => _vm.generateSummary(),
+    ),
+    OatsButton(
+      icon: Icons.school_outlined,
+      label: LocaleKeys.history_detail_english_coach.tr(),
+      onPressed: () => _vm.analyzeEnglish(),
+    ),
+    OatsButton(
+      icon: Icons.delete_outline,
+      label: LocaleKeys.history_detail_delete.tr(),
+      danger: true,
+      onPressed: _confirmDelete,
+    ),
+  ];
 
-  Widget _buildSummaryPanel(
-    SessionDetailState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(48, 0, 48, 0),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.primaryContainer.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.primary.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Icon(
-                Icons.auto_awesome_outlined,
-                size: 16,
-                color: colorScheme.primary,
-              ),
-              const Gap(8),
-              Text(
-                'Résumé IA',
-                style: textTheme.labelLarge?.copyWith(
-                  color: colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const Spacer(),
-              if (state.summary != null)
-                IconButton(
-                  icon: Icon(
-                    Icons.delete_outline,
-                    size: 16,
-                    color: colorScheme.error.withValues(alpha: 0.7),
-                  ),
-                  tooltip: 'Supprimer le résumé',
-                  onPressed: () {
-                    ref
-                        .read(
-                          sessionDetailViewModelProvider(
-                            sessionId: widget.sessionId,
-                          ).notifier,
-                        )
-                        .deleteSummary();
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-            ],
-          ),
-          const Gap(12),
-          if (state.isSummaryLoading)
-            _loadingRow('Génération du résumé...', colorScheme, textTheme)
-          else if (state.summary != null)
-            Text(
-              state.summary!,
-              style: textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurface,
-                height: 1.6,
-              ),
-            ),
-        ],
-      ),
+  Widget _content(SessionDetailState state, SessionEntity session) {
+    final Oats o = context.oats;
+    final bool modelReady = ref.watch(
+      ollamaSetupViewModelProvider.select((OllamaSetupState s) => s.isReady),
     );
-  }
+    final List<int> speakers =
+        state.speakers.map((SpeakerTurn t) => t.speaker).toSet().toList()
+          ..sort();
+    final String? duration = formatDuration(session.durationSeconds);
 
-  Widget _buildSpeakersPanel(
-    SessionDetailState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(48, 0, 48, 0),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.tertiaryContainer.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.tertiary.withValues(alpha: 0.2),
-        ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+        OatsSpace.xxxl,
+        OatsSpace.xxl,
+        OatsSpace.xxxl,
+        OatsSpace.xxxl * 2,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: kContentMaxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Icon(Icons.groups_outlined, size: 16, color: colorScheme.tertiary),
-              const Gap(8),
-              Text(
-                'Interlocuteurs',
-                style: textTheme.labelLarge?.copyWith(
-                  color: colorScheme.tertiary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const Gap(12),
-          for (final SpeakerTurn turn in state.speakers) ...<Widget>[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              _title(state, session),
+              const SizedBox(height: OatsSpace.md),
+              Wrap(
+                spacing: OatsSpace.xs + 2,
+                runSpacing: OatsSpace.xs + 2,
                 children: <Widget>[
-                  Text(
-                    'Interlocuteur ${turn.speaker + 1}',
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colorScheme.tertiary,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  OatsChip(
+                    icon: Icons.calendar_today_outlined,
+                    label: DateFormat(
+                      'd MMM y · HH:mm',
+                      'fr',
+                    ).format(session.createdAt),
                   ),
-                  const Gap(2),
-                  Text(
-                    turn.text,
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface,
-                      height: 1.4,
+                  if (duration != null)
+                    OatsChip(icon: Icons.schedule_outlined, label: duration),
+                  if (speakers.isNotEmpty)
+                    Wrap(
+                      key: const ValueKey<String>('session-detail-speakers'),
+                      spacing: OatsSpace.xs + 2,
+                      children: <Widget>[
+                        for (final int n in speakers)
+                          OatsChip(
+                            icon: Icons.person_outline,
+                            label: LocaleKeys.history_detail_speaker.tr(
+                              args: <String>['${n + 1}'],
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
                 ],
               ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _loadingRow(
-    String label,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    return Row(
-      children: <Widget>[
-        SizedBox(
-          width: 14,
-          height: 14,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: colorScheme.primary,
-          ),
-        ),
-        const Gap(8),
-        Text(
-          label,
-          style: textTheme.bodySmall?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHeader(
-    SessionDetailState state,
-    dynamic session,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(48, 32, 48, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // Editable title
-          if (state.isEditing) ...<Widget>[
-            TextField(
-              controller: _titleController..text = session.title,
-              autofocus: true,
-              style: textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: colorScheme.primary),
+              if (!modelReady) ...<Widget>[
+                const SizedBox(height: OatsSpace.xl),
+                OatsNotice(
+                  icon: Icons.auto_awesome_outlined,
+                  message: LocaleKeys.llm_configure_model.tr(),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+              ],
+              if (state.isSummaryLoading || state.summary != null)
+                _section(
+                  title: LocaleKeys.history_detail_summary.tr(),
+                  onDelete: state.summary == null
+                      ? null
+                      : () => _vm.deleteSummary(),
+                  deleteLabel: LocaleKeys.history_detail_summary_delete.tr(),
+                  child: state.isSummaryLoading
+                      ? _Loading(LocaleKeys.history_detail_summary_loading.tr())
+                      : SummaryText(state.summary!),
                 ),
-              ),
-              onSubmitted: (String value) {
-                ref
-                    .read(
-                      sessionDetailViewModelProvider(
-                        sessionId: widget.sessionId,
-                      ).notifier,
-                    )
-                    .updateTitle(value);
-              },
-            ),
-          ] else ...<Widget>[
-            GestureDetector(
-              onDoubleTap: () {
-                ref
-                    .read(
-                      sessionDetailViewModelProvider(
-                        sessionId: widget.sessionId,
-                      ).notifier,
-                    )
-                    .toggleEditing();
-              },
-              child: Text(
-                session.title,
-                style: textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurface,
+              if (state.isFeedbackLoading || state.feedback != null)
+                _section(
+                  title: LocaleKeys.history_detail_english_coach.tr(),
+                  onDelete: state.feedback == null
+                      ? null
+                      : () => _vm.deleteFeedback(),
+                  deleteLabel: LocaleKeys.history_detail_coach_delete.tr(),
+                  child: state.isFeedbackLoading
+                      ? _Loading(LocaleKeys.history_detail_coach_loading.tr())
+                      : CoachFeedbackView(feedback: state.feedback!),
                 ),
-              ),
-            ),
-          ],
-          const Gap(8),
-          // Date and duration
-          Row(
-            children: <Widget>[
-              Icon(
-                Icons.calendar_today,
-                size: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const Gap(4),
-              Text(
-                _formatDate(session.createdAt),
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const Gap(16),
-              Icon(
-                Icons.timer_outlined,
-                size: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              const Gap(4),
-              Text(
-                '${LocaleKeys.history_detail_duration.tr()}: '
-                '${_formatDuration(session.durationSeconds)}',
-                style: textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              _section(
+                title: LocaleKeys.history_detail_transcript.tr(),
+                child: state.segments.isEmpty
+                    ? Text(
+                        LocaleKeys.history_detail_transcript_empty.tr(),
+                        style: o.small,
+                      )
+                    : Column(
+                        key: const ValueKey<String>(
+                          'session-detail-transcript',
+                        ),
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          for (final TranscriptTurn t in groupTurns(
+                            state.segments,
+                            state.speakers,
+                          ))
+                            _TurnView(turn: t),
+                        ],
+                      ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _title(SessionDetailState state, SessionEntity session) {
+    final Oats o = context.oats;
+    if (state.isEditing) {
+      return TextField(
+        controller: _titleController..text = session.title,
+        autofocus: true,
+        style: o.display,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          isDense: true,
+        ),
+        onSubmitted: (String value) => _vm.updateTitle(value),
+      );
+    }
+    return GestureDetector(
+      onDoubleTap: () => _vm.toggleEditing(),
+      child: Semantics(
+        header: true,
+        child: Text(session.title, style: o.display),
+      ),
+    );
+  }
+
+  Widget _section({
+    required String title,
+    required Widget child,
+    VoidCallback? onDelete,
+    String? deleteLabel,
+  }) {
+    final Oats o = context.oats;
+    return Padding(
+      padding: const EdgeInsets.only(top: OatsSpace.xxl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Container(
+            padding: const EdgeInsets.only(bottom: OatsSpace.sm),
+            margin: const EdgeInsets.only(bottom: OatsSpace.md),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: o.line)),
+            ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(title, style: o.heading),
+                  ),
+                ),
+                if (onDelete != null)
+                  IconButton(
+                    onPressed: onDelete,
+                    tooltip: deleteLabel,
+                    iconSize: OatsIconSize.md,
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.delete_outline, color: o.muted),
+                  ),
+              ],
+            ),
+          ),
+          child,
         ],
       ),
     );
   }
 
-  Widget _buildActionBar(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 8),
-      child: Row(
-        children: <Widget>[
-          // Copy
-          _ActionButton(
-            icon: Icons.copy_outlined,
-            label: LocaleKeys.history_detail_copy.tr(),
-            onPressed: () async {
-              final String text = ref
-                  .read(
-                    sessionDetailViewModelProvider(
-                      sessionId: widget.sessionId,
-                    ).notifier,
-                  )
-                  .copyToClipboard();
-              await Clipboard.setData(ClipboardData(text: text));
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(LocaleKeys.history_detail_copied.tr()),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-            colorScheme: colorScheme,
-          ),
-          const Gap(8),
-          // Export Markdown
-          _ActionButton(
-            icon: Icons.file_download_outlined,
-            label: LocaleKeys.history_detail_export_markdown.tr(),
-            onPressed: () => _exportMarkdown(),
-            colorScheme: colorScheme,
-          ),
-          const Gap(8),
-          // Resumer
-          _ActionButton(
-            icon: Icons.auto_awesome_outlined,
-            label: LocaleKeys.history_detail_summarize.tr(),
-            onPressed: () {
-              ref
-                  .read(
-                    sessionDetailViewModelProvider(
-                      sessionId: widget.sessionId,
-                    ).notifier,
-                  )
-                  .generateSummary();
-            },
-            colorScheme: colorScheme,
-          ),
-          const Gap(8),
-          // Coach d'anglais
-          _ActionButton(
-            icon: Icons.school_outlined,
-            label: 'Coach d\'anglais',
-            onPressed: () {
-              ref
-                  .read(
-                    sessionDetailViewModelProvider(
-                      sessionId: widget.sessionId,
-                    ).notifier,
-                  )
-                  .analyzeEnglish();
-            },
-            colorScheme: colorScheme,
-          ),
-          const Spacer(),
-          // Delete
-          _ActionButton(
-            icon: Icons.delete_outline,
-            label: LocaleKeys.history_detail_delete.tr(),
-            onPressed: () => _confirmDelete(colorScheme),
-            colorScheme: colorScheme,
-            isDestructive: true,
-          ),
-        ],
-      ),
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: _vm.copyToClipboard()));
+    _toast(LocaleKeys.history_detail_copied.tr());
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
     );
   }
 
   Future<void> _exportMarkdown() async {
-    final String content = ref
-        .read(
-          sessionDetailViewModelProvider(sessionId: widget.sessionId).notifier,
-        )
-        .exportMarkdown();
+    final String content = _vm.exportMarkdown();
     if (content.isEmpty) return;
-
     try {
       final String home = Platform.environment['HOME'] ?? '';
-      final Directory downloadsDir = Directory('$home/Downloads');
-      final String timestamp = DateTime.now()
+      final String stamp = DateTime.now()
           .toIso8601String()
           .replaceAll(':', '-')
           .replaceAll('.', '-');
-      final File file = File(
-        '${downloadsDir.path}/transcript_$timestamp.md',
-      );
+      final File file = File('$home/Downloads/transcript_$stamp.md');
       await file.writeAsString(content);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Exporté : ${file.path}'),
-            duration: const Duration(seconds: 3),
-            action: SnackBarAction(
-              label: 'OK',
-              onPressed: () {},
-            ),
-          ),
-        );
-      }
+      _toast(LocaleKeys.history_detail_exported.tr(args: <String>[file.path]));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur export : $e')),
-        );
-      }
+      _toast(LocaleKeys.history_detail_export_error.tr(args: <String>['$e']));
     }
   }
 
-  Future<void> _confirmDelete(ColorScheme colorScheme) async {
+  Future<void> _confirmDelete() async {
+    final Oats o = context.oats;
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
         title: Text(LocaleKeys.history_detail_delete.tr()),
         content: Text(LocaleKeys.history_detail_delete_confirm.tr()),
         actions: <Widget>[
-          TextButton(
+          OatsButton(
+            label: LocaleKeys.common_action_cancel.tr(),
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(LocaleKeys.common_action_cancel.tr()),
           ),
-          TextButton(
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: o.danger,
+              foregroundColor: o.background,
+            ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: TextButton.styleFrom(foregroundColor: colorScheme.error),
             child: Text(LocaleKeys.common_action_delete.tr()),
           ),
         ],
       ),
     );
-
-    if (confirmed == true && mounted) {
-      await ref
-          .read(
-            sessionDetailViewModelProvider(
-              sessionId: widget.sessionId,
-            ).notifier,
-          )
-          .deleteSession();
-      if (mounted) {
-        widget.onClose?.call();
-      }
-    }
+    if (confirmed != true || !mounted) return;
+    await _vm.deleteSession();
+    if (mounted) widget.onClose();
   }
 }
 
-/// Bouton d'action reutilisable pour la barre d'actions.
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    required this.colorScheme,
-    this.isDestructive = false,
-  });
+/// Barre du haut : Retour à gauche, actions à droite (passent à la ligne).
+class _TopBar extends StatelessWidget {
+  const _TopBar({required this.onBack, required this.actions});
 
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  final ColorScheme colorScheme;
-  final bool isDestructive;
+  final VoidCallback onBack;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
-    final Color foregroundColor = isDestructive
-        ? colorScheme.error
-        : colorScheme.onSurfaceVariant;
-
-    return TextButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 16, color: foregroundColor),
-      label: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: foregroundColor,
-          fontWeight: FontWeight.w500,
-        ),
+    final Oats o = context.oats;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: OatsSpace.lg,
+        vertical: OatsSpace.sm + 2,
       ),
-      style: TextButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: o.line)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          OatsButton(
+            icon: Icons.arrow_back,
+            label: LocaleKeys.common_action_back.tr(),
+            onPressed: onBack,
+          ),
+          const SizedBox(width: OatsSpace.lg),
+          Expanded(
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: OatsSpace.xs + 2,
+              runSpacing: OatsSpace.xs + 2,
+              children: actions,
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+/// Un tour de parole : qui parle, quand, puis le texte.
+class _TurnView extends StatelessWidget {
+  const _TurnView({required this.turn});
+
+  final TranscriptTurn turn;
+
+  String _label() {
+    if (turn.source == AudioSource.input) {
+      return LocaleKeys.transcription_live_speaker_me.tr();
+    }
+    final int? n = turn.speaker;
+    return n == null
+        ? LocaleKeys.transcription_live_speaker_system.tr()
+        : LocaleKeys.history_detail_speaker.tr(args: <String>['${n + 1}']);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Oats o = context.oats;
+    final Duration at = Duration(milliseconds: turn.startMs);
+    final String time =
+        '${at.inMinutes.toString().padLeft(2, '0')}:'
+        '${(at.inSeconds % 60).toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: OatsSpace.lg + 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Text(
+                _label(),
+                style: o.label.copyWith(
+                  color: turn.source == AudioSource.input ? o.ink : o.muted,
+                ),
+              ),
+              const SizedBox(width: OatsSpace.sm),
+              Text(time, style: o.meta.copyWith(color: o.faint)),
+            ],
+          ),
+          const SizedBox(height: OatsSpace.xs),
+          for (final String p in turn.paragraphs)
+            Padding(
+              padding: const EdgeInsets.only(bottom: OatsSpace.xs),
+              child: Text(p, style: o.body),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ligne « en cours » : petit indicateur + libellé.
+class _Loading extends StatelessWidget {
+  const _Loading(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: <Widget>[
+      const SizedBox(
+        width: OatsIconSize.sm,
+        height: OatsIconSize.sm,
+        child: CircularProgressIndicator(strokeWidth: 1.5),
+      ),
+      const SizedBox(width: OatsSpace.sm),
+      Text(label, style: context.oats.small),
+    ],
+  );
 }

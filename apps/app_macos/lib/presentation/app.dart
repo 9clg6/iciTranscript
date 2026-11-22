@@ -1,17 +1,18 @@
+import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/kernel.provider.dart';
 import 'package:ici_transcript/core/providers/platform/uvx_available.provider.dart';
-import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
-import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.screen.dart';
 import 'package:ici_transcript/features/shared/presentation/screens/onboarding/uv_onboarding.screen.dart';
 import 'package:ici_transcript/foundation/routing/app_router.dart';
+import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
-/// Widget racine de l'application IciTranscript.
+/// Widget racine d'Oats.
 ///
-/// Configure le theme macOS (accent indigo), le routeur AutoRoute
-/// et attend l'initialisation du kernel avant d'afficher l'app.
+/// Attend l'initialisation du kernel, propose l'installation de uv si besoin,
+/// puis ouvre le shell. Le modèle local (Ollama) ne bloque jamais le
+/// lancement : les fonctions qui en ont besoin le disent en ligne.
 class RootAppWidget extends ConsumerStatefulWidget {
   /// Cree une instance de [RootAppWidget].
   const RootAppWidget({super.key});
@@ -21,13 +22,20 @@ class RootAppWidget extends ConsumerStatefulWidget {
 }
 
 class _RootAppWidgetState extends ConsumerState<RootAppWidget> {
-  late final AppRouter _appRouter;
+  final AppRouter _appRouter = AppRouter();
+  final ThemeData _light = buildOatsTheme(Brightness.light);
+  final ThemeData _dark = buildOatsTheme(Brightness.dark);
 
-  @override
-  void initState() {
-    super.initState();
-    _appRouter = AppRouter();
-  }
+  Widget _simple(Widget home) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: LocaleKeys.app_name.tr(),
+    localizationsDelegates: context.localizationDelegates,
+    supportedLocales: context.supportedLocales,
+    locale: context.locale,
+    theme: _light,
+    darkTheme: _dark,
+    home: Scaffold(body: home),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -35,90 +43,30 @@ class _RootAppWidgetState extends ConsumerState<RootAppWidget> {
     final AsyncValue<bool> uvxState = ref.watch(uvxAvailableProvider);
 
     return kernelState.when(
-      loading: () => const MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(body: Center(child: CircularProgressIndicator())),
-      ),
-      error: (Object error, StackTrace stackTrace) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          body: Center(child: Text('Erreur d\'initialisation: $error')),
+      loading: () => _simple(const Center(child: CircularProgressIndicator())),
+      error: (Object error, StackTrace stackTrace) => _simple(
+        Center(
+          child: Text(
+            LocaleKeys.common_error_init.tr(args: <String>['$error']),
+          ),
         ),
       ),
       data: (_) {
-        // Afficher l'onboarding si uvx n'est pas disponible
-        final bool uvxAvailable = uvxState.value ?? true;
-        if (!uvxAvailable) {
-          return MaterialApp(
-            debugShowCheckedModeBanner: false,
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.indigo,
-                brightness: Brightness.light,
-              ),
-              useMaterial3: true,
-            ),
-            darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.indigo,
-                brightness: Brightness.dark,
-              ),
-              useMaterial3: true,
-            ),
-            themeMode: ThemeMode.system,
-            home: UvOnboardingScreen(
-              onUvReady: () =>
-                  ref.invalidate(uvxAvailableProvider),
+        if (!(uvxState.value ?? true)) {
+          return _simple(
+            UvOnboardingScreen(
+              onUvReady: () => ref.invalidate(uvxAvailableProvider),
             ),
           );
         }
-
-        // Afficher l'écran de configuration Ollama si pas encore prêt
-        final bool ollamaReady =
-            ref.watch(ollamaSetupViewModelProvider).isReady;
-        if (!ollamaReady) {
-          return MaterialApp(
-            debugShowCheckedModeBanner: false,
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.indigo,
-                brightness: Brightness.light,
-              ),
-              useMaterial3: true,
-            ),
-            darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.indigo,
-                brightness: Brightness.dark,
-              ),
-              useMaterial3: true,
-            ),
-            themeMode: ThemeMode.system,
-            home: const OllamaSetupScreen(),
-          );
-        }
-
         return MaterialApp.router(
           debugShowCheckedModeBanner: false,
-          title: 'iciTranscript',
+          title: LocaleKeys.app_name.tr(),
           localizationsDelegates: context.localizationDelegates,
           supportedLocales: context.supportedLocales,
           locale: context.locale,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.indigo,
-              brightness: Brightness.light,
-            ),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.indigo,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
-          themeMode: ThemeMode.system,
+          theme: _light,
+          darkTheme: _dark,
           routerConfig: _appRouter.config(),
         );
       },

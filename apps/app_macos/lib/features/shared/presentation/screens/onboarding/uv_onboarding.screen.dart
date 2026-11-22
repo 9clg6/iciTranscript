@@ -1,6 +1,10 @@
+import 'package:core_presentation/core_presentation.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ici_transcript/core/platform/process_manager_channel.dart';
 import 'package:ici_transcript/core/providers/platform/process_manager.provider.dart';
+import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
 /// Ecran d'onboarding affiché quand `uv`/`uvx` n'est pas installé.
 ///
@@ -27,121 +31,71 @@ class _UvOnboardingScreenState extends ConsumerState<UvOnboardingScreen> {
       _errorMessage = null;
     });
 
-    final channel = ref.read(processManagerChannelProvider);
-    final success = await channel.installUv();
+    final ProcessManagerChannel channel = ref.read(
+      processManagerChannelProvider,
+    );
+    final bool success = await channel.installUv();
 
     if (!success) {
       setState(() {
         _step = _Step.error;
-        _errorMessage =
-            "L'installation a échoué. Ouvrez un Terminal et exécutez :\n"
-            'curl -LsSf https://astral.sh/uv/install.sh | sh';
+        _errorMessage = LocaleKeys.uv_failed.tr(
+          args: <String>['curl -LsSf https://astral.sh/uv/install.sh | sh'],
+        );
       });
       return;
     }
 
     // Vérifier que uvx est maintenant disponible
-    final available = await channel.checkUvxAvailable();
+    final bool available = await channel.checkUvxAvailable();
     if (available) {
       widget.onUvReady();
     } else {
       setState(() {
         _step = _Step.error;
-        _errorMessage =
-            'uv a été installé mais uvx est introuvable.\n'
-            'Redémarrez iciTranscript ou ajoutez ~/.local/bin à votre PATH.';
+        _errorMessage = LocaleKeys.uv_no_uvx.tr();
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Padding(
-            padding: const EdgeInsets.all(40),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.memory_rounded,
-                  size: 48,
-                  color: colorScheme.primary,
+    final Oats o = context.oats;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(OatsSpace.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(LocaleKeys.app_name.tr(), style: o.wordmark),
+              const SizedBox(height: OatsSpace.xl),
+              Text(LocaleKeys.uv_title.tr(), style: o.title),
+              const SizedBox(height: OatsSpace.md),
+              Text(LocaleKeys.uv_body.tr(), style: o.body),
+              const SizedBox(height: OatsSpace.sm),
+              Text(LocaleKeys.uv_detail.tr(), style: o.small),
+              const SizedBox(height: OatsSpace.xl),
+              if (_step == _Step.error && _errorMessage != null) ...<Widget>[
+                OatsNotice(
+                  icon: Icons.error_outline,
+                  danger: true,
+                  message: _errorMessage!,
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  'Moteur ML requis',
-                  style: textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'iciTranscript utilise voxmlx pour la transcription vocale. '
-                  'Ce moteur nécessite uv, un gestionnaire de paquets Python '
-                  'ultra-rapide.',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'uv sera installé dans ~/.local/bin (~5 MB). '
-                  'Le modèle ML sera téléchargé au premier démarrage.',
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                  ),
-                ),
-                const SizedBox(height: 32),
-                if (_step == _Step.error && _errorMessage != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _errorMessage!,
-                      style: textTheme.bodySmall?.copyWith(
-                        color: colorScheme.onErrorContainer,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _step == _Step.installing ? null : _install,
-                    child: _step == _Step.installing
-                        ? const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              SizedBox(width: 10),
-                              Text('Installation en cours…'),
-                            ],
-                          )
-                        : const Text('Installer uv'),
-                  ),
-                ),
+                const SizedBox(height: OatsSpace.lg),
               ],
-            ),
+              OatsPrimaryButton(
+                icon: _step == _Step.installing
+                    ? null
+                    : Icons.download_outlined,
+                label: _step == _Step.installing
+                    ? LocaleKeys.uv_installing.tr()
+                    : LocaleKeys.uv_install.tr(),
+                onPressed: _step == _Step.installing ? null : _install,
+              ),
+            ],
           ),
         ),
       ),

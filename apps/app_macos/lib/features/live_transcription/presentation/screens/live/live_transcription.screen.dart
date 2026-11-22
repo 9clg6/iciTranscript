@@ -1,28 +1,26 @@
-import 'package:auto_route/auto_route.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
-import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
+import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gap/gap.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:ici_transcript/application/services/transcript_grouping.dart';
-import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
+import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
-import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/audio_level_indicator.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/server_status.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/session_controls.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
+import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
+import 'package:ici_transcript/features/shell/presentation/shell_view.provider.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
 /// Ecran de transcription en direct.
 ///
-/// Affiche la barre d'outils avec statut serveur, minuteur et controles,
-/// la zone de transcription en temps reel avec auto-scroll,
-/// et la barre de statut avec niveau audio et peripheriques.
-@RoutePage()
+/// Barre d'outils (statut serveur, minuteur, contrôles), options, bannières
+/// de permission, transcription en temps réel avec défilement automatique,
+/// barre d'état des sources audio.
 class LiveTranscriptionScreen extends ConsumerStatefulWidget {
   /// Cree une instance de [LiveTranscriptionScreen].
   const LiveTranscriptionScreen({super.key});
@@ -35,6 +33,9 @@ class LiveTranscriptionScreen extends ConsumerStatefulWidget {
 class _LiveTranscriptionScreenState
     extends ConsumerState<LiveTranscriptionScreen> {
   final ScrollController _scrollController = ScrollController();
+
+  LiveTranscriptionViewModel get _vm =>
+      ref.read(liveTranscriptionViewModelProvider.notifier);
 
   @override
   void dispose() {
@@ -66,12 +67,10 @@ class _LiveTranscriptionScreenState
     final LiveTranscriptionState state = ref.watch(
       liveTranscriptionViewModelProvider,
     );
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final TextTheme textTheme = Theme.of(context).textTheme;
+    final Oats o = context.oats;
 
     // Auto-scroll quand la transcription change : nombre de segments ET
-    // longueur du dernier segment (la phrase en cours grandit en place pendant
-    // la transcription, sans changer le nombre de segments).
+    // longueur du dernier segment (la phrase en cours grandit en place).
     ref.listen(
       liveTranscriptionViewModelProvider.select(
         (LiveTranscriptionState s) => (
@@ -79,213 +78,119 @@ class _LiveTranscriptionScreenState
           s.segments.isNotEmpty ? s.segments.last.text.length : 0,
         ),
       ),
-      ((int, int)? previous, (int, int) next) {
-        _scrollToBottom();
-      },
+      ((int, int)? previous, (int, int) next) => _scrollToBottom(),
     );
 
+    final List<Widget> notices = <Widget>[
+      if (state.micPermission == 'denied')
+        _permissionNotice(
+          icon: Icons.mic_off_outlined,
+          message: LocaleKeys.transcription_live_mic_denied.tr(),
+          danger: true,
+          onOpenSettings: _vm.openMicSettings,
+        ),
+      if (state.screenRecordingPermission == 'denied')
+        _permissionNotice(
+          icon: Icons.screenshot_monitor,
+          message: LocaleKeys.transcription_live_screen_denied.tr(),
+          onOpenSettings: _vm.openScreenRecordingSettings,
+        ),
+      if (state.systemAudioError != null &&
+          state.screenRecordingPermission != 'denied')
+        _permissionNotice(
+          icon: Icons.volume_off_outlined,
+          message: LocaleKeys.transcription_live_system_audio_error.tr(
+            args: <String>[state.systemAudioError!],
+          ),
+          onOpenSettings: _vm.openScreenRecordingSettings,
+        ),
+      if (state.ollamaSetupStage != OllamaSetupStage.idle &&
+          state.ollamaSetupStage != OllamaSetupStage.ready &&
+          state.ollamaSetupStage != OllamaSetupStage.error)
+        _ollamaNotice(state),
+    ];
+
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: o.background,
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          // Top toolbar
-          _buildToolbar(state, colorScheme, textTheme),
-          // Barre d'options : coach (idle) + traduction temps réel (toujours)
-          _buildOptionsBar(state, colorScheme, textTheme),
-          // Bannières de permissions
-          if (state.micPermission == 'denied')
-            _buildPermissionBanner(
-              context: context,
-              colorScheme: colorScheme,
-              icon: Icons.mic_off,
-              message: 'Accès au microphone refusé.',
-              isWarning: false,
-              onOpenSettings: () => ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .openMicSettings(),
-              onRecheck: () => ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .recheckPermissions(),
+          _buildToolbar(state),
+          _buildOptionsBar(state),
+          for (final Widget n in notices)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                OatsSpace.xl,
+                OatsSpace.md,
+                OatsSpace.xl,
+                0,
+              ),
+              child: n,
             ),
-          if (state.screenRecordingPermission == 'denied')
-            _buildPermissionBanner(
-              context: context,
-              colorScheme: colorScheme,
-              icon: Icons.screenshot_monitor,
-              message:
-                  'Son du Mac non capté : autorisation « Enregistrement de '
-                  "l'écran et des sons » refusée. Si iciTranscript est déjà "
-                  'coché, retirez-le (−), relancez l’app et acceptez à nouveau '
-                  '(chaque nouvelle version le redemande).',
-              isWarning: true,
-              onOpenSettings: () => ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .openScreenRecordingSettings(),
-              onRecheck: () => ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .recheckPermissions(),
-            ),
-          if (state.systemAudioError != null &&
-              state.screenRecordingPermission != 'denied')
-            _buildPermissionBanner(
-              context: context,
-              colorScheme: colorScheme,
-              icon: Icons.volume_off,
-              message: 'Son du Mac non capté : ${state.systemAudioError}',
-              isWarning: true,
-              onOpenSettings: () => ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .openScreenRecordingSettings(),
-              onRecheck: () => ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .recheckPermissions(),
-            ),
-          // Ollama setup progress (téléchargement binaire / modèle)
-          if (state.ollamaSetupStage != OllamaSetupStage.idle &&
-              state.ollamaSetupStage != OllamaSetupStage.ready &&
-              state.ollamaSetupStage != OllamaSetupStage.error)
-            _buildOllamaSetupBanner(state, colorScheme, textTheme),
-          // Transcript area
-          Expanded(child: _buildTranscriptArea(state, colorScheme)),
-          // Panneau coach (visible après arrêt si l'option est activée)
+          Expanded(child: _buildTranscriptArea(state)),
           if (state.feedback != null || state.isFeedbackLoading)
-            _buildCoachPanel(state, colorScheme, textTheme),
-          // Bottom status bar
-          _buildStatusBar(state, colorScheme),
+            _buildCoachPanel(state),
+          _buildStatusBar(state),
         ],
       ),
     );
   }
 
-  Widget _buildPermissionBanner({
-    required BuildContext context,
-    required ColorScheme colorScheme,
+  Widget _permissionNotice({
     required IconData icon,
     required String message,
     required VoidCallback onOpenSettings,
-    required VoidCallback onRecheck,
-    bool isWarning = false,
-  }) {
-    final Color bgColor = isWarning
-        ? colorScheme.tertiaryContainer
-        : colorScheme.errorContainer;
-    final Color fgColor = isWarning
-        ? colorScheme.onTertiaryContainer
-        : colorScheme.onErrorContainer;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: bgColor,
-      child: Row(
-        children: <Widget>[
-          Icon(icon, size: 16, color: fgColor),
-          const Gap(8),
-          Expanded(
-            child: Text(
-              message,
-              style: Theme.of(
-                context,
-              ).textTheme.labelMedium?.copyWith(color: fgColor),
-            ),
-          ),
-          const Gap(8),
-          TextButton(
-            onPressed: onOpenSettings,
-            style: TextButton.styleFrom(
-              foregroundColor: fgColor,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            ),
-            child: const Text('Ouvrir les Réglages'),
-          ),
-          TextButton(
-            onPressed: onRecheck,
-            style: TextButton.styleFrom(
-              foregroundColor: fgColor,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            ),
-            child: const Text('Re-vérifier'),
-          ),
-        ],
+    bool danger = false,
+  }) => OatsNotice(
+    icon: icon,
+    message: message,
+    danger: danger,
+    actions: <Widget>[
+      OatsButton(
+        label: LocaleKeys.common_action_open_settings.tr(),
+        onPressed: onOpenSettings,
       ),
-    );
-  }
+      OatsButton(
+        label: LocaleKeys.common_action_recheck.tr(),
+        onPressed: _vm.recheckPermissions,
+      ),
+    ],
+  );
 
-  Widget _buildOllamaSetupBanner(
-    LiveTranscriptionState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
+  Widget _ollamaNotice(LiveTranscriptionState state) {
+    final String pct = (state.ollamaSetupProgress * 100).toStringAsFixed(0);
     final String label = switch (state.ollamaSetupStage) {
       OllamaSetupStage.downloadingBinary =>
-        'Téléchargement du moteur IA (${(state.ollamaSetupProgress * 100).toStringAsFixed(0)} %)...',
-      OllamaSetupStage.startingServer => 'Démarrage du moteur IA...',
+        LocaleKeys.transcription_live_ollama_binary.tr(args: <String>[pct]),
+      OllamaSetupStage.startingServer =>
+        LocaleKeys.transcription_live_ollama_server.tr(),
       OllamaSetupStage.downloadingModel =>
-        'Téléchargement du modèle Mistral (${(state.ollamaSetupProgress * 100).toStringAsFixed(0)} %, ~4 Go — une seule fois)...',
+        LocaleKeys.transcription_live_ollama_model.tr(args: <String>[pct]),
       _ => '',
     };
+    return OatsNotice(icon: Icons.downloading_outlined, message: label);
+  }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-      color: colorScheme.secondaryContainer,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.secondary,
-                ),
-              ),
-              const Gap(8),
-              Expanded(
-                child: Text(
-                  label,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSecondaryContainer,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (state.ollamaSetupProgress > 0 &&
-              state.ollamaSetupProgress < 1) ...<Widget>[
-            const Gap(6),
-            LinearProgressIndicator(
-              value: state.ollamaSetupProgress,
-              backgroundColor: colorScheme.secondaryContainer.withValues(
-                alpha: 0.5,
-              ),
-              color: colorScheme.secondary,
-              minHeight: 3,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ],
-        ],
-      ),
+  Widget _optionLabel(IconData icon, String label) {
+    final Oats o = context.oats;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Icon(icon, size: OatsIconSize.sm, color: o.muted),
+        const SizedBox(width: OatsSpace.xs + 2),
+        Text(label, style: o.meta),
+      ],
     );
   }
 
-  Widget _buildOptionsBar(
-    LiveTranscriptionState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
+  Widget _buildOptionsBar(LiveTranscriptionState state) {
+    final Oats o = context.oats;
     final bool idle = !state.isRecording && !state.isPaused;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: OatsSpace.xl),
+      height: 40,
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLowest,
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: o.line)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -293,103 +198,49 @@ class _LiveTranscriptionScreenState
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            // Coach (config seulement quand idle)
             if (idle) ...<Widget>[
-              Icon(Icons.auto_awesome, size: 13, color: colorScheme.secondary),
-              const Gap(6),
-              Text(
-                LocaleKeys.transcription_live_summary_option.tr(),
-                style: textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                  fontSize: 11,
-                ),
+              _optionLabel(
+                Icons.school_outlined,
+                LocaleKeys.transcription_live_coach_option.tr(),
               ),
-              const Gap(6),
-              Switch.adaptive(
+              OatsSwitch(
                 value: state.isCoachEnabled,
-                onChanged: (_) => ref
-                    .read(liveTranscriptionViewModelProvider.notifier)
-                    .toggleCoach(),
-                activeTrackColor: colorScheme.primary,
+                onChanged: (_) => _vm.toggleCoach(),
               ),
-              const Gap(20),
-              // Interlocuteurs en direct (audio système, Nemotron 3)
+              const SizedBox(width: OatsSpace.lg),
               Tooltip(
-                message:
-                    'Identifie qui parle dans l’audio système pendant la '
-                    'session (jusqu’à 8 interlocuteurs).',
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Icon(
-                      Icons.groups_outlined,
-                      size: 13,
-                      color: colorScheme.tertiary,
-                    ),
-                    const Gap(6),
-                    Text(
-                      'Interlocuteurs',
-                      style: textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+                message: LocaleKeys.transcription_live_speakers_tooltip.tr(),
+                child: _optionLabel(
+                  Icons.groups_outlined,
+                  LocaleKeys.transcription_live_speakers_option.tr(),
                 ),
               ),
-              const Gap(6),
-              Switch.adaptive(
+              OatsSwitch(
                 value: state.isLiveSpeakersEnabled,
-                onChanged: (_) => ref
-                    .read(liveTranscriptionViewModelProvider.notifier)
-                    .toggleLiveSpeakers(),
-                activeTrackColor: colorScheme.primary,
+                onChanged: (_) => _vm.toggleLiveSpeakers(),
               ),
-              const Gap(20),
+              const SizedBox(width: OatsSpace.lg),
             ],
-            // Traduction (toujours)
-            Icon(Icons.translate, size: 13, color: colorScheme.primary),
-            const Gap(6),
-            Text(
-              'Traduction',
-              style: textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 11,
-              ),
+            _optionLabel(
+              Icons.translate,
+              LocaleKeys.transcription_live_translation_option.tr(),
             ),
-            const Gap(8),
+            const SizedBox(width: OatsSpace.sm),
             _langDropdown(
               state.translationFrom,
-              (String v) {
-                ref
-                    .read(liveTranscriptionViewModelProvider.notifier)
-                    .setTranslationLangs(from: v);
-              },
-              colorScheme,
-              textTheme,
+              (String v) => _vm.setTranslationLangs(from: v),
             ),
-            Icon(
-              Icons.arrow_forward,
-              size: 12,
-              color: colorScheme.onSurfaceVariant,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: OatsSpace.xs),
+              child: Icon(Icons.arrow_forward, size: 12, color: o.faint),
             ),
             _langDropdown(
               state.translationTo,
-              (String v) {
-                ref
-                    .read(liveTranscriptionViewModelProvider.notifier)
-                    .setTranslationLangs(to: v);
-              },
-              colorScheme,
-              textTheme,
+              (String v) => _vm.setTranslationLangs(to: v),
             ),
-            const Gap(6),
-            Switch.adaptive(
+            OatsSwitch(
               value: state.isTranslationEnabled,
-              onChanged: (_) => ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .toggleTranslation(),
-              activeTrackColor: colorScheme.primary,
+              onChanged: (_) => _vm.toggleTranslation(),
             ),
           ],
         ),
@@ -407,21 +258,15 @@ class _LiveTranscriptionScreenState
     'nl': 'NL',
   };
 
-  Widget _langDropdown(
-    String value,
-    void Function(String) onChanged,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
+  Widget _langDropdown(String value, void Function(String) onChanged) {
+    final Oats o = context.oats;
     return DropdownButton<String>(
       value: value,
       isDense: true,
       underline: const SizedBox.shrink(),
-      style: textTheme.labelSmall?.copyWith(
-        color: colorScheme.onSurface,
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-      ),
+      icon: Icon(Icons.expand_more, size: OatsIconSize.sm, color: o.muted),
+      style: o.meta.copyWith(color: o.ink, fontWeight: FontWeight.w500),
+      dropdownColor: o.background,
       items: _langs.entries
           .map(
             (MapEntry<String, String> e) =>
@@ -434,72 +279,48 @@ class _LiveTranscriptionScreenState
     );
   }
 
-  Widget _buildToolbar(
-    LiveTranscriptionState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
+  Widget _buildToolbar(LiveTranscriptionState state) {
+    final Oats o = context.oats;
+    final bool live = state.isRecording && !state.isPaused;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: OatsSpace.lg,
+        vertical: OatsSpace.sm + 2,
+      ),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
+        border: Border(bottom: BorderSide(color: o.line)),
       ),
       child: Row(
         children: <Widget>[
-          // Server status indicator
-          ServerStatusWidget(serverState: state.serverState),
-          // Timer (centered in remaining space)
+          Flexible(child: ServerStatusWidget(serverState: state.serverState)),
           Expanded(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    _formatDuration(state.duration),
-                    style: textTheme.titleLarge?.copyWith(
-                      fontFamily: 'monospace',
-                      fontWeight: FontWeight.bold,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  Text(
-                    LocaleKeys.transcription_live_recording_time.tr(),
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      letterSpacing: 1.5,
-                      fontSize: 9,
-                    ),
-                  ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                if (live) ...<Widget>[
+                  OatsLivePill(label: LocaleKeys.nav_recording.tr()),
+                  const SizedBox(width: OatsSpace.md),
                 ],
-              ),
+                Semantics(
+                  label: LocaleKeys.transcription_live_recording_time.tr(),
+                  child: Text(_formatDuration(state.duration), style: o.timer),
+                ),
+              ],
             ),
           ),
-          // Transport controls
           SessionControlsWidget(
             isRecording: state.isRecording,
             isPaused: state.isPaused,
-            onStart: () => ref
-                .read(liveTranscriptionViewModelProvider.notifier)
-                .startSession(),
-            onPause: () => ref
-                .read(liveTranscriptionViewModelProvider.notifier)
-                .pauseSession(),
-            onResume: () => ref
-                .read(liveTranscriptionViewModelProvider.notifier)
-                .resumeSession(),
+            onStart: _vm.startSession,
+            onPause: _vm.pauseSession,
+            onResume: _vm.resumeSession,
             onStop: () async {
-              final String? sessionId = await ref
-                  .read(liveTranscriptionViewModelProvider.notifier)
-                  .stopSession();
+              final String? sessionId = await _vm.stopSession();
               if (sessionId != null) {
-                // Ouvrir la fiche via l'overlay du shell (back fonctionnel),
-                // pas via router.push (qui ouvrirait hors shell, back mort).
+                // Ouvrir la note dans le shell ; Retour ramène à l'accueil.
+                ref
+                    .read(shellViewControllerProvider.notifier)
+                    .show(ShellView.home);
                 ref
                     .read(sessionListViewModelProvider.notifier)
                     .selectSession(sessionId);
@@ -511,66 +332,50 @@ class _LiveTranscriptionScreenState
     );
   }
 
-  Widget _buildTranscriptArea(
-    LiveTranscriptionState state,
-    ColorScheme colorScheme,
-  ) {
+  Widget _buildTranscriptArea(LiveTranscriptionState state) {
+    final Oats o = context.oats;
     if (state.segments.isEmpty) {
+      if (!state.isRecording) {
+        return Center(
+          child: Text(
+            LocaleKeys.transcription_live_no_session.tr(),
+            style: o.small,
+          ),
+        );
+      }
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            if (state.isRecording) ...<Widget>[
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.primary,
-                ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(
+                width: OatsIconSize.lg,
+                height: OatsIconSize.lg,
+                child: CircularProgressIndicator(strokeWidth: 1.5),
               ),
-              const Gap(16),
-              Text(
-                'En attente de transcription...',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
+              const SizedBox(height: OatsSpace.lg),
+              Text(LocaleKeys.transcription_live_waiting.tr(), style: o.body),
               if (state.serverState == ServerState.starting) ...<Widget>[
-                const Gap(8),
+                const SizedBox(height: OatsSpace.sm),
                 Text(
-                  'Premier lancement : installation et téléchargement du '
-                  'modèle de transcription (~2,5 Go), quelques minutes.',
+                  LocaleKeys.transcription_live_first_launch.tr(),
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+                  style: o.small,
                 ),
                 if (state.serverStartupLine != null) ...<Widget>[
-                  const Gap(4),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
-                    child: Text(
-                      state.serverStartupLine!,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontFamily: 'Menlo',
-                      ),
-                    ),
+                  const SizedBox(height: OatsSpace.xs),
+                  Text(
+                    state.serverStartupLine!,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: o.meta.copyWith(fontFamily: 'Menlo'),
                   ),
                 ],
               ],
-            ] else
-              Text(
-                LocaleKeys.transcription_live_no_session.tr(),
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -582,7 +387,10 @@ class _LiveTranscriptionScreenState
     );
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 40),
+      padding: const EdgeInsets.symmetric(
+        horizontal: OatsSpace.xxxl,
+        vertical: OatsSpace.xl,
+      ),
       itemCount: blocks.length,
       itemBuilder: (BuildContext context, int index) {
         final TranscriptBlock block = blocks[index];
@@ -591,77 +399,48 @@ class _LiveTranscriptionScreenState
             for (final String id in block.segmentIds)
               if (state.translations[id] case final String t) t,
         ];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: TranscriptLineWidget(
-            segment: block.segment,
-            translation: parts.isEmpty ? null : parts.join(' '),
-            speaker: block.speaker,
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: OatsSpace.lg + 2),
+              child: TranscriptLineWidget(
+                segment: block.segment,
+                translation: parts.isEmpty ? null : parts.join(' '),
+                speaker: block.speaker,
+              ),
+            ),
           ),
         );
       },
     );
   }
 
-  Widget _buildCoachPanel(
-    LiveTranscriptionState state,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
+  Widget _buildCoachPanel(LiveTranscriptionState state) {
+    final Oats o = context.oats;
     final EnglishFeedbackEntity? feedback = state.feedback;
     return Container(
       constraints: const BoxConstraints(maxHeight: 280),
       decoration: BoxDecoration(
-        color: colorScheme.secondaryContainer.withValues(alpha: 0.4),
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
+        border: Border(top: BorderSide(color: o.line)),
       ),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+        padding: const EdgeInsets.symmetric(
+          horizontal: OatsSpace.xxxl,
+          vertical: OatsSpace.lg,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Row(
-              children: <Widget>[
-                Icon(
-                  Icons.school_outlined,
-                  size: 14,
-                  color: colorScheme.secondary,
-                ),
-                const Gap(6),
-                Text(
-                  LocaleKeys.transcription_live_summary_title.tr(),
-                  style: textTheme.labelMedium?.copyWith(
-                    color: colorScheme.secondary,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
+            Text(
+              LocaleKeys.transcription_live_summary_title.tr(),
+              style: o.heading,
             ),
-            const Gap(8),
+            const SizedBox(height: OatsSpace.sm),
             if (state.isFeedbackLoading)
-              Row(
-                children: <Widget>[
-                  SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colorScheme.secondary,
-                    ),
-                  ),
-                  const Gap(8),
-                  Text(
-                    LocaleKeys.transcription_live_summary_loading.tr(),
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+              Text(
+                LocaleKeys.transcription_live_summary_loading.tr(),
+                style: o.small,
               )
             else if (feedback != null)
               CoachFeedbackView(feedback: feedback),
@@ -671,81 +450,70 @@ class _LiveTranscriptionScreenState
     );
   }
 
-  Widget _buildStatusBar(
-    LiveTranscriptionState state,
-    ColorScheme colorScheme,
-  ) {
-    final bool systemAudioOff =
+  Widget _buildStatusBar(LiveTranscriptionState state) {
+    final Oats o = context.oats;
+    final bool micDenied = state.micPermission == 'denied';
+    final bool systemOff =
         state.screenRecordingPermission == 'denied' ||
         state.systemAudioError != null;
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        border: Border(
-          top: BorderSide(
-            color: colorScheme.outlineVariant.withValues(alpha: 0.2),
+    final String micText = LocaleKeys.transcription_status_bar_mic.tr(
+      args: <String>[
+        micDenied
+            ? LocaleKeys.transcription_status_bar_denied.tr()
+            : LocaleKeys.transcription_status_bar_active.tr(),
+      ],
+    );
+    final String systemText = LocaleKeys.transcription_status_bar_system.tr(
+      args: <String>[
+        state.screenRecordingPermission == 'denied'
+            ? LocaleKeys.transcription_status_bar_denied.tr()
+            : state.systemAudioError != null
+            ? LocaleKeys.transcription_status_bar_not_captured.tr()
+            : state.screenRecordingPermission == 'authorized'
+            ? LocaleKeys.transcription_status_bar_active.tr()
+            : 'ScreenCaptureKit',
+      ],
+    );
+
+    Widget source(IconData icon, String text, bool off) {
+      final Color c = off ? o.danger : o.muted;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: OatsIconSize.sm, color: c),
+          const SizedBox(width: OatsSpace.xs + 2),
+          Flexible(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: o.meta.copyWith(color: c),
+            ),
           ),
-        ),
+        ],
+      );
+    }
+
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: OatsSpace.xl),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: o.line)),
       ),
       child: Row(
         children: <Widget>[
-          // Audio level
-          Text(
-            LocaleKeys.transcription_status_bar_level.tr(),
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-              fontSize: 10,
-            ),
-          ),
-          const Gap(8),
-          const AudioLevelIndicatorWidget(level: 0.6),
-          const Gap(16),
-          // Mic device
-          Icon(
-            state.micPermission == 'denied' ? Icons.mic_off : Icons.mic,
-            size: 14,
-            color: state.micPermission == 'denied'
-                ? colorScheme.error
-                : colorScheme.onSurfaceVariant,
-          ),
-          const Gap(4),
+          // ponytail: Icons.mic / screenshot_monitor (pleins) restent : le
+          // test d'écran historique les cherche ; la version fine est
+          // Icons.mic_none_outlined.
           Flexible(
-            child: Text(
-              '${LocaleKeys.transcription_status_bar_mic.tr()}: ${state.micPermission == 'denied' ? 'Refusé' : 'Actif'}',
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: state.micPermission == 'denied'
-                    ? colorScheme.error
-                    : colorScheme.onSurfaceVariant,
-                fontSize: 11,
-              ),
+            child: source(
+              micDenied ? Icons.mic_off : Icons.mic,
+              micText,
+              micDenied,
             ),
           ),
-          const Spacer(),
-          // System audio device
-          Icon(
-            Icons.screenshot_monitor,
-            size: 14,
-            color: systemAudioOff
-                ? colorScheme.error
-                : colorScheme.onSurfaceVariant,
-          ),
-          const Gap(4),
+          const SizedBox(width: OatsSpace.xl),
           Flexible(
-            child: Text(
-              '${LocaleKeys.transcription_status_bar_system.tr()}: ${state.screenRecordingPermission == 'denied' ? 'Refusé' : state.systemAudioError != null ? 'Non capté' : state.screenRecordingPermission == 'authorized' ? 'Actif' : 'ScreenCaptureKit'}',
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: systemAudioOff
-                    ? colorScheme.error
-                    : colorScheme.onSurfaceVariant,
-                fontSize: 11,
-              ),
-            ),
+            child: source(Icons.screenshot_monitor, systemText, systemOff),
           ),
         ],
       ),
