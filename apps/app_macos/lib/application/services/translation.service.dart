@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
+import 'package:ici_transcript/core/platform/owned_processes.dart';
+import 'package:ici_transcript/core/platform/system_process_host.dart';
 
 /// Service de traduction par phrase, hors-ligne, via Argos Translate.
 ///
@@ -11,7 +13,10 @@ import 'package:ici_transcript/core/platform/app_data_directory.dart';
 /// latence. CPU-only → aucune contention GPU (pas de crash). Les paires de
 /// langues sont téléchargées à la demande (1×) puis disponibles hors-ligne.
 class TranslationService {
-  TranslationService();
+  TranslationService({ProcessHost host = const SystemProcessHost()})
+    : _host = host;
+
+  final ProcessHost _host;
 
   final Log _log = Log.named('TranslationService');
 
@@ -49,7 +54,7 @@ class TranslationService {
     StreamSubscription<String>? stderrSub;
     try {
       await _writeScript();
-      process = await Process.start(
+      process = await _host.start(
         _uvBin,
         <String>[
           'run',

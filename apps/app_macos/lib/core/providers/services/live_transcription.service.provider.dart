@@ -5,6 +5,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/data/datasource/transcription.remote.data_source.provider.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
+import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/transcription.service.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -39,7 +40,11 @@ LiveTranscriptionService liveTranscriptionService(Ref ref) {
     audioCaptureChannel: audioCaptureChannel,
     transcriptionRemoteDataSource: transcriptionRemoteDataSource,
     transcriptionService: transcriptionService,
-    liveDiarization: LiveDiarizationService(),
+    liveDiarization: LiveDiarizationService(
+      processes: ref.watch(ownedProcessRegistryProvider),
+      ports: ref.watch(launchServerPortsProvider),
+    ),
+    ports: ref.watch(launchServerPortsProvider),
   );
 
   ref.onDispose(service.dispose);

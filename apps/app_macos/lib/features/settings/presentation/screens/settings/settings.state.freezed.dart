@@ -17,8 +17,7 @@ mixin _$SettingsState {
 /// Identifiant du microphone selectionne.
  String? get selectedMicId;/// Indique si la capture audio systeme est activee.
  bool get systemAudioEnabled;/// Indique si le serveur ML doit demarrer automatiquement.
- bool get autoStartServer;/// Port du serveur ML (voxmlx-serve default: 8000).
- String get serverPort;/// Chemin de stockage de la base de donnees.
+ bool get autoStartServer;/// Chemin de stockage de la base de donnees.
  String get storagePath;/// Taille de la base de donnees en Mo.
  double get dbSizeMb;/// Liste des peripheriques audio disponibles.
  List<AudioDeviceEntity> get availableDevices;
@@ -32,16 +31,16 @@ $SettingsStateCopyWith<SettingsState> get copyWith => _$SettingsStateCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SettingsState&&(identical(other.selectedMicId, selectedMicId) || other.selectedMicId == selectedMicId)&&(identical(other.systemAudioEnabled, systemAudioEnabled) || other.systemAudioEnabled == systemAudioEnabled)&&(identical(other.autoStartServer, autoStartServer) || other.autoStartServer == autoStartServer)&&(identical(other.serverPort, serverPort) || other.serverPort == serverPort)&&(identical(other.storagePath, storagePath) || other.storagePath == storagePath)&&(identical(other.dbSizeMb, dbSizeMb) || other.dbSizeMb == dbSizeMb)&&const DeepCollectionEquality().equals(other.availableDevices, availableDevices));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SettingsState&&(identical(other.selectedMicId, selectedMicId) || other.selectedMicId == selectedMicId)&&(identical(other.systemAudioEnabled, systemAudioEnabled) || other.systemAudioEnabled == systemAudioEnabled)&&(identical(other.autoStartServer, autoStartServer) || other.autoStartServer == autoStartServer)&&(identical(other.storagePath, storagePath) || other.storagePath == storagePath)&&(identical(other.dbSizeMb, dbSizeMb) || other.dbSizeMb == dbSizeMb)&&const DeepCollectionEquality().equals(other.availableDevices, availableDevices));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,selectedMicId,systemAudioEnabled,autoStartServer,serverPort,storagePath,dbSizeMb,const DeepCollectionEquality().hash(availableDevices));
+int get hashCode => Object.hash(runtimeType,selectedMicId,systemAudioEnabled,autoStartServer,storagePath,dbSizeMb,const DeepCollectionEquality().hash(availableDevices));
 
 @override
 String toString() {
-  return 'SettingsState(selectedMicId: $selectedMicId, systemAudioEnabled: $systemAudioEnabled, autoStartServer: $autoStartServer, serverPort: $serverPort, storagePath: $storagePath, dbSizeMb: $dbSizeMb, availableDevices: $availableDevices)';
+  return 'SettingsState(selectedMicId: $selectedMicId, systemAudioEnabled: $systemAudioEnabled, autoStartServer: $autoStartServer, storagePath: $storagePath, dbSizeMb: $dbSizeMb, availableDevices: $availableDevices)';
 }
 
 
@@ -52,7 +51,7 @@ abstract mixin class $SettingsStateCopyWith<$Res>  {
   factory $SettingsStateCopyWith(SettingsState value, $Res Function(SettingsState) _then) = _$SettingsStateCopyWithImpl;
 @useResult
 $Res call({
- String? selectedMicId, bool systemAudioEnabled, bool autoStartServer, String serverPort, String storagePath, double dbSizeMb, List<AudioDeviceEntity> availableDevices
+ String? selectedMicId, bool systemAudioEnabled, bool autoStartServer, String storagePath, double dbSizeMb, List<AudioDeviceEntity> availableDevices
 });
 
 
@@ -69,13 +68,12 @@ class _$SettingsStateCopyWithImpl<$Res>
 
 /// Create a copy of SettingsState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? selectedMicId = freezed,Object? systemAudioEnabled = null,Object? autoStartServer = null,Object? serverPort = null,Object? storagePath = null,Object? dbSizeMb = null,Object? availableDevices = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? selectedMicId = freezed,Object? systemAudioEnabled = null,Object? autoStartServer = null,Object? storagePath = null,Object? dbSizeMb = null,Object? availableDevices = null,}) {
   return _then(_self.copyWith(
 selectedMicId: freezed == selectedMicId ? _self.selectedMicId : selectedMicId // ignore: cast_nullable_to_non_nullable
 as String?,systemAudioEnabled: null == systemAudioEnabled ? _self.systemAudioEnabled : systemAudioEnabled // ignore: cast_nullable_to_non_nullable
 as bool,autoStartServer: null == autoStartServer ? _self.autoStartServer : autoStartServer // ignore: cast_nullable_to_non_nullable
-as bool,serverPort: null == serverPort ? _self.serverPort : serverPort // ignore: cast_nullable_to_non_nullable
-as String,storagePath: null == storagePath ? _self.storagePath : storagePath // ignore: cast_nullable_to_non_nullable
+as bool,storagePath: null == storagePath ? _self.storagePath : storagePath // ignore: cast_nullable_to_non_nullable
 as String,dbSizeMb: null == dbSizeMb ? _self.dbSizeMb : dbSizeMb // ignore: cast_nullable_to_non_nullable
 as double,availableDevices: null == availableDevices ? _self.availableDevices : availableDevices // ignore: cast_nullable_to_non_nullable
 as List<AudioDeviceEntity>,
@@ -163,10 +161,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? selectedMicId,  bool systemAudioEnabled,  bool autoStartServer,  String serverPort,  String storagePath,  double dbSizeMb,  List<AudioDeviceEntity> availableDevices)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? selectedMicId,  bool systemAudioEnabled,  bool autoStartServer,  String storagePath,  double dbSizeMb,  List<AudioDeviceEntity> availableDevices)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _SettingsState() when $default != null:
-return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServer,_that.serverPort,_that.storagePath,_that.dbSizeMb,_that.availableDevices);case _:
+return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServer,_that.storagePath,_that.dbSizeMb,_that.availableDevices);case _:
   return orElse();
 
 }
@@ -184,10 +182,10 @@ return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServ
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? selectedMicId,  bool systemAudioEnabled,  bool autoStartServer,  String serverPort,  String storagePath,  double dbSizeMb,  List<AudioDeviceEntity> availableDevices)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? selectedMicId,  bool systemAudioEnabled,  bool autoStartServer,  String storagePath,  double dbSizeMb,  List<AudioDeviceEntity> availableDevices)  $default,) {final _that = this;
 switch (_that) {
 case _SettingsState():
-return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServer,_that.serverPort,_that.storagePath,_that.dbSizeMb,_that.availableDevices);case _:
+return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServer,_that.storagePath,_that.dbSizeMb,_that.availableDevices);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -204,10 +202,10 @@ return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServ
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? selectedMicId,  bool systemAudioEnabled,  bool autoStartServer,  String serverPort,  String storagePath,  double dbSizeMb,  List<AudioDeviceEntity> availableDevices)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? selectedMicId,  bool systemAudioEnabled,  bool autoStartServer,  String storagePath,  double dbSizeMb,  List<AudioDeviceEntity> availableDevices)?  $default,) {final _that = this;
 switch (_that) {
 case _SettingsState() when $default != null:
-return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServer,_that.serverPort,_that.storagePath,_that.dbSizeMb,_that.availableDevices);case _:
+return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServer,_that.storagePath,_that.dbSizeMb,_that.availableDevices);case _:
   return null;
 
 }
@@ -219,7 +217,7 @@ return $default(_that.selectedMicId,_that.systemAudioEnabled,_that.autoStartServ
 
 
 class _SettingsState implements SettingsState {
-  const _SettingsState({this.selectedMicId, this.systemAudioEnabled = true, this.autoStartServer = true, this.serverPort = '8000', this.storagePath = '', this.dbSizeMb = 0.0, required final  List<AudioDeviceEntity> availableDevices}): _availableDevices = availableDevices;
+  const _SettingsState({this.selectedMicId, this.systemAudioEnabled = true, this.autoStartServer = true, this.storagePath = '', this.dbSizeMb = 0.0, required final  List<AudioDeviceEntity> availableDevices}): _availableDevices = availableDevices;
   
 
 /// Identifiant du microphone selectionne.
@@ -228,8 +226,6 @@ class _SettingsState implements SettingsState {
 @override@JsonKey() final  bool systemAudioEnabled;
 /// Indique si le serveur ML doit demarrer automatiquement.
 @override@JsonKey() final  bool autoStartServer;
-/// Port du serveur ML (voxmlx-serve default: 8000).
-@override@JsonKey() final  String serverPort;
 /// Chemin de stockage de la base de donnees.
 @override@JsonKey() final  String storagePath;
 /// Taille de la base de donnees en Mo.
@@ -254,16 +250,16 @@ _$SettingsStateCopyWith<_SettingsState> get copyWith => __$SettingsStateCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SettingsState&&(identical(other.selectedMicId, selectedMicId) || other.selectedMicId == selectedMicId)&&(identical(other.systemAudioEnabled, systemAudioEnabled) || other.systemAudioEnabled == systemAudioEnabled)&&(identical(other.autoStartServer, autoStartServer) || other.autoStartServer == autoStartServer)&&(identical(other.serverPort, serverPort) || other.serverPort == serverPort)&&(identical(other.storagePath, storagePath) || other.storagePath == storagePath)&&(identical(other.dbSizeMb, dbSizeMb) || other.dbSizeMb == dbSizeMb)&&const DeepCollectionEquality().equals(other._availableDevices, _availableDevices));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SettingsState&&(identical(other.selectedMicId, selectedMicId) || other.selectedMicId == selectedMicId)&&(identical(other.systemAudioEnabled, systemAudioEnabled) || other.systemAudioEnabled == systemAudioEnabled)&&(identical(other.autoStartServer, autoStartServer) || other.autoStartServer == autoStartServer)&&(identical(other.storagePath, storagePath) || other.storagePath == storagePath)&&(identical(other.dbSizeMb, dbSizeMb) || other.dbSizeMb == dbSizeMb)&&const DeepCollectionEquality().equals(other._availableDevices, _availableDevices));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,selectedMicId,systemAudioEnabled,autoStartServer,serverPort,storagePath,dbSizeMb,const DeepCollectionEquality().hash(_availableDevices));
+int get hashCode => Object.hash(runtimeType,selectedMicId,systemAudioEnabled,autoStartServer,storagePath,dbSizeMb,const DeepCollectionEquality().hash(_availableDevices));
 
 @override
 String toString() {
-  return 'SettingsState(selectedMicId: $selectedMicId, systemAudioEnabled: $systemAudioEnabled, autoStartServer: $autoStartServer, serverPort: $serverPort, storagePath: $storagePath, dbSizeMb: $dbSizeMb, availableDevices: $availableDevices)';
+  return 'SettingsState(selectedMicId: $selectedMicId, systemAudioEnabled: $systemAudioEnabled, autoStartServer: $autoStartServer, storagePath: $storagePath, dbSizeMb: $dbSizeMb, availableDevices: $availableDevices)';
 }
 
 
@@ -274,7 +270,7 @@ abstract mixin class _$SettingsStateCopyWith<$Res> implements $SettingsStateCopy
   factory _$SettingsStateCopyWith(_SettingsState value, $Res Function(_SettingsState) _then) = __$SettingsStateCopyWithImpl;
 @override @useResult
 $Res call({
- String? selectedMicId, bool systemAudioEnabled, bool autoStartServer, String serverPort, String storagePath, double dbSizeMb, List<AudioDeviceEntity> availableDevices
+ String? selectedMicId, bool systemAudioEnabled, bool autoStartServer, String storagePath, double dbSizeMb, List<AudioDeviceEntity> availableDevices
 });
 
 
@@ -291,13 +287,12 @@ class __$SettingsStateCopyWithImpl<$Res>
 
 /// Create a copy of SettingsState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? selectedMicId = freezed,Object? systemAudioEnabled = null,Object? autoStartServer = null,Object? serverPort = null,Object? storagePath = null,Object? dbSizeMb = null,Object? availableDevices = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? selectedMicId = freezed,Object? systemAudioEnabled = null,Object? autoStartServer = null,Object? storagePath = null,Object? dbSizeMb = null,Object? availableDevices = null,}) {
   return _then(_SettingsState(
 selectedMicId: freezed == selectedMicId ? _self.selectedMicId : selectedMicId // ignore: cast_nullable_to_non_nullable
 as String?,systemAudioEnabled: null == systemAudioEnabled ? _self.systemAudioEnabled : systemAudioEnabled // ignore: cast_nullable_to_non_nullable
 as bool,autoStartServer: null == autoStartServer ? _self.autoStartServer : autoStartServer // ignore: cast_nullable_to_non_nullable
-as bool,serverPort: null == serverPort ? _self.serverPort : serverPort // ignore: cast_nullable_to_non_nullable
-as String,storagePath: null == storagePath ? _self.storagePath : storagePath // ignore: cast_nullable_to_non_nullable
+as bool,storagePath: null == storagePath ? _self.storagePath : storagePath // ignore: cast_nullable_to_non_nullable
 as String,dbSizeMb: null == dbSizeMb ? _self.dbSizeMb : dbSizeMb // ignore: cast_nullable_to_non_nullable
 as double,availableDevices: null == availableDevices ? _self._availableDevices : availableDevices // ignore: cast_nullable_to_non_nullable
 as List<AudioDeviceEntity>,
