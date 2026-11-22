@@ -31,9 +31,10 @@ final class StartSessionUseCase extends FutureUseCase<SessionEntity> {
     final DateTime now = DateTime.now();
     final SessionEntity session = SessionEntity(
       id: now.millisecondsSinceEpoch.toString(),
-      title:
-          link?.eventTitle ??
-          'Session ${now.toIso8601String().substring(0, 16).replaceAll('T', ' ')}',
+      // Un événement sans titre garde le titre par défaut.
+      title: (link?.eventTitle.trim().isNotEmpty ?? false)
+          ? link!.eventTitle
+          : 'Session ${now.toIso8601String().substring(0, 16).replaceAll('T', ' ')}',
       createdAt: now,
       updatedAt: now,
       status: SessionStatus.active,
