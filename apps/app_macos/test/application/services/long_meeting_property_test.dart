@@ -13,8 +13,9 @@ import '../../helpers/live_service_fakes.dart';
 /// serveur. Le vrai service et la vraie source distante tournent ensemble.
 ///
 /// Propriétés :
-/// - chaque chunk voisé arrive une seule fois et dans l'ordre, ou tombe dans
-///   une perte signalée, qui laisse un repère en base ;
+/// - chaque chunk voisé est transcrit une seule fois, ou tombe dans une
+///   perte signalée, qui laisse un repère en base (tour 2 : l'audio d'une
+///   phrase sans `done` est renvoyé sur la connexion suivante) ;
 /// - les horodatages des segments sont monotones par source et suivent le
 ///   temps de la réunion ;
 /// - les tampons reviennent à ~0 après chaque renvoi et restent bornés.
@@ -124,42 +125,59 @@ void main() {
         expect(h.session.status, SessionStatus.active);
         expect(h.service.isRecording, isTrue);
 
-        // 1. Livré une fois, dans l'ordre, ou compté dans une perte.
-        final Map<AudioSource, List<int>> delivered = <AudioSource, List<int>>{
-          AudioSource.input: micSocket.receivedIds,
-          AudioSource.output: systemSocket.receivedIds,
-        };
+        // 1. Chaque chunk voisé est transcrit une fois, ou compté dans une
+        // perte signalée ; jamais les deux. Sur une même connexion, aucun
+        // chunk n'est envoyé deux fois ni dans le désordre (le renvoi d'une
+        // phrase sans `done` se fait sur la connexion suivante).
+        final Map<AudioSource, FakeVoxSocket> sockets =
+            <AudioSource, FakeVoxSocket>{
+              AudioSource.input: micSocket,
+              AudioSource.output: systemSocket,
+            };
         for (final AudioSource source in AudioSource.values) {
-          final List<int> ids = delivered[source]!;
-          for (int k = 1; k < ids.length; k++) {
-            if (ids[k] <= ids[k - 1]) {
-              fail(
-                '${source.name} : chunk ${ids[k]} reçu après ${ids[k - 1]} '
-                '(doublon ou désordre)',
-              );
+          final FakeVoxSocket socket = sockets[source]!;
+          for (final List<int> ids in socket.connections) {
+            for (int k = 1; k < ids.length; k++) {
+              if (ids[k] <= ids[k - 1]) {
+                fail(
+                  '${source.name} : chunk ${ids[k]} reçu après ${ids[k - 1]} '
+                  'sur la même connexion (doublon ou désordre)',
+                );
+              }
             }
           }
-          final Set<int> deliveredSet = ids.toSet();
+          expect(
+            socket.transcribedTwice,
+            isEmpty,
+            reason: '${source.name} : chunks transcrits deux fois',
+          );
           bool inGap(int id) => gaps.any(
             (AudioGap g) =>
                 g.source == source &&
                 t0 + id * tickMs >= g.startMs &&
                 t0 + id * tickMs < g.endMs,
           );
+          // La dernière phrase, encore en cours à la fin, est exclue.
           final List<int> lost = voicedIds[source]!
-              .where((int id) => !deliveredSet.contains(id) && !inGap(id))
+              .where(
+                (int id) =>
+                    id < totalTicks - 100 &&
+                    !socket.transcribedIds.contains(id) &&
+                    !inGap(id),
+              )
               .toList();
           expect(
             lost,
             isEmpty,
             reason:
-                '${source.name} : ${lost.length} chunks voisés perdus en '
-                'silence (premier : ${lost.isEmpty ? '-' : lost.first})',
+                '${source.name} : ${lost.length} chunks voisés jamais '
+                'transcrits ni signalés (premier : '
+                '${lost.isEmpty ? '-' : lost.first})',
           );
           expect(
-            ids.where(inGap),
+            socket.transcribedIds.where(inGap),
             isEmpty,
-            reason: 'une perte signalée ne couvre aucun chunk livré',
+            reason: 'une perte signalée ne couvre aucun chunk transcrit',
           );
         }
 

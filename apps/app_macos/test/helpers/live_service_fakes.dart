@@ -421,8 +421,9 @@ final class FakeVoxServer {
 }
 
 /// Socket factice qui joue voxmlx : relit le numéro de chaque chunk reçu
-/// (sans garder le payload) et répond à chaque commit final par un delta
-/// puis un `done`, tant que la connexion qui l'a reçu est vivante.
+/// (sans garder le payload) et, si [autoReply], répond à chaque commit final
+/// par un delta puis un `done` 400 ms plus tard, tant que la connexion qui
+/// l'a reçu est vivante. Sinon le test répond lui-même avec [emit].
 final class FakeVoxSocket extends WebSocketClient {
   FakeVoxSocket(this.server);
 
@@ -430,15 +431,34 @@ final class FakeVoxSocket extends WebSocketClient {
 
   /// Refus de connexion propre à cette socket (coupure réseau ciblée).
   bool refusing = false;
+
+  /// Répond seul aux commits finaux.
+  bool autoReply = true;
+
+  /// Texte du `done` de la n-ième phrase.
+  String Function(int n) reply = (int n) => 'Phrase numéro $n.';
+
   bool _connected = false;
   int _generation = 0;
   int _phrases = 0;
+  int connectCalls = 0;
 
   /// Phrases finales (`done`) réellement envoyées au client.
   int doneSent = 0;
 
   /// Numéros des chunks reçus, toutes connexions confondues, dans l'ordre.
   final List<int> receivedIds = <int>[];
+
+  /// Numéros reçus, connexion par connexion.
+  final List<List<int>> connections = <List<int>>[];
+
+  /// Chunks transcrits : reçus avant un commit final dont le `done` est
+  /// parti sur la même connexion.
+  final Set<int> transcribedIds = <int>{};
+
+  /// Chunks transcrits deux fois (doublon dans la transcription).
+  final List<int> transcribedTwice = <int>[];
+  List<int> _sinceCommit = <int>[];
 
   final StreamController<String> _messages =
       StreamController<String>.broadcast();
@@ -451,16 +471,25 @@ final class FakeVoxSocket extends WebSocketClient {
 
   @override
   Future<void> connect(String url) async {
+    connectCalls++;
     if (!server.up || refusing) {
       throw const SocketException('Connection refused');
     }
     _connected = true;
     _generation++;
+    _sinceCommit = <int>[];
+    connections.add(<int>[]);
   }
 
   void drop() {
     _connected = false;
     _generation++;
+  }
+
+  /// Le serveur envoie un événement (mode sans [autoReply]).
+  void emit(Map<String, Object> event) {
+    if (event['type'] == 'response.audio_transcript.done') doneSent++;
+    _messages.add(jsonEncode(event));
   }
 
   @override
@@ -472,15 +501,23 @@ final class FakeVoxSocket extends WebSocketClient {
       final ByteData s = ByteData.sublistView(
         base64Decode((json['audio'] as String).substring(0, 8)),
       );
-      receivedIds.add(
-        s.getInt16(0, Endian.little) + (s.getInt16(2, Endian.little) << 15),
-      );
+      final int id =
+          s.getInt16(0, Endian.little) + (s.getInt16(2, Endian.little) << 15);
+      receivedIds.add(id);
+      connections.last.add(id);
+      _sinceCommit.add(id);
     } else if (json['type'] == 'input_audio_buffer.commit' &&
         json['final'] == true) {
+      final List<int> utterance = _sinceCommit;
+      _sinceCommit = <int>[];
+      if (!autoReply) return;
       final int generation = _generation;
       final int n = ++_phrases;
       Timer(const Duration(milliseconds: 400), () {
         if (!_connected || generation != _generation) return;
+        for (final int id in utterance) {
+          if (!transcribedIds.add(id)) transcribedTwice.add(id);
+        }
         _messages.add(
           jsonEncode(<String, Object>{
             'type': 'response.audio_transcript.delta',
@@ -491,7 +528,7 @@ final class FakeVoxSocket extends WebSocketClient {
         _messages.add(
           jsonEncode(<String, Object>{
             'type': 'response.audio_transcript.done',
-            'text': 'Phrase numéro $n.',
+            'text': reply(n),
           }),
         );
       });
