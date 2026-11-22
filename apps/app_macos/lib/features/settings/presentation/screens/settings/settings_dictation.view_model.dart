@@ -52,8 +52,12 @@ class DictationSettingsViewModel extends _$DictationSettingsViewModel {
 
   Future<void> _load() async {
     final DictationSettings settings = await _prefs.load();
-    final bool trusted = await _output.isAccessibilityTrusted();
+    // Libellé avant la permission : le raccourci s'affiche sans attendre le
+    // canal d'Accessibilité.
     final String? label = await _keyLabel(settings);
+    if (!ref.mounted) return;
+    state = state._with(settings: settings, keyLabel: () => label);
+    final bool trusted = await _output.isAccessibilityTrusted();
     if (!ref.mounted) return;
     state = state._with(
       settings: settings,
