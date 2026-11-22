@@ -66,7 +66,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
       children: <Widget>[
         _TopBar(
           onBack: widget.onClose,
-          actions: loaded ? _actions() : const <Widget>[],
+          actions: loaded ? _actions() : const <_Action>[],
         ),
         Expanded(
           child: async.when(
@@ -87,32 +87,36 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
     );
   }
 
-  List<Widget> _actions() => <Widget>[
-    OatsButton(
-      icon: Icons.copy_outlined,
-      label: LocaleKeys.history_detail_copy.tr(),
-      onPressed: _copy,
+  /// Actions de la note, dans l'ordre ; Supprimer (destructif) en dernier.
+  List<_Action> _actions() => <_Action>[
+    _Action(
+      Icons.copy_outlined,
+      LocaleKeys.history_detail_copy.tr(),
+      _copy,
+      primary: true,
     ),
-    OatsButton(
-      icon: Icons.file_download_outlined,
-      label: LocaleKeys.history_detail_export_markdown.tr(),
-      onPressed: _exportMarkdown,
+    _Action(
+      Icons.auto_awesome_outlined,
+      LocaleKeys.history_detail_summarize.tr(),
+      () => _vm.generateSummary(),
+      primary: true,
     ),
-    OatsButton(
-      icon: Icons.auto_awesome_outlined,
-      label: LocaleKeys.history_detail_summarize.tr(),
-      onPressed: () => _vm.generateSummary(),
+    _Action(
+      Icons.file_download_outlined,
+      LocaleKeys.history_detail_export_markdown.tr(),
+      _exportMarkdown,
     ),
-    OatsButton(
-      icon: Icons.school_outlined,
-      label: LocaleKeys.history_detail_english_coach.tr(),
-      onPressed: () => _vm.analyzeEnglish(),
+    _Action(
+      Icons.school_outlined,
+      LocaleKeys.history_detail_english_coach.tr(),
+      () => _vm.analyzeEnglish(),
     ),
-    OatsButton(
-      icon: Icons.delete_outline,
-      label: LocaleKeys.history_detail_delete.tr(),
+    _Action(
+      Icons.delete_outline,
+      LocaleKeys.history_detail_delete.tr(),
+      _confirmDelete,
+      primary: true,
       danger: true,
-      onPressed: _confirmDelete,
     ),
   ];
 
@@ -351,12 +355,47 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   }
 }
 
-/// Barre du haut : Retour à gauche, actions à droite (passent à la ligne).
+/// Une action de la barre du haut.
+class _Action {
+  const _Action(
+    this.icon,
+    this.label,
+    this.onPressed, {
+    this.primary = false,
+    this.danger = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  /// Reste visible quand la place manque.
+  final bool primary;
+  final bool danger;
+}
+
+/// Barre du haut, toujours sur une ligne : Retour à gauche, actions à
+/// droite. Si la place manque, Copier, Résumer et Supprimer restent
+/// visibles ; Exporter et Coach anglais passent dans le menu « … ».
 class _TopBar extends StatelessWidget {
   const _TopBar({required this.onBack, required this.actions});
 
   final VoidCallback onBack;
-  final List<Widget> actions;
+  final List<_Action> actions;
+
+  /// Largeur d'un bouton bordé icône + libellé (padding, icône, écart,
+  /// bord et un peu de marge), mesurée avec la vraie police.
+  static double _buttonWidth(BuildContext context, String label) {
+    final TextPainter tp = TextPainter(
+      text: TextSpan(text: label, style: context.oats.ui),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final double width = tp.width + 2 * OatsSpace.md + OatsIconSize.sm + 16;
+    tp.dispose();
+    return width;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -369,27 +408,136 @@ class _TopBar extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: o.line)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          OatsButton(
-            icon: Icons.arrow_back,
-            label: LocaleKeys.common_action_back.tr(),
-            onPressed: onBack,
-          ),
-          const SizedBox(width: OatsSpace.lg),
-          Expanded(
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: OatsSpace.xs + 2,
-              runSpacing: OatsSpace.xs + 2,
-              children: actions,
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints c) {
+          const double gap = OatsSpace.xs + 2;
+          final double needed =
+              32 +
+              OatsSpace.lg +
+              actions.fold<double>(
+                0,
+                (double sum, _Action a) =>
+                    sum + gap + _buttonWidth(context, a.label),
+              );
+          final bool roomy = needed <= c.maxWidth;
+          final List<_Action> inline = <_Action>[
+            for (final _Action a in actions)
+              if (roomy || a.primary) a,
+          ];
+          final List<_Action> overflow = <_Action>[
+            for (final _Action a in actions)
+              if (!roomy && !a.primary) a,
+          ];
+          return Row(
+            children: <Widget>[
+              _IconButton(
+                icon: Icons.arrow_back,
+                label: LocaleKeys.common_action_back.tr(),
+                onPressed: onBack,
+              ),
+              const Spacer(),
+              for (final _Action a in inline)
+                Padding(
+                  padding: const EdgeInsets.only(left: OatsSpace.xs + 2),
+                  child: OatsButton(
+                    icon: a.icon,
+                    label: a.label,
+                    danger: a.danger,
+                    onPressed: a.onPressed,
+                  ),
+                ),
+              if (overflow.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: OatsSpace.xs + 2),
+                  child: _OverflowMenu(actions: overflow),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
+}
+
+/// Menu « … » : actions secondaires, la destructive à part et en dernier.
+class _OverflowMenu extends StatelessWidget {
+  const _OverflowMenu({required this.actions});
+
+  final List<_Action> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final Oats o = context.oats;
+    return MenuAnchor(
+      alignmentOffset: const Offset(0, OatsSpace.xs),
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll<Color>(o.background),
+        surfaceTintColor: const WidgetStatePropertyAll<Color>(
+          Colors.transparent,
+        ),
+        side: WidgetStatePropertyAll<BorderSide>(BorderSide(color: o.line)),
+        shape: WidgetStatePropertyAll<OutlinedBorder>(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(OatsRadius.md),
+          ),
+        ),
+      ),
+      menuChildren: <Widget>[
+        for (final _Action a in actions) ...<Widget>[
+          if (a.danger) const Divider(),
+          MenuItemButton(
+            leadingIcon: Icon(
+              a.icon,
+              size: OatsIconSize.sm,
+              color: a.danger ? o.danger : o.muted,
+            ),
+            onPressed: a.onPressed,
+            child: Text(
+              a.label,
+              style: o.ui.copyWith(color: a.danger ? o.danger : o.ink),
+            ),
+          ),
+        ],
+      ],
+      builder: (BuildContext context, MenuController menu, Widget? _) =>
+          _IconButton(
+            icon: Icons.more_horiz,
+            label: LocaleKeys.common_action_more.tr(),
+            onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+          ),
+    );
+  }
+}
+
+/// Bouton bordé carré à icône seule, nom accessible et info-bulle.
+class _IconButton extends StatelessWidget {
+  const _IconButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: label,
+    child: Semantics(
+      label: label,
+      button: true,
+      excludeSemantics: true,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(32, 32),
+          padding: EdgeInsets.zero,
+        ),
+        child: Icon(icon, size: OatsIconSize.md, color: context.oats.muted),
+      ),
+    ),
+  );
 }
 
 /// Un tour de parole : qui parle, quand, puis le texte.

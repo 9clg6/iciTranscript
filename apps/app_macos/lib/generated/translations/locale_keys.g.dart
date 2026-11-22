@@ -13,6 +13,7 @@ abstract class  LocaleKeys {
   static const common_action_back = 'common.action.back';
   static const common_action_open_settings = 'common.action.open_settings';
   static const common_action_recheck = 'common.action.recheck';
+  static const common_action_more = 'common.action.more';
   static const common_action = 'common.action';
   static const common_label_today = 'common.label.today';
   static const common_label_yesterday = 'common.label.yesterday';
