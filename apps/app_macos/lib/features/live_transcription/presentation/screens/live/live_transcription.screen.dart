@@ -91,7 +91,7 @@ class _LiveTranscriptionScreenState
         ),
       if (state.screenRecordingPermission == 'denied')
         _permissionNotice(
-          icon: Icons.screenshot_monitor,
+          icon: Icons.desktop_mac_outlined,
           message: LocaleKeys.transcription_live_screen_denied.tr(),
           onOpenSettings: _vm.openScreenRecordingSettings,
         ),
@@ -504,19 +504,16 @@ class _LiveTranscriptionScreenState
       ),
       child: Row(
         children: <Widget>[
-          // ponytail: Icons.mic / screenshot_monitor (pleins) restent : le
-          // test d'écran historique les cherche ; la version fine est
-          // Icons.mic_none_outlined.
           Flexible(
             child: source(
-              micDenied ? Icons.mic_off : Icons.mic,
+              micDenied ? Icons.mic_off_outlined : Icons.mic_none_outlined,
               micText,
               micDenied,
             ),
           ),
           const SizedBox(width: OatsSpace.xl),
           Flexible(
-            child: source(Icons.screenshot_monitor, systemText, systemOff),
+            child: source(Icons.desktop_mac_outlined, systemText, systemOff),
           ),
         ],
       ),

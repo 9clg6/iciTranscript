@@ -92,6 +92,7 @@ abstract class  LocaleKeys {
   static const history_detail_exported = 'history.detail.exported';
   static const history_detail_export_error = 'history.detail.export_error';
   static const history_detail_no_session = 'history.detail.no_session';
+  static const history_detail_speaker_me = 'history.detail.speaker_me';
   static const history_detail_speaker = 'history.detail.speaker';
   static const history_detail_summary = 'history.detail.summary';
   static const history_detail_summary_loading = 'history.detail.summary_loading';

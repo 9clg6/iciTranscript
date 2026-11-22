@@ -400,7 +400,7 @@ class _TurnView extends StatelessWidget {
 
   String _label() {
     if (turn.source == AudioSource.input) {
-      return LocaleKeys.transcription_live_speaker_me.tr();
+      return LocaleKeys.history_detail_speaker_me.tr();
     }
     final int? n = turn.speaker;
     return n == null
