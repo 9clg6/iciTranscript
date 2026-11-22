@@ -77,9 +77,11 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         serverStartupLine: serverState == ServerState.starting
             ? state.serverStartupLine
             : null,
-        serverPortInUse: serverState == ServerState.error
-            ? state.serverPortInUse
-            : null,
+        // Effacé seulement au prochain démarrage : les états `stopped` puis
+        // `error` d'un échec peuvent arriver après le catch qui le pose.
+        serverPortInUse: serverState == ServerState.starting
+            ? null
+            : state.serverPortInUse,
       );
     });
 
