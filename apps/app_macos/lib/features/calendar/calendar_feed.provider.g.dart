@@ -63,3 +63,49 @@ abstract class _$CalendarFeedController extends $AsyncNotifier<CalendarFeed> {
     element.handleValue(ref, created);
   }
 }
+
+/// Agendas de l'utilisateur (à lire seulement une fois connecté et autorisé).
+
+@ProviderFor(calendarList)
+const calendarListProvider = CalendarListProvider._();
+
+/// Agendas de l'utilisateur (à lire seulement une fois connecté et autorisé).
+
+final class CalendarListProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<List<CalendarInfo>>,
+          List<CalendarInfo>,
+          FutureOr<List<CalendarInfo>>
+        >
+    with
+        $FutureModifier<List<CalendarInfo>>,
+        $FutureProvider<List<CalendarInfo>> {
+  /// Agendas de l'utilisateur (à lire seulement une fois connecté et autorisé).
+  const CalendarListProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'calendarListProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$calendarListHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<List<CalendarInfo>> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<List<CalendarInfo>> create(Ref ref) {
+    return calendarList(ref);
+  }
+}
+
+String _$calendarListHash() => r'0cc352779990a5c3a302e67a28b41f8b74c591a5';

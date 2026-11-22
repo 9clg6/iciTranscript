@@ -5,7 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_settings.dart';
+import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_prefs.provider.dart';
+import 'package:ici_transcript/features/calendar/meeting_suggestion.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.screen.dart';
@@ -14,12 +18,13 @@ import 'package:ici_transcript/features/settings/presentation/screens/settings/s
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
 part 'settings_ai.section.dart';
+part 'settings_calendar.section.dart';
 
 /// Largeur de la colonne des réglages.
 const double kSettingsWidth = 610;
 
-/// Page Réglages du shell : audio, enregistrement, modèle local, IA,
-/// serveur, stockage.
+/// Page Réglages du shell : audio, enregistrement, modèle local, agenda et
+/// réunions, IA, serveur, stockage.
 class SettingsScreen extends ConsumerStatefulWidget {
   /// Cree une instance de [SettingsScreen].
   const SettingsScreen({super.key});
@@ -137,6 +142,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ],
                 ),
+                const _CalendarSection(),
                 const _AiSection(),
                 _Section(
                   title: LocaleKeys.settings_server_title.tr(),

@@ -113,3 +113,8 @@ class CalendarFeedController extends _$CalendarFeedController {
 }
 
 Duration? _noRetry(int retryCount, Object error) => null;
+
+/// Agendas de l'utilisateur (à lire seulement une fois connecté et autorisé).
+@riverpod
+Future<List<CalendarInfo>> calendarList(Ref ref) =>
+    ref.read(calendarChannelProvider).calendars();
