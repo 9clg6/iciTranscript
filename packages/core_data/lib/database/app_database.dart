@@ -160,6 +160,9 @@ class DocumentChunks extends Table {
 // ponytail: `chunk_id` UNINDEXED, la suppression d'un morceau parcourt
 // l'index ; table de correspondance rowid si les documents se comptent
 // en milliers.
+// ponytail: `INSERT OR REPLACE` sur document_chunks ne declenche pas le
+// trigger de suppression (sans `recursive_triggers`) : ligne FTS en double.
+// Reecrire un morceau par upsert ou suppression puis insertion.
 const List<String> _searchSchema = <String>[
   'CREATE VIRTUAL TABLE document_chunks_fts USING fts5('
       'chunk_id UNINDEXED, content, '
