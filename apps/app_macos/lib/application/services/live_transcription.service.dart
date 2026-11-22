@@ -544,8 +544,7 @@ final class LiveTranscriptionService {
     final GapBackfillService? backfill = _gapBackfill;
     final GapBackfillRetry? retry = _gapBackfillRetry;
     if (backfill == null && retry == null) return;
-    final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    plan = GapBackfillService.plan(
+    final List<BackfillGap> plan = GapBackfillService.plan(
       segmentsStream.value
           .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
           .toList(),
@@ -562,10 +561,8 @@ final class LiveTranscriptionService {
     _finalisingRemaining.add(
       plan.fold<Duration>(
         Duration.zero,
-        (
-          Duration sum,
-          ({String markerId, AudioSource source, int startMs, int endMs}) g,
-        ) => sum + Duration(milliseconds: g.endMs - g.startMs),
+        (Duration sum, BackfillGap g) =>
+            sum + Duration(milliseconds: g.endMs - g.startMs),
       ),
     );
     // « Passer » rend la main tout de suite ; le rattrapage continue en

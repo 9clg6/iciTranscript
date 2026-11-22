@@ -7,6 +7,7 @@ import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/repositories/transcript.repository.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
+import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 
 /// Le transcripteur n'a pas atteint le serveur (connexion refusée) ou a
 /// cédé la place à un enregistrement : la tentative ne compte pas.
@@ -20,6 +21,16 @@ final class TranscriberUnavailable implements Exception {
   @override
   String toString() => 'TranscriberUnavailable: $reason';
 }
+
+/// Intervalle à retranscrire pour un repère, et segments abîmés qu'il
+/// remplace (phrases coupées par la perte).
+typedef BackfillGap = ({
+  String markerId,
+  AudioSource source,
+  int startMs,
+  int endMs,
+  List<String> replacedIds,
+});
 
 /// Issue d'un rattrapage : repères restants, et si le serveur a été atteint
 /// (sinon la tentative ne compte pas pour la limite de reprises).
@@ -62,22 +73,76 @@ final class GapBackfillService {
 
   /// Intervalles à retranscrire : un par repère, élargi de [margin], jamais
   /// avant le début de la réunion.
-  static List<({String markerId, AudioSource source, int startMs, int endMs})>
-  plan(List<TranscriptSegmentEntity> segments) =>
-      <({String markerId, AudioSource source, int startMs, int endMs})>[
-        for (final TranscriptSegmentEntity s in segments)
-          if (s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix))
-            if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
-              (
-                markerId: s.id,
-                source: s.source,
-                startMs: (s.timestampMs - margin.inMilliseconds).clamp(
-                  0,
-                  s.timestampMs,
-                ),
-                endMs: _ms(m, 4) + margin.inMilliseconds,
-              ),
-      ];
+  /// Un segment qui commence à moins de [edgeTolerance] de la fin d'une
+  /// perte a été coupé par elle (son début manque).
+  static const Duration edgeTolerance = Duration(seconds: 1);
+
+  // Au plus, après une phrase coupée au bord de fin, quand aucun segment
+  // ne la suit.
+  static const Duration _afterEdgeSpan = Duration(seconds: 30);
+
+  static bool _isMarker(TranscriptSegmentEntity s) =>
+      s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix);
+
+  /// Intervalles à retranscrire : un par repère, élargi de [margin], jamais
+  /// avant le début de la réunion, et étendu aux phrases coupées par la
+  /// perte, qui seront REMPLACÉES ([BackfillGap.replacedIds]) : avant, le
+  /// dernier segment de la source s'il est partiel ; après, le premier s'il
+  /// commence au bord de la perte (jusqu'au segment suivant, 30 s au plus).
+  /// Un voisin complet et éloigné du bord n'est jamais remplacé.
+  static List<BackfillGap> plan(List<TranscriptSegmentEntity> segments) {
+    final List<BackfillGap> gaps = <BackfillGap>[];
+    final int m = margin.inMilliseconds;
+    for (final TranscriptSegmentEntity marker in segments) {
+      if (!_isMarker(marker)) continue;
+      final RegExpMatch? times = _markerTimes.firstMatch(marker.text);
+      if (times == null) continue;
+      final int lostEnd = _ms(times, 4);
+      final List<TranscriptSegmentEntity> live =
+          segments
+              .where(
+                (TranscriptSegmentEntity x) =>
+                    x.source == marker.source && !_isMarker(x),
+              )
+              .toList()
+            ..sort(
+              (TranscriptSegmentEntity a, TranscriptSegmentEntity b) =>
+                  a.timestampMs.compareTo(b.timestampMs),
+            );
+      int start = marker.timestampMs - m;
+      int end = lostEnd + m;
+      final List<String> replaced = <String>[];
+      final TranscriptSegmentEntity? before = live
+          .where(
+            (TranscriptSegmentEntity x) => x.timestampMs <= marker.timestampMs,
+          )
+          .lastOrNull;
+      if (before != null && before.isPartial) {
+        replaced.add(before.id);
+        if (before.timestampMs - m < start) start = before.timestampMs - m;
+      }
+      final int afterIndex = live.indexWhere(
+        (TranscriptSegmentEntity x) => x.timestampMs > marker.timestampMs,
+      );
+      if (afterIndex >= 0 &&
+          (live[afterIndex].timestampMs - lostEnd).abs() <=
+              edgeTolerance.inMilliseconds) {
+        final TranscriptSegmentEntity after = live[afterIndex];
+        replaced.add(after.id);
+        end = afterIndex + 1 < live.length
+            ? live[afterIndex + 1].timestampMs
+            : after.timestampMs + _afterEdgeSpan.inMilliseconds;
+      }
+      gaps.add((
+        markerId: marker.id,
+        source: marker.source,
+        startMs: start < 0 ? 0 : start,
+        endMs: end,
+        replacedIds: replaced,
+      ));
+    }
+    return gaps;
+  }
 
   static int _ms(RegExpMatch m, int first) =>
       ((int.parse(m.group(first)!) * 60 + int.parse(m.group(first + 1)!)) * 60 +
@@ -96,14 +161,12 @@ final class GapBackfillService {
   }) async {
     final List<TranscriptSegmentEntity> segments = await _transcripts
         .getBySessionId(sessionId);
-    final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    gaps = plan(segments);
+    final List<BackfillGap> gaps = plan(segments);
     if (_isRecording()) return (markersLeft: gaps.length, reachedServer: false);
     int left = 0;
     bool reached = false;
     for (int g = 0; g < gaps.length; g++) {
-      final ({String markerId, AudioSource source, int startMs, int endMs})
-      gap = gaps[g];
+      final BackfillGap gap = gaps[g];
       // Le serveur ne tient pas un troisième flux (sonde) : on s'arrête dès
       // qu'un enregistrement commence.
       if (_isRecording()) {
@@ -137,11 +200,57 @@ final class GapBackfillService {
       final TranscriptSegmentEntity marker = segments.firstWhere(
         (TranscriptSegmentEntity s) => s.id == gap.markerId,
       );
-      final List<({int offsetMs, String text})> kept = trimOverlaps(
-        pieces,
-        before: _neighbour(segments, marker, before: true)?.text,
-        after: _neighbour(segments, marker, before: false)?.text,
+      // La même sortie fautive (écriture ou langue) n'est pas acceptée une
+      // seconde fois : le repère reste.
+      final List<({int offsetMs, String text})> accepted =
+          <({int offsetMs, String text})>[
+            for (final ({int offsetMs, String text}) p in pieces)
+              if (!TranscriptTextNormalizer.isForeignScript(p.text) &&
+                  !TranscriptTextNormalizer.isUnexpectedLanguage(p.text))
+                p,
+          ];
+      // La phrase partielle d'avant est remplacée : on ne coupe pas contre
+      // elle mais contre le segment intact qui la précède.
+      final Set<String> replaced = gap.replacedIds.toSet();
+      final TranscriptSegmentEntity? edgeAfter = _neighbour(
+        segments
+            .where(
+              (TranscriptSegmentEntity s) =>
+                  !replaced.contains(s.id) ||
+                  s.timestampMs > marker.timestampMs,
+            )
+            .toList(),
+        marker,
+        before: false,
       );
+      final List<TranscriptSegmentEntity> intact = segments
+          .where((TranscriptSegmentEntity s) => !replaced.contains(s.id))
+          .toList();
+      final String? before = _neighbour(intact, marker, before: true)?.text;
+      List<({int offsetMs, String text})> kept = trimOverlaps(
+        accepted,
+        before: before,
+        after: edgeAfter?.text,
+      );
+      // La phrase au bord de fin n'est remplacée que si son texte est
+      // abîmé : si son début se retrouve tel quel dans le texte retrouvé,
+      // elle est intacte, on la garde et on retire le doublon.
+      if (edgeAfter != null && replaced.contains(edgeAfter.id)) {
+        final List<({int offsetMs, String text})> withoutEdge = trimOverlaps(
+          accepted,
+          before: before,
+          after: _neighbour(intact, marker, before: false)?.text,
+        );
+        final bool edgeIntact = !_sameTexts(
+          kept,
+          trimOverlaps(accepted, before: before),
+        );
+        if (edgeIntact) {
+          replaced.remove(edgeAfter.id);
+        } else {
+          kept = withoutEdge;
+        }
+      }
       // Tout ce qui a été retrouvé était déjà dans les voisins : rien de
       // nouveau, le repère reste (jamais de texte en double).
       if (kept.isEmpty) {
@@ -162,6 +271,9 @@ final class GapBackfillService {
         );
       }
       await _transcripts.deleteById(gap.markerId);
+      for (final String id in replaced) {
+        await _transcripts.deleteById(id);
+      }
     }
     return (markersLeft: left, reachedServer: reached);
   }
@@ -282,6 +394,17 @@ final class GapBackfillService {
       return rest;
     }
     return piece;
+  }
+
+  static bool _sameTexts(
+    List<({int offsetMs, String text})> a,
+    List<({int offsetMs, String text})> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].text != b[i].text) return false;
+    }
+    return true;
   }
 
   static bool _sameWords(List<String> a, List<String> b) {
