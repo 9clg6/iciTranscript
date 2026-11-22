@@ -73,7 +73,7 @@
       "picker": "Impossible d'ouvrir le sélecteur de fichiers. Réessayez."
     },
     "privacy_local": "L'envoi à un service en ligne est coupé : ces documents et leurs extraits restent sur votre Mac.",
-    "privacy_cloud": "L'envoi à un service en ligne est autorisé : des extraits utiles à une réponse peuvent partir chez le fournisseur choisi."
+    "privacy_cloud": "L'envoi à un service en ligne est autorisé : des extraits de vos documents utiles à une réponse peuvent partir chez le fournisseur choisi."
   },
   "coach": {
     "empty": "Vos retours d'anglais, réunion par réunion, s'afficheront ici. En attendant, ouvrez une note et choisissez « Coach anglais ».",
@@ -198,7 +198,7 @@
     "ai": {
       "title": "Intelligence artificielle",
       "cloud_allowed": "Autoriser l'envoi à un service en ligne",
-      "privacy_notice": "Quand l'envoi est autorisé, le texte de la transcription et des documents utiles à la réponse part chez le fournisseur choisi. L'audio reste sur votre Mac.",
+      "privacy_notice": "Quand l'envoi est autorisé, le texte des notes que vous faites résumer ou analyser, celui de la réunion en cours et des extraits de vos documents partent chez le fournisseur choisi. L'audio reste sur votre Mac.",
       "active_provider": "Fournisseur utilisé",
       "cloud_paused": "{} en pause : l'envoi à un service en ligne est coupé.",
       "cloud_off_hint": "Services en ligne en pause : l'envoi est coupé.",
