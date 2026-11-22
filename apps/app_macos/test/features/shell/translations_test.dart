@@ -22,6 +22,10 @@ void main() {
       'home.upcoming.title': 'À venir',
       // L'app vouvoie : la source micro s'appelle « Vous ».
       'history.detail.speaker_me': 'Vous',
+      // Arrêt : attente du rattrapage de la transcription (tour 5 bis).
+      'transcription.live.finalising': 'Finalisation de la transcription…',
+      'transcription.live.finalising_remaining': '~{} s',
+      'transcription.live.skip_finalising': 'Passer',
     };
     exact.forEach((String key, String value) {
       test('$key = « $value »', () => expect(frValue(key), value));
