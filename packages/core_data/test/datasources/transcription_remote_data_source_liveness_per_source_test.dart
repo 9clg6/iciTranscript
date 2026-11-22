@@ -34,7 +34,10 @@ void main() {
       }
 
       expect(b.mic.connectCalls, greaterThanOrEqualTo(2));
-      expect(b.mic.connections.last.take(10), List<int>.generate(10, (i) => i));
+      expect(
+        b.mic.connections.last.take(10),
+        List<int>.generate(10, (int i) => i),
+      );
       expect(b.system.connectCalls, 1, reason: 'le système vit');
     });
   });

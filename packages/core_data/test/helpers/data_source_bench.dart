@@ -42,7 +42,10 @@ final class DataSourceBench {
       source == AudioSource.input ? mic : system;
 
   /// Un chunk de 100 ms par source listée, puis 100 ms de temps simulé.
-  void tick(int id, {Map<AudioSource, bool> voiced = const {}}) {
+  void tick(
+    int id, {
+    Map<AudioSource, bool> voiced = const <AudioSource, bool>{},
+  }) {
     for (final MapEntry<AudioSource, bool> v in voiced.entries) {
       dataSource.sendAudio(
         chunk(v.key, id, timestampMs: t0 + id * 100, voiced: v.value),

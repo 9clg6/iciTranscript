@@ -70,10 +70,11 @@ final class FakeWebSocketClient extends WebSocketClient {
   final List<int> transcribedTwice = <int>[];
 
   // Fermetures vues par le client (canal fini ou en erreur), sans appel à
-  // disconnect(). Sans @override : le vrai client n'a pas encore ce membre.
+  // disconnect().
   final StreamController<void> _closes = StreamController<void>.broadcast();
 
-  /// Le canal s'est fermé côté serveur (API supposée du vrai client).
+  /// Le canal s'est fermé côté serveur.
+  @override
   Stream<void> get onClosed => _closes.stream;
 
   /// Plus grand volume d'audio (en chunks de 100 ms) envoyé et pas encore
