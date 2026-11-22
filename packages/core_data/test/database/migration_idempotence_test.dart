@@ -176,7 +176,9 @@ void main() {
         reason: 'colonnes de ${t.key}',
       );
     }
-    expect(await _userVersion(db), 2);
+    // Tour 6 : la version courante est 3 (transcript_segments.is_partial) ;
+    // une base v1 migre jusqu'au bout, la v2 n'est plus la cible.
+    expect(await _userVersion(db), 3);
   }
 
   group('base déjà migrée mais marquée v1', () {
