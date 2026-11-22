@@ -43,6 +43,11 @@ void main() {
       'transcription.live.speaker_me',
       'transcription.live.speaker_system',
       'llm.configure_model',
+      'settings.local_model.install',
+      'settings.local_model.ready',
+      'ollama.step_model',
+      'ollama.error',
+      'common.action.retry',
     ];
     for (final String key in keys) {
       test(key, () {

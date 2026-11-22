@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:ici_transcript/core/providers/kernel.provider.dart';
 import 'package:ici_transcript/core/providers/platform/uvx_available.provider.dart';
+import 'package:ici_transcript/core/providers/services/ollama.service.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.state.dart';
@@ -110,12 +111,17 @@ class AppFakes {
   AppFakes({
     this.sessions = const <SessionEntity>[],
     this.ollama = kOllamaAbsent,
+    this.ollamaService,
     Future<SessionDetailState> Function(String sessionId)? detail,
   }) : detail = detail ?? _detailFrom(sessions);
 
   final List<SessionEntity> sessions;
   final FakeLiveTranscriptionViewModel live = FakeLiveTranscriptionViewModel();
   final OllamaSetupState ollama;
+
+  /// Si fourni : vrai OllamaSetupViewModel branché sur ce service factice
+  /// (au lieu d'un état figé).
+  final OllamaService? ollamaService;
   final Future<SessionDetailState> Function(String sessionId) detail;
 
   static Future<SessionDetailState> Function(String) _detailFrom(
@@ -128,9 +134,12 @@ class AppFakes {
   List<Override> get overrides => <Override>[
     kernelProvider.overrideWith((Ref ref) async {}),
     uvxAvailableProvider.overrideWith((Ref ref) async => true),
-    ollamaSetupViewModelProvider.overrideWith(
-      () => FakeOllamaSetupViewModel(ollama),
-    ),
+    if (ollamaService == null)
+      ollamaSetupViewModelProvider.overrideWith(
+        () => FakeOllamaSetupViewModel(ollama),
+      )
+    else
+      ollamaServiceProvider.overrideWithValue(ollamaService!),
     sessionListViewModelProvider.overrideWith(
       () => FakeSessionListViewModel(sessions),
     ),
