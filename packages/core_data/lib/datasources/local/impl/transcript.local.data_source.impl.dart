@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:core_data/database/app_database.dart';
 import 'package:core_data/database/dao/transcript_segment.dao.dart';
 import 'package:core_data/datasources/local/transcript.local.data_source.dart';
@@ -27,6 +28,7 @@ final class TranscriptLocalDataSourceImpl implements TranscriptLocalDataSource {
             text: row.textContent,
             timestampMs: row.timestampMs,
             createdAt: row.createdAt,
+            isPartial: row.isPartial,
           ),
         )
         .toList();
@@ -42,6 +44,7 @@ final class TranscriptLocalDataSourceImpl implements TranscriptLocalDataSource {
         textContent: segment.text,
         timestampMs: segment.timestampMs,
         createdAt: segment.createdAt,
+        isPartial: Value<bool>(segment.isPartial),
       ),
     );
   }
@@ -59,6 +62,7 @@ final class TranscriptLocalDataSourceImpl implements TranscriptLocalDataSource {
                   textContent: s.text,
                   timestampMs: s.timestampMs,
                   createdAt: s.createdAt,
+                  isPartial: Value<bool>(s.isPartial),
                 ),
           )
           .toList(),
@@ -89,6 +93,7 @@ final class TranscriptLocalDataSourceImpl implements TranscriptLocalDataSource {
                   text: row.textContent,
                   timestampMs: row.timestampMs,
                   createdAt: row.createdAt,
+                  isPartial: row.isPartial,
                 ),
               )
               .toList(),

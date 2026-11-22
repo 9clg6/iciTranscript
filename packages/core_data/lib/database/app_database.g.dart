@@ -685,6 +685,21 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _isPartialMeta = const VerificationMeta(
+    'isPartial',
+  );
+  @override
+  late final GeneratedColumn<bool> isPartial = GeneratedColumn<bool>(
+    'is_partial',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_partial" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -694,6 +709,7 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     timestampMs,
     createdAt,
     speaker,
+    isPartial,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -764,6 +780,12 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         speaker.isAcceptableOrUnknown(data['speaker']!, _speakerMeta),
       );
     }
+    if (data.containsKey('is_partial')) {
+      context.handle(
+        _isPartialMeta,
+        isPartial.isAcceptableOrUnknown(data['is_partial']!, _isPartialMeta),
+      );
+    }
     return context;
   }
 
@@ -801,6 +823,10 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.string,
         data['${effectivePrefix}speaker'],
       ),
+      isPartial: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_partial'],
+      )!,
     );
   }
 
@@ -832,6 +858,9 @@ class TranscriptSegment extends DataClass
 
   /// Locuteur du segment, ex. "Intervenant 2" (schema v2).
   final String? speaker;
+
+  /// Texte connu incomplet, remplacé par le rattrapage (schema v3).
+  final bool isPartial;
   const TranscriptSegment({
     required this.id,
     required this.sessionId,
@@ -840,6 +869,7 @@ class TranscriptSegment extends DataClass
     required this.timestampMs,
     required this.createdAt,
     this.speaker,
+    required this.isPartial,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -853,6 +883,7 @@ class TranscriptSegment extends DataClass
     if (!nullToAbsent || speaker != null) {
       map['speaker'] = Variable<String>(speaker);
     }
+    map['is_partial'] = Variable<bool>(isPartial);
     return map;
   }
 
@@ -867,6 +898,7 @@ class TranscriptSegment extends DataClass
       speaker: speaker == null && nullToAbsent
           ? const Value.absent()
           : Value(speaker),
+      isPartial: Value(isPartial),
     );
   }
 
@@ -883,6 +915,7 @@ class TranscriptSegment extends DataClass
       timestampMs: serializer.fromJson<int>(json['timestampMs']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
       speaker: serializer.fromJson<String?>(json['speaker']),
+      isPartial: serializer.fromJson<bool>(json['isPartial']),
     );
   }
   @override
@@ -896,6 +929,7 @@ class TranscriptSegment extends DataClass
       'timestampMs': serializer.toJson<int>(timestampMs),
       'createdAt': serializer.toJson<String>(createdAt),
       'speaker': serializer.toJson<String?>(speaker),
+      'isPartial': serializer.toJson<bool>(isPartial),
     };
   }
 
@@ -907,6 +941,7 @@ class TranscriptSegment extends DataClass
     int? timestampMs,
     String? createdAt,
     Value<String?> speaker = const Value.absent(),
+    bool? isPartial,
   }) => TranscriptSegment(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
@@ -915,6 +950,7 @@ class TranscriptSegment extends DataClass
     timestampMs: timestampMs ?? this.timestampMs,
     createdAt: createdAt ?? this.createdAt,
     speaker: speaker.present ? speaker.value : this.speaker,
+    isPartial: isPartial ?? this.isPartial,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -929,6 +965,7 @@ class TranscriptSegment extends DataClass
           : this.timestampMs,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       speaker: data.speaker.present ? data.speaker.value : this.speaker,
+      isPartial: data.isPartial.present ? data.isPartial.value : this.isPartial,
     );
   }
 
@@ -941,7 +978,8 @@ class TranscriptSegment extends DataClass
           ..write('textContent: $textContent, ')
           ..write('timestampMs: $timestampMs, ')
           ..write('createdAt: $createdAt, ')
-          ..write('speaker: $speaker')
+          ..write('speaker: $speaker, ')
+          ..write('isPartial: $isPartial')
           ..write(')'))
         .toString();
   }
@@ -955,6 +993,7 @@ class TranscriptSegment extends DataClass
     timestampMs,
     createdAt,
     speaker,
+    isPartial,
   );
   @override
   bool operator ==(Object other) =>
@@ -966,7 +1005,8 @@ class TranscriptSegment extends DataClass
           other.textContent == this.textContent &&
           other.timestampMs == this.timestampMs &&
           other.createdAt == this.createdAt &&
-          other.speaker == this.speaker);
+          other.speaker == this.speaker &&
+          other.isPartial == this.isPartial);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -977,6 +1017,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<int> timestampMs;
   final Value<String> createdAt;
   final Value<String?> speaker;
+  final Value<bool> isPartial;
   final Value<int> rowid;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
@@ -986,6 +1027,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.timestampMs = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.speaker = const Value.absent(),
+    this.isPartial = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
@@ -996,6 +1038,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     required int timestampMs,
     required String createdAt,
     this.speaker = const Value.absent(),
+    this.isPartial = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        sessionId = Value(sessionId),
@@ -1011,6 +1054,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<int>? timestampMs,
     Expression<String>? createdAt,
     Expression<String>? speaker,
+    Expression<bool>? isPartial,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1021,6 +1065,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (timestampMs != null) 'timestamp_ms': timestampMs,
       if (createdAt != null) 'created_at': createdAt,
       if (speaker != null) 'speaker': speaker,
+      if (isPartial != null) 'is_partial': isPartial,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1033,6 +1078,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<int>? timestampMs,
     Value<String>? createdAt,
     Value<String?>? speaker,
+    Value<bool>? isPartial,
     Value<int>? rowid,
   }) {
     return TranscriptSegmentsCompanion(
@@ -1043,6 +1089,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       timestampMs: timestampMs ?? this.timestampMs,
       createdAt: createdAt ?? this.createdAt,
       speaker: speaker ?? this.speaker,
+      isPartial: isPartial ?? this.isPartial,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1071,6 +1118,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (speaker.present) {
       map['speaker'] = Variable<String>(speaker.value);
     }
+    if (isPartial.present) {
+      map['is_partial'] = Variable<bool>(isPartial.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1087,6 +1137,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('timestampMs: $timestampMs, ')
           ..write('createdAt: $createdAt, ')
           ..write('speaker: $speaker, ')
+          ..write('isPartial: $isPartial, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3321,6 +3372,7 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       required int timestampMs,
       required String createdAt,
       Value<String?> speaker,
+      Value<bool> isPartial,
       Value<int> rowid,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
@@ -3332,6 +3384,7 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<int> timestampMs,
       Value<String> createdAt,
       Value<String?> speaker,
+      Value<bool> isPartial,
       Value<int> rowid,
     });
 
@@ -3407,6 +3460,11 @@ class $$TranscriptSegmentsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isPartial => $composableBuilder(
+    column: $table.isPartial,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SessionsTableFilterComposer get sessionId {
     final $$SessionsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -3470,6 +3528,11 @@ class $$TranscriptSegmentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isPartial => $composableBuilder(
+    column: $table.isPartial,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SessionsTableOrderingComposer get sessionId {
     final $$SessionsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -3524,6 +3587,9 @@ class $$TranscriptSegmentsTableAnnotationComposer
 
   GeneratedColumn<String> get speaker =>
       $composableBuilder(column: $table.speaker, builder: (column) => column);
+
+  GeneratedColumn<bool> get isPartial =>
+      $composableBuilder(column: $table.isPartial, builder: (column) => column);
 
   $$SessionsTableAnnotationComposer get sessionId {
     final $$SessionsTableAnnotationComposer composer = $composerBuilder(
@@ -3589,6 +3655,7 @@ class $$TranscriptSegmentsTableTableManager
                 Value<int> timestampMs = const Value.absent(),
                 Value<String> createdAt = const Value.absent(),
                 Value<String?> speaker = const Value.absent(),
+                Value<bool> isPartial = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
@@ -3598,6 +3665,7 @@ class $$TranscriptSegmentsTableTableManager
                 timestampMs: timestampMs,
                 createdAt: createdAt,
                 speaker: speaker,
+                isPartial: isPartial,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3609,6 +3677,7 @@ class $$TranscriptSegmentsTableTableManager
                 required int timestampMs,
                 required String createdAt,
                 Value<String?> speaker = const Value.absent(),
+                Value<bool> isPartial = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
@@ -3618,6 +3687,7 @@ class $$TranscriptSegmentsTableTableManager
                 timestampMs: timestampMs,
                 createdAt: createdAt,
                 speaker: speaker,
+                isPartial: isPartial,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

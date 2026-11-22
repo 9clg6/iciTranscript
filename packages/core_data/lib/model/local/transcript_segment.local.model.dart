@@ -25,6 +25,9 @@ abstract class TranscriptSegmentLocalModel with _$TranscriptSegmentLocalModel {
 
     /// Date de creation au format ISO 8601.
     required String createdAt,
+
+    /// Texte connu incomplet (schema v3).
+    @Default(false) bool isPartial,
   }) = _TranscriptSegmentLocalModel;
 
   /// Cree une instance depuis un JSON.

@@ -25,5 +25,10 @@ abstract class TranscriptSegmentEntity with _$TranscriptSegmentEntity {
 
     /// Date de creation du segment.
     required DateTime createdAt,
+
+    /// Texte connu incomplet : phrase en cours sauvée, ou scellée par une
+    /// coupure ou un arrêt brutal. Le rattrapage depuis le WAV remplace ces
+    /// segments au lieu de les laisser à côté du texte retrouvé.
+    @Default(false) bool isPartial,
   }) = _TranscriptSegmentEntity;
 }
