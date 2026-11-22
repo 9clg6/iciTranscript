@@ -36,8 +36,9 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     private static let cancelId: UInt32 = 2
 
     private var mainRef: EventHotKeyRef?
-    /// Escape alone, plus Escape with the shortcut's modifiers: Carbon matches
-    /// the mask exactly and the user is still holding ⌥ of ⌥Space.
+    /// Escape with every subset of the shortcut's modifiers (alone included):
+    /// Carbon matches the mask exactly, and the user may still hold all or
+    /// part of ⌃⌥ of ⌃⌥Space when cancelling (at most 16 hotkeys).
     private var cancelRefs: [EventHotKeyRef] = []
     private var mainModifiers: UInt32 = 0
     private var handlerRef: EventHandlerRef?
@@ -197,7 +198,7 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         if enabled {
             guard cancelRefs.isEmpty else { return noErr }
             // Non-exclusive: Escape is only borrowed for the length of a dictation.
-            for modifiers in Set([0, mainModifiers]) {
+            for modifiers in Self.subsets(of: mainModifiers) {
                 var ref: EventHotKeyRef?
                 let status = registerHotKey(
                     keyCode: UInt32(kVK_Escape), modifiers: modifiers, id: Self.cancelId, options: 0, ref: &ref
@@ -213,6 +214,17 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         cancelRefs.forEach { UnregisterEventHotKey($0) }
         cancelRefs = []
         return noErr
+    }
+
+    /// Every subset of the bits of [mask], 0 and [mask] included.
+    private static func subsets(of mask: UInt32) -> [UInt32] {
+        var result: [UInt32] = [0]
+        var sub = mask
+        while sub != 0 {
+            result.append(sub)
+            sub = (sub - 1) & mask
+        }
+        return result
     }
 
     private func emit(_ type: String) {
