@@ -55,6 +55,13 @@ final class FakeGlobalShortcutChannel extends GlobalShortcutChannel {
   @override
   Future<void> setCancelKeyEnabled(bool enabled) async =>
       cancelKey.add(enabled);
+
+  /// Caractères de chaque touche dans la disposition de clavier courante
+  /// (absente : le plugin ne sait pas, null).
+  final Map<int, String> keyLabels = <int, String>{};
+
+  @override
+  Future<String?> keyLabel(int keyCode) async => keyLabels[keyCode];
 }
 
 /// Presse-papiers et collage factices, dans un journal ordonné :

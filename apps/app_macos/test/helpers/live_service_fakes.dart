@@ -130,6 +130,9 @@ final class FakeAudioCaptureChannel extends AudioCaptureChannel {
   /// faux pour vérifier un ordre entre eux.
   List<String> log = <String>[];
 
+  /// Micro demandé à chaque [startCapture] (null : celui du système).
+  final List<String?> inputDeviceIds = <String?>[];
+
   /// Levée (une fois) par le prochain [startCapture], ex. permission micro.
   Object? startError;
 
@@ -148,6 +151,7 @@ final class FakeAudioCaptureChannel extends AudioCaptureChannel {
     bool outputEnabled = false,
   }) async {
     startCalls++;
+    inputDeviceIds.add(inputDeviceId);
     log.add('capture.start(output: $outputEnabled)');
     final Object? error = startError;
     startError = null;
