@@ -36,11 +36,9 @@ import '../../../helpers/live_answers_fakes.dart';
 ///     autres participants, même si la porte n'a rien vu.
 ///   - `void retry(String questionId)` (« Réessayer » / « Proposer une
 ///     réponse »), `void dismiss(String questionId)`.
-///   - `void markDictation({required int startMs, int? endMs})` : point de
-///     rencontre avec la dictée. Appelé à l'appui du raccourci (`endMs` null,
-///     plage ouverte) puis au relâchement (même `startMs`, `endMs` posé). Un
-///     segment MICRO dont `timestampMs` tombe dans une plage n'atteint ni la
-///     porte, ni le contexte, ni « Répondre à cette phrase ».
+///   - Dictée pendant la réunion : aucune API ici. Les mots dictés ne sont
+///     jamais des segments finaux (la transcription les route vers la
+///     dictée) ; voir live_answers_dictation_test.dart.
 ///   - Un segment dont le texte commence par
 ///     `LiveTranscriptionService.gapMarkerPrefix` (repère de perte) n'atteint
 ///     ni la porte ni le contexte, même s'il arrive par `onSegmentFinalized`.
@@ -1107,67 +1105,6 @@ void main() {
 
         expect(h.questions, hasLength(1));
         expect(h.llm.requests, hasLength(1));
-      });
-    });
-  });
-
-  group('dictée pendant la réunion', () {
-    test('les mots dictés (micro, entre appui et relâchement) n\'entrent pas '
-        'dans le contexte', () {
-      run((FakeAsync async, LiveAnswersHarness h) {
-        h.service.markDictation(startMs: 60000);
-        h.hear(
-          'DICTATED mot de passe du wifi',
-          source: AudioSource.input,
-          speaker: null,
-          atMs: 61000,
-        );
-        h.service.markDictation(startMs: 60000, endMs: 63000);
-        h.hear(
-          'CTX-AFTER on reprend.',
-          source: AudioSource.input,
-          speaker: null,
-          atMs: 64000,
-        );
-        h.hear(q, atMs: 65000);
-        async.flushMicrotasks();
-
-        final String text = requestText(h.llm.last.request);
-        expect(text, isNot(contains('DICTATED')));
-        expect(text, contains('CTX-AFTER'));
-      });
-    });
-
-    test('plage encore ouverte (raccourci tenu) : exclue aussi', () {
-      run((FakeAsync async, LiveAnswersHarness h) {
-        h.service.markDictation(startMs: 60000);
-        h.hear(
-          'DICTATED encore tenu',
-          source: AudioSource.input,
-          speaker: null,
-          atMs: 90000,
-        );
-        h.hear(q, atMs: 91000);
-        async.flushMicrotasks();
-
-        expect(requestText(h.llm.last.request), isNot(contains('DICTATED')));
-      });
-    });
-
-    test('« Répondre à cette phrase » sur une phrase dictée : rien', () {
-      run((FakeAsync async, LiveAnswersHarness h) {
-        h.service.markDictation(startMs: 60000, endMs: 63000);
-        final TranscriptSegmentEntity dictated = h.segment(
-          'Est-ce que DICTATED part au modèle ?',
-          source: AudioSource.input,
-          atMs: 61000,
-        );
-        h.service.onSegmentFinalized(dictated);
-        h.service.answerSegment(dictated);
-        async.flushMicrotasks();
-
-        expect(h.questions, isEmpty);
-        expect(h.llm.requests, isEmpty);
       });
     });
   });

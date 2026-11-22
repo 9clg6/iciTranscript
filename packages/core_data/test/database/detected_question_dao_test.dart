@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:core_data/database/app_database.dart';
 import 'package:core_data/database/dao/detected_question.dao.dart';
 import 'package:core_data/database/dao/session.dao.dart';
-import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
