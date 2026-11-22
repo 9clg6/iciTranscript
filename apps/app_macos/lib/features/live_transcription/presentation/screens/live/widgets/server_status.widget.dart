@@ -1,13 +1,10 @@
 import 'package:core_domain/domain/enum/server_state.enum.dart';
+import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:gap/gap.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
-/// Widget affichant le statut du serveur de transcription.
-///
-/// Affiche un point colore (vert/rouge/orange/gris) avec un texte
-/// descriptif de l'etat actuel du serveur.
+/// Statut du serveur de transcription : point + libellé dans une puce bordée.
 class ServerStatusWidget extends StatelessWidget {
   /// Cree une instance de [ServerStatusWidget].
   const ServerStatusWidget({required this.serverState, super.key});
@@ -15,68 +12,41 @@ class ServerStatusWidget extends StatelessWidget {
   /// Etat courant du serveur.
   final ServerState serverState;
 
-  Color _dotColor(ColorScheme colorScheme) {
-    switch (serverState) {
-      case ServerState.ready:
-        return Colors.green;
-      case ServerState.starting:
-        return Colors.orange;
-      case ServerState.error:
-        return colorScheme.error;
-      case ServerState.stopped:
-        return Colors.grey;
-    }
-  }
-
-  String _statusLabel() {
-    switch (serverState) {
-      case ServerState.ready:
-        return LocaleKeys.server_state_ready.tr();
-      case ServerState.starting:
-        return LocaleKeys.server_state_starting.tr();
-      case ServerState.error:
-        return LocaleKeys.server_state_error.tr();
-      case ServerState.stopped:
-        return LocaleKeys.server_state_stopped.tr();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final Color dotColor = _dotColor(colorScheme);
-    final bool isReady = serverState == ServerState.ready;
-
+    final Oats o = context.oats;
+    final (Color dot, String label) = switch (serverState) {
+      ServerState.ready => (o.ink, LocaleKeys.server_state_ready.tr()),
+      ServerState.starting => (o.faint, LocaleKeys.server_state_starting.tr()),
+      ServerState.error => (o.danger, LocaleKeys.server_state_error.tr()),
+      ServerState.stopped => (o.faint, LocaleKeys.server_state_stopped.tr()),
+    };
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: OatsSpace.sm + 1,
+        vertical: OatsSpace.xxs + 1,
+      ),
       decoration: BoxDecoration(
-        color: isReady
-            ? Colors.green.withValues(alpha: 0.08)
-            : colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isReady
-              ? Colors.green.withValues(alpha: 0.2)
-              : colorScheme.outlineVariant.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: o.line),
+        borderRadius: BorderRadius.circular(OatsRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
           ),
-          const Gap(8),
-          Text(
-            _statusLabel(),
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: isReady
-                  ? Colors.green.shade700
-                  : colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
-              fontSize: 11,
+          const SizedBox(width: OatsSpace.xs + 2),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: o.meta.copyWith(
+                color: serverState == ServerState.error ? o.danger : o.muted,
+              ),
             ),
           ),
         ],

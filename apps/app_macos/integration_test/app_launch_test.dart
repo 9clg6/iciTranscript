@@ -15,7 +15,7 @@ void main() {
     await $.pumpAndSettle();
 
     // Verifie que l'app est lancee avec le texte principal
-    expect($('IciTranscript'), findsOneWidget);
+    expect($('Oats'), findsOneWidget);
   });
 
   patrolTest('l\'app affiche un Scaffold au demarrage', ($) async {
@@ -23,6 +23,6 @@ void main() {
     await $.pumpAndSettle();
 
     // Verifie la presence du Scaffold ou du titre principal
-    expect($('IciTranscript'), findsWidgets);
+    expect($('Oats'), findsWidgets);
   });
 }

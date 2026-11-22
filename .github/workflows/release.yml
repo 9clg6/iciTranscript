@@ -16,7 +16,7 @@ permissions:
 jobs:
   build-macos:
     name: Build & Release macOS DMG
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
 
@@ -42,7 +42,7 @@ jobs:
       - name: Sign app (ad-hoc)
         run: |
           codesign --sign - --deep --force \
-            "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app"
+            "apps/app_macos/build/macos/Build/Products/Release/Oats.app"
 
       - name: Install create-dmg
         run: brew install create-dmg
@@ -54,22 +54,22 @@ jobs:
       - name: Create DMG
         run: |
           create-dmg \
-            --volname "IciTranscript" \
+            --volname "Oats" \
             --window-pos 200 120 \
             --window-size 660 400 \
             --icon-size 80 \
-            --icon "iciTranscript.app" 180 170 \
-            --hide-extension "iciTranscript.app" \
+            --icon "Oats.app" 180 170 \
+            --hide-extension "Oats.app" \
             --app-drop-link 480 170 \
             --no-internet-enable \
-            "IciTranscript-${{ env.TAG }}-macos.dmg" \
-            "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app"
+            "Oats-${{ env.TAG }}.dmg" \
+            "apps/app_macos/build/macos/Build/Products/Release/Oats.app"
 
       - name: Create ZIP
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
-            "apps/app_macos/build/macos/Build/Products/Release/iciTranscript.app" \
-            "IciTranscript-${{ env.TAG }}-macos.zip"
+            "apps/app_macos/build/macos/Build/Products/Release/Oats.app" \
+            "Oats-${{ env.TAG }}.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -77,14 +77,14 @@ jobs:
           tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
           files: |
-            IciTranscript-${{ env.TAG }}-macos.dmg
-            IciTranscript-${{ env.TAG }}-macos.zip
+            Oats-${{ env.TAG }}.dmg
+            Oats-${{ env.TAG }}.zip
           generate_release_notes: true
           body: |
             ## Installation
 
-            1. Télécharger `IciTranscript-${{ env.TAG }}-macos.dmg`
-            2. Ouvrir le DMG et glisser IciTranscript dans Applications
+            1. Télécharger `Oats-${{ env.TAG }}.dmg`
+            2. Ouvrir le DMG et glisser Oats dans Applications
             3. **Clic droit > Ouvrir** (première fois, Gatekeeper avertit car signature ad-hoc)
             4. L'app vous guide pour installer `uv` si nécessaire
 

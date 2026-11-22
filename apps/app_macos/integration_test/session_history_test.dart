@@ -16,7 +16,7 @@ void main() {
       await $.pumpAndSettle();
 
       // Verifie que l'app est lancee
-      expect($('IciTranscript'), findsOneWidget);
+      expect($('Oats'), findsOneWidget);
     });
 
     patrolTest('la navigation vers l\'historique est possible', ($) async {
@@ -26,7 +26,7 @@ void main() {
       // En mode MVP, la sidebar n'est pas encore integree
       // dans le main.dart de base. Ce test sera etoffe
       // quand le routing AutoRoute sera en place.
-      expect($('IciTranscript'), findsOneWidget);
+      expect($('Oats'), findsOneWidget);
     });
   });
 }

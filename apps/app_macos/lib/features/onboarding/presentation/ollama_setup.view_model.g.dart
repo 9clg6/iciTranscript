@@ -8,24 +8,24 @@ part of 'ollama_setup.view_model.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// ViewModel du processus de configuration initiale d'Ollama.
+/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
 ///
-/// Surveille et déclenche le téléchargement du binaire Ollama et du modèle
-/// Mistral si nécessaire. Appelé une seule fois au démarrage de l'app.
+/// [build] détecte seulement (aucun téléchargement) ; [install] lance
+/// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
 
 @ProviderFor(OllamaSetupViewModel)
 const ollamaSetupViewModelProvider = OllamaSetupViewModelProvider._();
 
-/// ViewModel du processus de configuration initiale d'Ollama.
+/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
 ///
-/// Surveille et déclenche le téléchargement du binaire Ollama et du modèle
-/// Mistral si nécessaire. Appelé une seule fois au démarrage de l'app.
+/// [build] détecte seulement (aucun téléchargement) ; [install] lance
+/// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
 final class OllamaSetupViewModelProvider
     extends $NotifierProvider<OllamaSetupViewModel, OllamaSetupState> {
-  /// ViewModel du processus de configuration initiale d'Ollama.
+  /// ViewModel du modèle local (moteur Ollama + modèle Mistral).
   ///
-  /// Surveille et déclenche le téléchargement du binaire Ollama et du modèle
-  /// Mistral si nécessaire. Appelé une seule fois au démarrage de l'app.
+  /// [build] détecte seulement (aucun téléchargement) ; [install] lance
+  /// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
   const OllamaSetupViewModelProvider._()
     : super(
         from: null,
@@ -54,12 +54,12 @@ final class OllamaSetupViewModelProvider
 }
 
 String _$ollamaSetupViewModelHash() =>
-    r'd6465edc20f0c12fbc936beb96c3a55545547186';
+    r'f2a3998cea7ed277488bc8f8c6f6f06e53551362';
 
-/// ViewModel du processus de configuration initiale d'Ollama.
+/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
 ///
-/// Surveille et déclenche le téléchargement du binaire Ollama et du modèle
-/// Mistral si nécessaire. Appelé une seule fois au démarrage de l'app.
+/// [build] détecte seulement (aucun téléchargement) ; [install] lance
+/// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
 
 abstract class _$OllamaSetupViewModel extends $Notifier<OllamaSetupState> {
   OllamaSetupState build();

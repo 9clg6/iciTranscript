@@ -1,5 +1,5 @@
 VERSION ?= $(shell grep '^version:' apps/app_macos/pubspec.yaml | head -1 | awk '{print $$2}')
-APP_NAME = ici_transcript
+APP_NAME = Oats
 BUILD_DIR = apps/app_macos/build/macos/Build/Products/Release
 
 .PHONY: build sign dmg clean
@@ -12,7 +12,7 @@ sign: build
 
 dmg: sign
 	create-dmg \
-		--volname "IciTranscript" \
+		--volname "Oats" \
 		--window-pos 200 120 \
 		--window-size 660 400 \
 		--icon-size 80 \
@@ -20,7 +20,7 @@ dmg: sign
 		--hide-extension "$(APP_NAME).app" \
 		--app-drop-link 480 170 \
 		--no-internet-enable \
-		"IciTranscript-v$(VERSION).dmg" \
+		"Oats-v$(VERSION).dmg" \
 		"$(BUILD_DIR)/$(APP_NAME).app"
 
 clean:

@@ -16,3 +16,10 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
+flutter:
+  fonts:
+    # Instrument Serif (SIL OFL 1.1, cf. assets/fonts/OFL.txt) : wordmark et titres.
+    - family: InstrumentSerif
+      fonts:
+        - asset: assets/fonts/InstrumentSerif-Regular.ttf
