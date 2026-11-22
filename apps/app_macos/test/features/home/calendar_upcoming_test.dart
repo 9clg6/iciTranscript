@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
