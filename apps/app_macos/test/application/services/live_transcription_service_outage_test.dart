@@ -394,7 +394,10 @@ void main() {
     });
   });
 
-  group('serveur muet : socket ouverte, aucun done (tour 3, point 4)', () {
+  // Tour 4 : délai de silence porté à 60 s sans aucun message du serveur
+  // (sonde : un serveur vivant est resté 28,9 s sans done pendant un
+  // rattrapage) ; la santé ne bouge pas avant 50 s.
+  group('serveur muet : socket ouverte, aucun message (tours 3 et 4)', () {
     test('la santé passe en reprise, puis en échec avec un repère, et '
         'l enregistrement continue', () {
       fakeAsync((FakeAsync async) {
@@ -405,7 +408,10 @@ void main() {
         say(0, 10);
         say(10, 15, level: _Level.silence); // commit final, jamais de done
 
-        async.elapse(const Duration(seconds: 40));
+        async.elapse(const Duration(seconds: 50));
+        expect(health, isNot(contains(TranscriptionHealth.recovering)));
+
+        async.elapse(const Duration(seconds: 30));
         expect(health, contains(TranscriptionHealth.recovering));
 
         async.elapse(const Duration(minutes: 15));
@@ -427,6 +433,51 @@ void main() {
         final int bytes = micWav.bytes;
         say(20000, 1);
         expect(micWav.bytes, bytes + 3200);
+      });
+    });
+  });
+
+  group('done spontané et done vide (tour 4, point 4)', () {
+    test('un done spontané non vide devient sa ligne, un vide est ignoré, '
+        'et la phrase suivante garde son heure', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        mic.autoReply = false;
+        say(0, 50, level: _Level.silence);
+        serverSays('response.audio_transcript.done', 'text', 'On commence.');
+        serverSays('response.audio_transcript.done', 'text', '');
+        async.elapse(const Duration(seconds: 1));
+        say(100, 20);
+        say(120, 15, level: _Level.silence); // commit final de B
+        serverSays('response.audio_transcript.done', 'text', 'Phrase B.');
+        async.elapse(const Duration(seconds: 1));
+
+        expect(texts(), <String>['On commence.', 'Phrase B.']);
+        expect(
+          h.segments
+              .of(AudioSource.input)
+              .singleWhere((TranscriptSegmentEntity s) => s.text == 'Phrase B.')
+              .timestampMs,
+          10000,
+        );
+      });
+    });
+
+    test('un done vide pour un commit en attente l acquitte sans ligne', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        mic.autoReply = false;
+        say(0, 10);
+        say(10, 15, level: _Level.silence);
+        serverSays('response.audio_transcript.done', 'text', '');
+        async.elapse(const Duration(seconds: 1));
+        say(30, 20);
+        say(50, 15, level: _Level.silence);
+        serverSays('response.audio_transcript.done', 'text', 'Suite.');
+        async.elapse(const Duration(seconds: 1));
+
+        expect(texts(), <String>['Suite.']);
+        expect(h.segments.of(AudioSource.input).single.timestampMs, 3000);
       });
     });
   });

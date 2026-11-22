@@ -793,6 +793,8 @@ final class LiveTranscriptionService {
     _pendingFinalizations.add(task);
   }
 
+  static final RegExp _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);
+
   /// Sauve en base la phrase en cours (provisoire, même id que la finale).
   void _checkpoint(SessionEntity session, AudioSource source) {
     _checkpointTimers.remove(source);
@@ -800,8 +802,9 @@ final class LiveTranscriptionService {
     final String text = TranscriptTextNormalizer.normalize(
       _phrase[source]!.toString(),
     );
+    // Sans lettre ni chiffre (« … » pendant le traitement), rien à garder.
     if (id == null ||
-        text.isEmpty ||
+        !_wordChar.hasMatch(text) ||
         TranscriptTextNormalizer.isForeignScript(text)) {
       return;
     }
