@@ -62,9 +62,12 @@ class _CalendarSection extends ConsumerWidget {
               OatsSpace.lg,
               OatsSpace.xs,
             ),
-            child: Text(
-              LocaleKeys.settings_calendar_calendars.tr(),
-              style: o.label,
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                LocaleKeys.settings_calendar_calendars.tr(),
+                style: o.label,
+              ),
             ),
           ),
         for (final CalendarInfo c in calendars)
