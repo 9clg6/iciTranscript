@@ -59,14 +59,19 @@ Stream<String> summarizeMeeting(LlmProvider llm, String transcript) async* {
     transcript,
     _room(_partSystem, _prefixOfPart(9999, 9999)),
   );
-  List<String> notes = <String>[
-    for (int i = 0; i < parts.length; i++)
+  List<String> notes = <String>[];
+  for (int i = 0; i < parts.length; i++) {
+    notes.add(
       await llm
           .streamChat(
             _request(_partSystem, _prefixOfPart(i + 1, parts.length), parts[i]),
           )
           .join(),
-  ];
+    );
+    // Rien à afficher encore, mais l'écouteur qui annule (note fermée)
+    // arrête ici, entre deux requêtes.
+    yield '';
+  }
   const String mergePrefix = 'Résumés des parties, dans l\'ordre :\n\n';
   final int room = _room(_mergeSystem, mergePrefix);
   // Fusion par lots tant que l'ensemble dépasse la borne.
@@ -87,10 +92,14 @@ Stream<String> summarizeMeeting(LlmProvider llm, String transcript) async* {
       ];
       break;
     }
-    notes = <String>[
-      for (final String batch in batches)
+    final List<String> merged = <String>[];
+    for (final String batch in batches) {
+      merged.add(
         await llm.streamChat(_request(_mergeSystem, mergePrefix, batch)).join(),
-    ];
+      );
+      yield '';
+    }
+    notes = merged;
   }
   yield* llm.streamChat(
     _request(_mergeSystem, mergePrefix, notes.join('\n\n')),
