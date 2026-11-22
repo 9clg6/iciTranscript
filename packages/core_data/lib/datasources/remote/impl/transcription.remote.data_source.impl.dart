@@ -63,16 +63,17 @@ final class TranscriptionRemoteDataSourceImpl
   static const int _maxBufferedMs = 120000;
   static const Duration _firstRetryDelay = Duration(milliseconds: 500);
   static const Duration _maxRetryDelay = Duration(seconds: 10);
-  // Serveur muet : socket ouverte mais commit final sans `done`. Au-delà de
-  // ce délai (un serveur lent répond en quelques secondes), la socket est
-  // recyclée et la phrase renvoyée ; après [_maxSilentRecycles] recyclages
-  // sans réponse, l'audio sans `done` est déclaré perdu.
-  static const Duration _doneTimeout = Duration(seconds: 25);
+  // Serveur muet. Le vrai serveur traite les sockets l'une après l'autre :
+  // pendant un rattrapage, un `done` a mis 38,8 s et deux `done` ont été
+  // séparés de 28,9 s, serveur vivant (sonde 2026-11-22). La vivacité se
+  // juge donc sur TOUT message du serveur, sur toutes ses sockets : seul un
+  // silence total de [_serverSilence] alors qu'un commit final attend fait
+  // recycler les sockets en attente et renvoyer leurs phrases ; après
+  // [_maxSilentRecycles] recyclages sans réponse, l'audio sans `done` est
+  // déclaré perdu.
+  static const Duration _serverSilence = Duration(seconds: 60);
   static const int _maxSilentRecycles = 3;
-  final Map<AudioSource, Timer?> _doneWatchdogs = <AudioSource, Timer?>{
-    AudioSource.input: null,
-    AudioSource.output: null,
-  };
+  Timer? _silenceTimer;
   final Map<AudioSource, int> _silentRecycles = <AudioSource, int>{
     AudioSource.input: 0,
     AudioSource.output: 0,
@@ -234,30 +235,37 @@ final class TranscriptionRemoteDataSourceImpl
     );
   }
 
-  /// [window] part sur la socket vivante : son `done` est attendu au plus
-  /// [_doneTimeout] (le délai court depuis le plus ancien commit attendu).
+  /// [window] part sur la socket vivante : son `done` est attendu.
   void _awaitDone(AudioSource source, UtteranceWindow window) {
     _pendingWindows[source]!.add(window);
-    _doneWatchdogs[source] ??= Timer(
-      _doneTimeout,
-      () => _onSilentServer(source),
-    );
+    _silenceTimer ??= Timer(_serverSilence, _onServerSilence);
   }
 
-  void _onDone(AudioSource source) {
-    _silentRecycles[source] = 0;
-    _doneWatchdogs[source]?.cancel();
-    _doneWatchdogs[source] = null;
-    if (_pendingWindows[source]!.isNotEmpty) {
-      _doneWatchdogs[source] = Timer(
-        _doneTimeout,
-        () => _onSilentServer(source),
-      );
+  /// Un message du serveur, sur n'importe quelle socket : il est vivant.
+  void _onServerMessage() {
+    for (final AudioSource source in AudioSource.values) {
+      _silentRecycles[source] = 0;
     }
+    _rearmSilence();
+  }
+
+  void _rearmSilence() {
+    _silenceTimer?.cancel();
+    _silenceTimer =
+        _pendingWindows.values.any((Queue<UtteranceWindow> q) => q.isNotEmpty)
+        ? Timer(_serverSilence, _onServerSilence)
+        : null;
+  }
+
+  void _onServerSilence() {
+    _silenceTimer = null;
+    for (final AudioSource source in AudioSource.values) {
+      _onSilentServer(source);
+    }
+    _rearmSilence();
   }
 
   void _onSilentServer(AudioSource source) {
-    _doneWatchdogs[source] = null;
     if (_outages[source] != null || _pendingWindows[source]!.isEmpty) return;
     final int recycles = _silentRecycles[source]! + 1;
     if (recycles > _maxSilentRecycles) {
@@ -279,8 +287,6 @@ final class TranscriptionRemoteDataSourceImpl
   }
 
   void _startOutage(AudioSource source) {
-    _doneWatchdogs[source]?.cancel();
-    _doneWatchdogs[source] = null;
     // Les commits partis sur la socket morte n'auront jamais de `done` : ils
     // repartiront depuis le tampon, avec leur fenêtre.
     _pendingWindows[source]!.clear();
@@ -355,9 +361,9 @@ final class TranscriptionRemoteDataSourceImpl
   /// est perdu (il reste dans le WAV) et signalé : sur une socket vivante,
   /// le serveur l'a reçu, son texte est au moins dans les deltas.
   void _clearOutages() {
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
     for (final AudioSource source in AudioSource.values) {
-      _doneWatchdogs[source]?.cancel();
-      _doneWatchdogs[source] = null;
       _silentRecycles[source] = 0;
       final _Outage? outage = _outages[source];
       outage?.retry?.cancel();
@@ -482,8 +488,14 @@ final class TranscriptionRemoteDataSourceImpl
               windows.isNotEmpty) {
             _eventWindows[event] = windows.removeFirst();
             _unacked[source]!.acknowledge();
-            _onDone(source);
           }
+          // Limites connues (protocole sans identifiant de phrase) : un
+          // `done` spontané du serveur, arrivé pendant qu'un commit attend,
+          // est pris pour la réponse à ce commit ; et une seule socket
+          // bloquée pendant que l'autre répond ne se distingue pas de la
+          // file du serveur. Seuls la borne de 120 s et le repère de perte
+          // couvrent ces cas.
+          _onServerMessage();
           return event;
         });
   }
