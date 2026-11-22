@@ -104,6 +104,9 @@ class LiveAnswersService {
   List<LiveQuestion> get questions =>
       List<LiveQuestion>.unmodifiable(_questions);
 
+  /// Une session est ouverte (entre [start] et [stop]).
+  bool get isRunning => _sessionId != null;
+
   /// [questions] à chaque changement (réponse partielle comprise).
   Stream<List<LiveQuestion>> get questionsStream => _subject.stream;
 
@@ -188,7 +191,8 @@ class LiveAnswersService {
   /// « Réessayer » / « Proposer une réponse ».
   void retry(String questionId) {
     final int i = _indexOf(questionId);
-    if (i < 0 || questionId == _inFlight) return;
+    // Après l'arrêt (finalisation), plus rien ne part.
+    if (_sessionId == null || i < 0 || questionId == _inFlight) return;
     _put(
       _questions[i].copyWith(
         status: LiveQuestionStatus.detected,

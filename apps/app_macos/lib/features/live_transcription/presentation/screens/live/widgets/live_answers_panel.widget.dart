@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/question_answer.widget.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
@@ -21,6 +23,12 @@ class LiveAnswersPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final Oats o = context.oats;
     final LiveAnswersService service = ref.watch(liveAnswersServiceProvider);
+    // Interlocuteur identifié après la détection (diarisation en direct).
+    final Map<String, int> labels = ref.watch(
+      liveTranscriptionViewModelProvider.select(
+        (LiveTranscriptionState s) => s.speakerLabels,
+      ),
+    );
     return StreamBuilder<List<LiveQuestion>>(
       stream: service.questionsStream,
       initialData: service.questions,
@@ -52,7 +60,9 @@ class LiveAnswersPanel extends ConsumerWidget {
                   OatsButton(
                     icon: Icons.reply_outlined,
                     label: LocaleKeys.live_answers_answer_latest.tr(),
-                    onPressed: service.answerLatestFromOthers,
+                    onPressed: service.isRunning
+                        ? service.answerLatestFromOthers
+                        : null,
                   ),
                 ],
               ),
@@ -96,6 +106,9 @@ class LiveAnswersPanel extends ConsumerWidget {
                           _QuestionCard(
                             question: questions[i],
                             service: service,
+                            speaker:
+                                questions[i].speaker ??
+                                labels[questions[i].segmentId],
                           ),
                     ),
             ),
@@ -107,17 +120,22 @@ class LiveAnswersPanel extends ConsumerWidget {
 }
 
 class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({required this.question, required this.service});
+  const _QuestionCard({
+    required this.question,
+    required this.service,
+    required this.speaker,
+  });
 
   final LiveQuestion question;
   final LiveAnswersService service;
+  final int? speaker;
 
   @override
   Widget build(BuildContext context) {
     final Oats o = context.oats;
     final LiveQuestion q = question;
     final (String?, QuestionStatusTone) status = switch (q.status) {
-      LiveQuestionStatus.answering when q.answer.isEmpty => (
+      LiveQuestionStatus.answering => (
         LocaleKeys.live_answers_answering.tr(),
         QuestionStatusTone.live,
       ),
@@ -145,7 +163,7 @@ class _QuestionCard extends StatelessWidget {
         );
     return QuestionAnswerView(
       question: q,
-      speakerLabel: _speaker(q),
+      speakerLabel: _speaker(q, speaker),
       status: status.$1,
       statusTone: status.$2,
       truncatedLabel: LocaleKeys.live_answers_truncated.tr(),
@@ -163,14 +181,15 @@ class _QuestionCard extends StatelessWidget {
         ),
       ],
       footer: <Widget>[
-        if (q.status == LiveQuestionStatus.failed ||
-            q.status == LiveQuestionStatus.needsModel)
+        if (service.isRunning &&
+            (q.status == LiveQuestionStatus.failed ||
+                q.status == LiveQuestionStatus.needsModel))
           OatsButton(
             icon: Icons.refresh,
             label: LocaleKeys.common_action_retry.tr(),
             onPressed: () => service.retry(q.id),
           ),
-        if (q.status == LiveQuestionStatus.detected)
+        if (service.isRunning && q.status == LiveQuestionStatus.detected)
           OatsButton(
             icon: Icons.auto_awesome_outlined,
             label: LocaleKeys.live_answers_answer.tr(),
@@ -195,13 +214,12 @@ class _QuestionCard extends StatelessWidget {
     );
   }
 
-  static String _speaker(LiveQuestion q) => q.source == AudioSource.input
+  static String _speaker(LiveQuestion q, int? n) =>
+      q.source == AudioSource.input
       ? LocaleKeys.transcription_live_speaker_me.tr()
-      : q.speaker == null
+      : n == null
       ? LocaleKeys.transcription_live_speaker_system.tr()
-      : LocaleKeys.transcription_live_speaker_n.tr(
-          args: <String>['${q.speaker! + 1}'],
-        );
+      : LocaleKeys.transcription_live_speaker_n.tr(args: <String>['${n + 1}']);
 
   // Le générateur d'easy_localization ne crée pas de constante pour une clé
   // nommée « other » (mot réservé des pluriels).

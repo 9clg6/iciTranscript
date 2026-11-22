@@ -794,6 +794,12 @@ void main() {
         await tester.tap(find.text('Revue de sprint 14'));
         await _pump(tester, 10);
         await _shot(tester, key, 'detail-questions-$suffix');
+        await tester.drag(
+          find.text('Revue de sprint 14'),
+          const Offset(0, -450),
+        );
+        await _pump(tester, 10);
+        await _shot(tester, key, 'detail-questions-scrolled-$suffix');
       });
 
       shoot('live-finalising', (WidgetTester tester) async {
