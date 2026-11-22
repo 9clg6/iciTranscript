@@ -1,13 +1,14 @@
 // Apple docs consulted (2026-11-22):
-// - NSOpenPanel — allowsMultipleSelection, canChooseFiles, canChooseDirectories:
-//   https://developer.apple.com/documentation/appkit/nsopenpanel
+// - NSOpenPanel.allowsMultipleSelection — selected items are read from `urls`:
+//   https://developer.apple.com/documentation/appkit/nsopenpanel/allowsmultipleselection
 // - NSSavePanel.allowedContentTypes ([UTType]) — macOS 11.0+:
 //   https://developer.apple.com/documentation/appkit/nssavepanel/allowedcontenttypes
 // - NSSavePanel.allowedFileTypes — macOS 10.3+, deprecated in macOS 12.0
 //   ("Use -allowedContentTypes instead"); kept as the fallback because the
 //   deployment target is macOS 10.15:
 //   https://developer.apple.com/documentation/appkit/nssavepanel/allowedfiletypes
-// - NSSavePanel.beginSheetModal(for:completionHandler:) — sheet on a window:
+// - NSSavePanel.beginSheetModal(for:completionHandler:) — sheet on a window,
+//   handler runs once the user dismisses the panel, macOS 10.6+:
 //   https://developer.apple.com/documentation/appkit/nssavepanel/beginsheetmodal(for:completionhandler:)
 import Cocoa
 import FlutterMacOS

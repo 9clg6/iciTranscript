@@ -1,8 +1,8 @@
 // Apple docs consulted (2026-11-22):
-// - PDFDocument.init(url:) — returns nil when the file cannot be opened as a PDF:
-//   https://developer.apple.com/documentation/pdfkit/pdfdocument/init(url:)
+// - PDFDocument.init(url:) — "if the URL is invalid, this method returns NULL":
+//   https://developer.apple.com/documentation/pdfkit/pdfdocument/init(url:)-98jte
 // - PDFDocument.string — "textual content of the entire document", pages
-//   delimited with linefeeds; optional (nil when there is no text), macOS 10.4+:
+//   delimited with linefeeds; declared `String?`, macOS 10.4+:
 //   https://developer.apple.com/documentation/pdfkit/pdfdocument/string
 // - PDFDocument.isLocked — only encrypted documents can be locked; an empty
 //   password is tried automatically, macOS 10.4+:
