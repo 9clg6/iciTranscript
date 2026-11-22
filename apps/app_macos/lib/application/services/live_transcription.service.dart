@@ -18,6 +18,7 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/enum/transcription_health.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
@@ -170,6 +171,21 @@ final class LiveTranscriptionService {
   /// puis [Duration.zero] : de quoi afficher « finalisation… ».
   Stream<Duration> get finalisingRemainingStream => _finalisingRemaining.stream;
 
+  /// Session réellement démarrée (capture et flux ouverts), pas seulement
+  /// demandée ni en cours d'arrêt.
+  bool get isRunning => _running;
+
+  /// Démarrage demandé, capture pas encore ouverte.
+  bool get isStarting => _startRequested && !_running;
+
+  /// Fin des démarrages et arrêts déjà demandés (vidange comprise).
+  Future<void> whenIdle() => _lifecycleTail.catchError((Object _) {});
+
+  /// Appelé au début de chaque démarrage, avant le serveur et la capture :
+  /// une dictée hors réunion se termine d'abord (jamais deux captures ni
+  /// trois flux).
+  Future<void> Function()? recordingHandover;
+
   /// Arrête d'attendre le rattrapage : l'audio restant devient une perte
   /// signalée (repère), l'arrêt se termine aussitôt.
   void skipFinalising() {
@@ -265,11 +281,17 @@ final class LiveTranscriptionService {
       return;
     }
     try {
+      await recordingHandover?.call();
+    } catch (e) {
+      _log.warning('Fin de la dictée avant l enregistrement: $e');
+    }
+    try {
       _log.info('=== DEMARRAGE TRANSCRIPTION ===');
       _captureInputDeviceId = inputDeviceId;
       _captureOutputEnabled = outputEnabled;
       _capturePaused = false;
       _audioChunkCount = 0;
+      _micAudioEndMs = null;
       _serverCommand = serverCommand;
       _serverArgs = serverArgs;
       _resetServerSupervision();
@@ -441,6 +463,9 @@ final class LiveTranscriptionService {
   Future<void> _stopTranscription() async {
     _log.info('Arret de la transcription en direct');
     _running = false;
+    // Dictée en cours : fin comme un relâchement (son texte vient du flush).
+    final MeetingDictation? open = _openDictation;
+    if (open != null) _endDictation(open, cancelled: false);
     _draining = true;
     final Completer<void> skip = _skipStop = Completer<void>();
     // Un démarrage déjà demandé : pas d'attente, droit au repère.
@@ -468,6 +493,12 @@ final class LiveTranscriptionService {
       publish: true,
       skip: skip.future,
     );
+
+    // Plus aucun `done` de dictée ne viendra : chacune rend ce qu'elle a.
+    for (final MeetingDictation d in _dictations) {
+      d._finish();
+    }
+    _dictations.clear();
 
     // Plus aucun événement distant après ce point : cela évite qu'un `done`
     // tardif duplique le fallback local.
@@ -555,13 +586,20 @@ final class LiveTranscriptionService {
     final GapBackfillService? backfill = _gapBackfill;
     final GapBackfillRetry? retry = _gapBackfillRetry;
     if (backfill == null && retry == null) return;
+    final List<TranscriptSegmentEntity> segments = segmentsStream.value
+        .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
+        .toList();
+    final List<DictatedInterval> dictated = DictatedIntervalsStore(
+      recordingsDir,
+    ).read(sessionId);
     final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    plan = GapBackfillService.plan(
-      segmentsStream.value
-          .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
-          .toList(),
-    );
-    if (plan.isEmpty) return;
+    plan = GapBackfillService.plan(segments, dictated: dictated);
+    // Un repère tout entier dans une dictée part aussi par le rattrapage
+    // (sans serveur).
+    if (plan.isEmpty &&
+        GapBackfillService.dictatedMarkers(segments, dictated).isEmpty) {
+      return;
+    }
     if (_startRequested || skip.isCompleted) {
       // Un enregistrement arrive (ou l'utilisateur a passé) : la session est
       // mise en attente de reprise, sans tentative ; le repère reste.
@@ -839,6 +877,7 @@ final class LiveTranscriptionService {
         }
         if (chunk.source == AudioSource.input) {
           _micRecorder?.append(chunk.data);
+          _micAudioEndMs = chunk.timestampMs + chunk.data.length ~/ 32;
         } else {
           _systemRecorder?.append(chunk.data);
           _traceSystemLevel(chunk.data);
@@ -977,6 +1016,8 @@ final class LiveTranscriptionService {
     if (event.type == 'response.audio_transcript.delta') {
       final String? delta = event.delta;
       if (delta == null || delta.isEmpty) return;
+      // Micro dicté : rien à l'écran ni en base (le texte va à la dictée).
+      if (source == AudioSource.input && _micDictated) return;
 
       // Une phrase renvoyée après coupure garde son id (et son début) : sa
       // retranscription remplace le provisoire déjà sauvé.
@@ -1001,6 +1042,10 @@ final class LiveTranscriptionService {
     } else if (event.type == utteranceLostEventType) {
       _sealPhrase(currentSession, source);
     } else if (event.type == 'response.audio_transcript.done') {
+      if (source == AudioSource.input && _routeToDictation(event)) {
+        _releaseStopWaiter(source);
+        return;
+      }
       _trackFinalization(
         currentSession,
         source,
@@ -1210,15 +1255,143 @@ final class LiveTranscriptionService {
           // Plusieurs commits peuvent déjà être en vol si le modèle a pris du
           // retard. Ne couper les listeners qu'après le dernier `done` de la
           // source, sinon les fins de phrases suivantes seraient perdues.
-          if (!_transcriptionRemoteDataSource.activeSources.contains(source)) {
-            final Completer<void>? waiter = _stopFinalizationWaiters.remove(
-              source,
-            );
-            if (waiter != null && !waiter.isCompleted) waiter.complete();
-          }
+          _releaseStopWaiter(source);
         });
     _pendingFinalizations.add(task);
     unawaited(task);
+  }
+
+  void _releaseStopWaiter(AudioSource source) {
+    if (_transcriptionRemoteDataSource.activeSources.contains(source)) return;
+    final Completer<void>? waiter = _stopFinalizationWaiters.remove(source);
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dictée pendant l'enregistrement (T2) : aucun flux en plus. Le texte du
+  // micro transcrit entre l'appui et le relâchement va à la dictée, jamais à
+  // la note ; attribution par fenêtre de parole de la phrase.
+  // ---------------------------------------------------------------------------
+
+  // Dictées de la session dont un `done` peut encore arriver (ou dont les
+  // `done` tardifs doivent rester hors de la note).
+  final List<MeetingDictation> _dictations = <MeetingDictation>[];
+
+  MeetingDictation? get _openDictation {
+    for (final MeetingDictation d in _dictations) {
+      if (d._endEpochMs == null) return d;
+    }
+    return null;
+  }
+
+  // Fin du dernier audio micro relayé, à l'horloge de la capture (celle des
+  // fenêtres de parole) : bornes de la dictée comparables aux phrases, même
+  // si la capture a du retard sur l'horloge murale.
+  int? _micAudioEndMs;
+
+  int _micAudioBoundary() =>
+      _micAudioEndMs ?? clock.now().millisecondsSinceEpoch;
+
+  bool get _micDictated =>
+      _dictations.any((MeetingDictation d) => !d.isComplete);
+
+  /// Commence une dictée sur le micro de la réunion en cours ; null hors
+  /// réunion, en pause, ou si une dictée est déjà ouverte.
+  MeetingDictation? beginDictation() {
+    final SessionEntity? session = currentSessionStream.valueOrNull;
+    if (!_running || _capturePaused || session == null) return null;
+    if (_openDictation != null) return null;
+    final MeetingDictation d = MeetingDictation._(
+      this,
+      session,
+      _micAudioBoundary(),
+    );
+    _dictations.add(d);
+    // Phrase à cheval sur l'appui : ce qui précède reste à la note.
+    _transcriptionRemoteDataSource.sendCommit(
+      isFinal: true,
+      sources: <AudioSource>{AudioSource.input},
+    );
+    _clearMicPhrase();
+    return d;
+  }
+
+  void _endDictation(MeetingDictation d, {required bool cancelled}) {
+    if (d._endEpochMs != null) return;
+    d._endEpochMs = math.max(d._startEpochMs, _micAudioBoundary());
+    if (cancelled) d.onText = null;
+    final TranscriptionRemoteDataSource remote = _transcriptionRemoteDataSource;
+    final Set<AudioSource> finalized = remote.sendCommit(
+      isFinal: true,
+      sources: <AudioSource>{AudioSource.input},
+    );
+    // Les `done` suivent l'ordre des commits : la dernière fenêtre en
+    // attente, si elle est de la dictée, en est le dernier mot.
+    if (remote is TranscriptionRemoteDataSourceImpl) {
+      final UtteranceWindow? last = remote.lastPendingWindow(AudioSource.input);
+      if (last != null && last.startMs >= d._startEpochMs) d._awaited = last;
+    } else if (finalized.isNotEmpty) {
+      d._awaitNext = true;
+    }
+    try {
+      DictatedIntervalsStore(recordingsDir).add(
+        d._session.id,
+        DictatedInterval(
+          startMs: _offsetOf(d._session, d._startEpochMs),
+          endMs: _offsetOf(d._session, d._endEpochMs!),
+        ),
+      );
+    } catch (e) {
+      _log.warning('Intervalle dicté non noté: $e');
+    }
+    if (d._awaited == null && !d._awaitNext) {
+      d._finish();
+      return;
+    }
+    // Dernier `done` perdu (coupure : fenêtres en attente vidées) : la
+    // dictée finit quand même, le micro revient à la note. Le texte tardif
+    // de son intervalle reste hors de la note.
+    d._giveUp = Timer(_dictationGiveUp, d._finish);
+  }
+
+  // Bien au-delà du délai de garde de la dictée (texte tardif encore livré).
+  static const Duration _dictationGiveUp = Duration(seconds: 60);
+
+  /// Un `done` micro de la dictée : il ne va pas à la note.
+  bool _routeToDictation(TranscriptEventRemoteModel event) {
+    final UtteranceWindow? window = _transcriptionRemoteDataSource.windowOf(
+      event,
+    );
+    MeetingDictation? owner;
+    for (final MeetingDictation d in _dictations) {
+      final bool inRange = window != null
+          ? window.startMs >= d._startEpochMs &&
+                (d._endEpochMs == null || window.startMs < d._endEpochMs!)
+          // Phrase close par le serveur seul : à la dictée qui tient le micro.
+          : !d.isComplete;
+      if (inRange) {
+        owner = d;
+        break;
+      }
+    }
+    if (owner == null) return false;
+    _clearMicPhrase();
+    owner.onText?.call(event.text ?? '', window?.hadSpeech ?? true);
+    if (identical(window, owner._awaited) || owner._awaitNext) owner._finish();
+    return true;
+  }
+
+  /// Oublie la phrase micro en cours (texte de dictée, jamais à la note).
+  void _clearMicPhrase() {
+    const AudioSource source = AudioSource.input;
+    _phraseId.remove(source);
+    _checkpointTimers.remove(source)?.cancel();
+    _phrase[source] = StringBuffer();
+    _transcriptionService.segmentsStream.add(
+      List<TranscriptSegmentEntity>.from(
+        _transcriptionService.segmentsStream.value,
+      )..removeWhere((TranscriptSegmentEntity s) => s.id == _tempId(source)),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1308,4 +1481,43 @@ class _PendingLabel {
   final String segmentId;
   final UtteranceWindow window;
   final DateTime queuedAt;
+}
+
+/// Dictée faite pendant un enregistrement, sur le micro de la réunion
+/// ([LiveTranscriptionService.beginDictation]). Notée avec la session
+/// (`<sessionId>_dictations.json`) à sa fin, annulée comprise.
+final class MeetingDictation {
+  MeetingDictation._(this._service, this._session, this._startEpochMs);
+
+  final LiveTranscriptionService _service;
+  final SessionEntity _session;
+  final int _startEpochMs;
+  int? _endEpochMs;
+  UtteranceWindow? _awaited;
+  bool _awaitNext = false;
+  bool _complete = false;
+  Timer? _giveUp;
+
+  /// Texte brut de chaque phrase dictée, et si elle avait de la parole.
+  void Function(String text, bool hadSpeech)? onText;
+
+  /// Dernière phrase dictée reçue (ou aucune attendue).
+  void Function()? onComplete;
+
+  /// Toutes les phrases dictées sont arrivées.
+  bool get isComplete => _complete;
+
+  /// Relâchement : le micro revient à la note ; les phrases dictées encore
+  /// attendues arrivent ensuite par [onText], puis [onComplete].
+  void release() => _service._endDictation(this, cancelled: false);
+
+  /// Annulation : ses mots sont jetés, ni sortie ni note.
+  void cancel() => _service._endDictation(this, cancelled: true);
+
+  void _finish() {
+    if (_complete) return;
+    _complete = true;
+    _giveUp?.cancel();
+    onComplete?.call();
+  }
 }

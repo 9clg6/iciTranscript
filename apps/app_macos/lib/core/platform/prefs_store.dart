@@ -58,6 +58,9 @@ class PrefsStore {
   }
 }
 
+/// Micro choisi dans Réglages (réunions et dictée).
+const String selectedMicPrefKey = 'selected_mic_id';
+
 /// [json]\[key] si c'est un [T], sinon null (type inattendu = absent).
 T? prefValue<T>(Map<String, Object?> json, String key) {
   final Object? value = json[key];

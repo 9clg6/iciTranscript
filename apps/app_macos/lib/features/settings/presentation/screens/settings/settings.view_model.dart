@@ -14,7 +14,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'settings.view_model.g.dart';
 
-const String _micKey = 'selected_mic_id';
 const String _systemAudioKey = 'system_audio_enabled';
 
 /// Fournisseurs en ligne (avec clé API).
@@ -47,7 +46,7 @@ class SettingsViewModel extends _$SettingsViewModel {
         .toList();
 
     final Map<String, Object?> prefs = await _prefs.read();
-    final String? savedMicId = prefValue<String>(prefs, _micKey);
+    final String? savedMicId = prefValue<String>(prefs, selectedMicPrefKey);
     final LlmSettings llm = LlmSettings.fromPrefs(prefs);
 
     final Map<LlmProviderId, String> suffixes = <LlmProviderId, String>{};
@@ -88,7 +87,7 @@ class SettingsViewModel extends _$SettingsViewModel {
   /// Met a jour le microphone selectionne.
   Future<void> updateMic(String id) async {
     state = state.copyWith(selectedMicId: id);
-    await _prefs.update(<String, Object?>{_micKey: id});
+    await _prefs.update(<String, Object?>{selectedMicPrefKey: id});
   }
 
   /// Active ou desactive la capture audio systeme.
