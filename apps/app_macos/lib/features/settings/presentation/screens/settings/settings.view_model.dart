@@ -248,13 +248,8 @@ class SettingsViewModel extends _$SettingsViewModel {
     if (ref.mounted) state = state.copyWith(llmActive: active);
   }
 
-  Future<LlmProviderId> _resolve(LlmSettings settings) async {
-    try {
-      return await resolveActiveLlmProvider(_keys, settings);
-    } on Object {
-      return LlmProviderId.ollama;
-    }
-  }
+  Future<LlmProviderId> _resolve(LlmSettings settings) =>
+      resolveActiveLlmProvider(_keys, settings);
 
   // Une clé trop courte n'est jamais montrée, même en partie.
   static String _last4(String key) =>

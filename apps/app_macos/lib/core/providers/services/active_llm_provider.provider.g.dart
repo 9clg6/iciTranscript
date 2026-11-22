@@ -62,4 +62,4 @@ final class ActiveLlmProviderProvider
   }
 }
 
-String _$activeLlmProviderHash() => r'0e616c4f82b74d0078741d8e96da56e9de6ae01d';
+String _$activeLlmProviderHash() => r'826642502b01f554e7eaa8804c8aeaf7bcf1c511';

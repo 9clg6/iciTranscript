@@ -28,20 +28,26 @@ Future<LlmProvider> activeLlmProvider(Ref ref) async {
   return buildLlmProvider(
     id,
     dio: ref.watch(llmDioProvider),
-    apiKey: await store.read(id) ?? '',
+    apiKey: id == LlmProviderId.ollama ? '' : await store.read(id) ?? '',
     model: settings.modelFor(id),
   );
 }
 
 /// Fournisseur réellement utilisé pour [settings] (une seule règle, pour
-/// l'app et pour le menu de Réglages).
+/// l'app et pour le menu de Réglages). Trousseau illisible : modèle local.
 Future<LlmProviderId> resolveActiveLlmProvider(
   ApiKeyStore store,
   LlmSettings settings,
-) => LlmProviderSelection(store).activeProvider(
-  preferred: settings.preferred,
-  cloudAllowed: settings.cloudAllowed,
-);
+) async {
+  try {
+    return await LlmProviderSelection(store).activeProvider(
+      preferred: settings.preferred,
+      cloudAllowed: settings.cloudAllowed,
+    );
+  } on Object {
+    return LlmProviderId.ollama;
+  }
+}
 
 /// Construit le fournisseur [id].
 LlmProvider buildLlmProvider(
