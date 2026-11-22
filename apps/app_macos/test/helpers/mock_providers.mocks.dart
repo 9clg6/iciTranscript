@@ -154,6 +154,15 @@ class MockTranscriptRepository extends _i1.Mock
           as _i5.Future<List<_i3.TranscriptSegmentEntity>>);
 
   @override
+  _i5.Future<void> deleteById(String? id) =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteById, [id]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
   _i5.Future<void> deleteBySessionId(String? sessionId) =>
       (super.noSuchMethod(
             Invocation.method(#deleteBySessionId, [sessionId]),
