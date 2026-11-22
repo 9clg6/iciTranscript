@@ -574,14 +574,20 @@ final class LiveTranscriptionService {
     final GapBackfillService? backfill = _gapBackfill;
     final GapBackfillRetry? retry = _gapBackfillRetry;
     if (backfill == null && retry == null) return;
+    final List<TranscriptSegmentEntity> segments = segmentsStream.value
+        .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
+        .toList();
+    final List<DictatedInterval> dictated = DictatedIntervalsStore(
+      recordingsDir,
+    ).read(sessionId);
     final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    plan = GapBackfillService.plan(
-      segmentsStream.value
-          .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
-          .toList(),
-      dictated: DictatedIntervalsStore(recordingsDir).read(sessionId),
-    );
-    if (plan.isEmpty) return;
+    plan = GapBackfillService.plan(segments, dictated: dictated);
+    // Un repère tout entier dans une dictée part aussi par le rattrapage
+    // (sans serveur).
+    if (plan.isEmpty &&
+        GapBackfillService.dictatedMarkers(segments, dictated).isEmpty) {
+      return;
+    }
     if (_startRequested || skip.isCompleted) {
       // Un enregistrement arrive (ou l'utilisateur a passé) : la session est
       // mise en attente de reprise, sans tentative ; le repère reste.

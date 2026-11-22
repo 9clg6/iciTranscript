@@ -67,7 +67,8 @@ final class GapBackfillService {
   /// Intervalles à retranscrire : un par repère, élargi de [margin], jamais
   /// avant le début de la réunion. Les repères micro sont coupés autour des
   /// intervalles [dictated] (jamais la dictée dans la note) : un repère peut
-  /// donner plusieurs morceaux, ou aucun.
+  /// donner plusieurs morceaux, ou aucun. Un repère tout entier dans une
+  /// dictée n'en donne aucun ([dictatedMarkers]).
   static List<({String markerId, AudioSource source, int startMs, int endMs})>
   plan(
     List<TranscriptSegmentEntity> segments, {
@@ -76,15 +77,39 @@ final class GapBackfillService {
     for (final TranscriptSegmentEntity s in segments)
       if (s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix))
         if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
-          for (final (int start, int end) in subtractIntervals(
-            (s.timestampMs - margin.inMilliseconds).clamp(0, s.timestampMs),
-            _ms(m, 4) + margin.inMilliseconds,
-            s.source == AudioSource.input
-                ? dictated
-                : const <DictatedInterval>[],
-          ))
-            (markerId: s.id, source: s.source, startMs: start, endMs: end),
+          if (!_insideDictation(s, m, dictated))
+            for (final (int start, int end) in subtractIntervals(
+              (s.timestampMs - margin.inMilliseconds).clamp(0, s.timestampMs),
+              _ms(m, 4) + margin.inMilliseconds,
+              s.source == AudioSource.input
+                  ? dictated
+                  : const <DictatedInterval>[],
+            ))
+              (markerId: s.id, source: s.source, startMs: start, endMs: end),
   ];
+
+  /// Repères micro dont la perte tient tout entière dans une dictée : la
+  /// réunion n'y a rien perdu (ces mots n'allaient pas à la note).
+  static List<String> dictatedMarkers(
+    List<TranscriptSegmentEntity> segments,
+    List<DictatedInterval> dictated,
+  ) => <String>[
+    for (final TranscriptSegmentEntity s in segments)
+      if (s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix))
+        if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
+          if (_insideDictation(s, m, dictated)) s.id,
+  ];
+
+  static bool _insideDictation(
+    TranscriptSegmentEntity marker,
+    RegExpMatch times,
+    List<DictatedInterval> dictated,
+  ) =>
+      marker.source == AudioSource.input &&
+      dictated.any(
+        (DictatedInterval d) =>
+            d.startMs <= marker.timestampMs && _ms(times, 4) <= d.endMs,
+      );
 
   static int _ms(RegExpMatch m, int first) =>
       ((int.parse(m.group(first)!) * 60 + int.parse(m.group(first + 1)!)) * 60 +
@@ -103,11 +128,14 @@ final class GapBackfillService {
   }) async {
     final List<TranscriptSegmentEntity> segments = await _transcripts
         .getBySessionId(sessionId);
+    final List<DictatedInterval> dictated =
+        _dictated?.read(sessionId) ?? const <DictatedInterval>[];
+    // Sans serveur : rien à retranscrire, le repère quitte la note.
+    for (final String id in dictatedMarkers(segments, dictated)) {
+      await _transcripts.deleteById(id);
+    }
     final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    gaps = plan(
-      segments,
-      dictated: _dictated?.read(sessionId) ?? const <DictatedInterval>[],
-    );
+    gaps = plan(segments, dictated: dictated);
     if (_isRecording()) {
       return (markersLeft: _markers(gaps, 0), reachedServer: false);
     }
