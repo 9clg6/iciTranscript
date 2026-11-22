@@ -16,7 +16,7 @@ void main() {
       AppBuildMode.debug,
       AppBuildMode.release,
     ]) {
-      print(
+      stdout.writeln(
         '${env['OATS_DATA_DIR'] ?? '-'} ${m.name}: data=${resolveAppDataDirectory(env, buildMode: m)} '
         'tools=${resolveToolsDirectory(env)} logs=${resolveLogDirectory(env, buildMode: m)}',
       );
