@@ -128,8 +128,11 @@ abstract class  LocaleKeys {
   static const settings_storage_database_size = 'settings.storage.database_size';
   static const settings_storage_size_mb = 'settings.storage.size_mb';
   static const settings_storage = 'settings.storage';
+  static const settings_local_model_description = 'settings.local_model.description';
+  static const settings_local_model_install = 'settings.local_model.install';
+  static const settings_local_model_ready = 'settings.local_model.ready';
+  static const settings_local_model = 'settings.local_model';
   static const settings = 'settings';
-  static const ollama_subtitle = 'ollama.subtitle';
   static const ollama_step_binary = 'ollama.step_binary';
   static const ollama_step_server = 'ollama.step_server';
   static const ollama_step_model = 'ollama.step_model';

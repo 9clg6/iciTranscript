@@ -60,8 +60,8 @@ class _RootAppWidgetState extends ConsumerState<RootAppWidget> {
             ),
           );
         }
-        // Prépare le modèle local en arrière-plan dès le lancement, sans
-        // rien bloquer (keepAlive : un seul téléchargement).
+        // Détecte le modèle local au lancement, sans rien télécharger :
+        // l'installation se lance depuis Réglages.
         ref.read(ollamaSetupViewModelProvider);
         return MaterialApp.router(
           debugShowCheckedModeBanner: false,

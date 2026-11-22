@@ -5,25 +5,40 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'ollama_setup.view_model.g.dart';
 
-/// ViewModel du processus de configuration initiale d'Ollama.
+/// ViewModel du modèle local (moteur Ollama + modèle Mistral).
 ///
-/// Surveille et déclenche le téléchargement du binaire Ollama et du modèle
-/// Mistral si nécessaire. Appelé une seule fois au démarrage de l'app.
+/// [build] détecte seulement (aucun téléchargement) ; [install] lance
+/// l'installation (~106 Mo + ~4 Go) à la demande, depuis Réglages.
 @Riverpod(keepAlive: true)
 class OllamaSetupViewModel extends _$OllamaSetupViewModel {
   @override
   OllamaSetupState build() {
-    _startSetup();
+    _detect();
     return const OllamaSetupState();
   }
 
-  Future<void> _startSetup() async {
-    try {
-      await ref.read(ollamaServiceProvider).ensureReady(
-        onProgress: (OllamaSetupStage stage, double progress) {
-          state = state.copyWith(stage: stage, progress: progress);
-        },
+  Future<void> _detect() async {
+    final bool installed = await ref.read(ollamaServiceProvider).isInstalled();
+    if (installed) {
+      state = state.copyWith(
+        stage: OllamaSetupStage.ready,
+        isReady: true,
+        progress: 1.0,
       );
+    }
+  }
+
+  /// Installe le moteur et le modèle, avec la progression de chaque étape.
+  Future<void> install() async {
+    state = const OllamaSetupState(stage: OllamaSetupStage.downloadingBinary);
+    try {
+      await ref
+          .read(ollamaServiceProvider)
+          .ensureReady(
+            onProgress: (OllamaSetupStage stage, double progress) {
+              state = state.copyWith(stage: stage, progress: progress);
+            },
+          );
       state = state.copyWith(
         stage: OllamaSetupStage.ready,
         isReady: true,
@@ -37,9 +52,6 @@ class OllamaSetupViewModel extends _$OllamaSetupViewModel {
     }
   }
 
-  /// Relance le setup après une erreur.
-  void retry() {
-    state = const OllamaSetupState();
-    _startSetup();
-  }
+  /// Relance l'installation après une erreur.
+  void retry() => install();
 }

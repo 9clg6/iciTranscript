@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
@@ -299,7 +300,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
           .where((TranscriptSegmentEntity s) => s.source == AudioSource.input)
           .map((TranscriptSegmentEntity s) => s.text)
           .join('\n');
-      await _analyzeEnglish(transcript, sessionId: sessionId);
+      await coachAfterCall(transcript, sessionId: sessionId);
     }
 
     // Le modèle Mistral était conservé cinq minutes. Le décharger avant
@@ -630,8 +631,15 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// Analyse l'anglais parlé via Ollama (Mistral local) et sauvegarde le retour.
   ///
   /// [transcript] = parole du micro (MOI) uniquement.
-  Future<void> _analyzeEnglish(String transcript, {String? sessionId}) async {
+  /// Sans modèle local installé : rien n'est téléchargé, pas de retour ; la
+  /// note reste enregistrée et l'installation se fait depuis Réglages.
+  @visibleForTesting
+  Future<void> coachAfterCall(String transcript, {String? sessionId}) async {
     if (transcript.trim().isEmpty) return;
+    if (!await ref.read(ollamaServiceProvider).isInstalled()) {
+      _log.info('Coach ignoré : modèle local non installé');
+      return;
+    }
     state = state.copyWith(isFeedbackLoading: true);
 
     // S'assurer qu'Ollama est prêt (téléchargement binaire + modèle si besoin)

@@ -7,10 +7,9 @@ import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.sta
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
-/// Préparation du modèle local (moteur Ollama + modèle Mistral), affichée
-/// dans Réglages. Le téléchargement démarre en arrière-plan au lancement
-/// (app.dart) ; ce bloc en montre l'avancement et permet de relancer après
-/// une erreur.
+/// Modèle local (moteur Ollama + modèle Mistral), dans Réglages : « prêt »
+/// s'il est installé, sinon un bouton Installer ; pendant l'installation, la
+/// progression de chaque étape ; après une erreur, Réessayer.
 class OllamaSetupScreen extends ConsumerWidget {
   /// Crée le bloc.
   const OllamaSetupScreen({super.key});
@@ -90,10 +89,44 @@ class OllamaSetupScreen extends ConsumerWidget {
       );
     }
 
+    if (s.isReady) {
+      return Row(
+        children: <Widget>[
+          Icon(Icons.check_circle_outline, size: OatsIconSize.md, color: o.ink),
+          const SizedBox(width: OatsSpace.sm + 2),
+          Expanded(
+            child: Text(
+              LocaleKeys.settings_local_model_ready.tr(),
+              style: o.ui,
+            ),
+          ),
+        ],
+      );
+    }
+    if (s.stage == OllamaSetupStage.idle) {
+      return Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(
+              LocaleKeys.settings_local_model_description.tr(),
+              style: o.small,
+            ),
+          ),
+          const SizedBox(width: OatsSpace.lg),
+          OatsButton(
+            icon: Icons.download_outlined,
+            label: LocaleKeys.settings_local_model_install.tr(),
+            onPressed: () =>
+                ref.read(ollamaSetupViewModelProvider.notifier).install(),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text(LocaleKeys.ollama_subtitle.tr(), style: o.small),
+        Text(LocaleKeys.settings_local_model_description.tr(), style: o.small),
         const SizedBox(height: OatsSpace.lg),
         step(
           OllamaSetupStage.downloadingBinary,

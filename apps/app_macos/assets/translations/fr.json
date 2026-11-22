@@ -149,10 +149,14 @@
       "location": "Emplacement",
       "database_size": "Taille de la base",
       "size_mb": "{} Mo"
+    },
+    "local_model": {
+      "description": "Résumés et coach anglais tournent sur votre Mac. Téléchargement unique : moteur Ollama (~106 Mo) et modèle Mistral (~4 Go).",
+      "install": "Installer",
+      "ready": "Modèle local prêt, sur votre Mac."
     }
   },
   "ollama": {
-    "subtitle": "Téléchargé une seule fois, il reste sur votre Mac.",
     "step_binary": "Moteur Ollama",
     "step_server": "Démarrage du serveur",
     "step_model": "Modèle Mistral",

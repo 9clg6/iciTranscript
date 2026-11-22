@@ -110,6 +110,9 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
 
     final String transcript = _transcript(current);
     if (transcript.trim().isEmpty) return;
+    // Sans modèle installé : rien à télécharger d'ici, la note affiche
+    // l'invite « configurer un modèle » (installation depuis Réglages).
+    if (!await _ollamaService.isInstalled()) return;
 
     state = AsyncData<SessionDetailState>(
       current.copyWith(isSummaryLoading: true),
@@ -136,6 +139,7 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
     // Coach = micro de l'utilisateur UNIQUEMENT (pas l'audio du meeting).
     final String transcript = _micTranscript(current);
     if (transcript.trim().isEmpty) return;
+    if (!await _ollamaService.isInstalled()) return;
 
     state = AsyncData<SessionDetailState>(
       current.copyWith(isFeedbackLoading: true),
