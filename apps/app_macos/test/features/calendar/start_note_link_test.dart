@@ -217,6 +217,40 @@ void main() {
     },
   );
 
+  test('agenda en erreur au démarrage : l\'enregistrement démarre quand '
+      'même, sans lien', () async {
+    _writePrefs(<String, Object?>{'calendar_connected': true});
+    FakeCalendarPlatform(
+        status: 'fullAccess',
+        events: <Map<String, Object?>>[comite()],
+      )
+      ..eventsErrorCode = 'EVENTKIT_ERROR'
+      ..install();
+
+    final SessionEntity s = await startNote();
+
+    expect(s.status, SessionStatus.active);
+    expect(s.calendarEventId, isNull);
+  });
+
+  test(
+    'agenda qui ne répond pas : l\'enregistrement démarre quand même',
+    () async {
+      _writePrefs(<String, Object?>{'calendar_connected': true});
+      FakeCalendarPlatform(
+          status: 'fullAccess',
+          events: <Map<String, Object?>>[comite()],
+        )
+        ..eventsGate = Completer<void>().future
+        ..install();
+
+      // startNote attend la session (3 s au plus, `eventually`).
+      final SessionEntity s = await startNote();
+
+      expect(s.status, SessionStatus.active);
+    },
+  );
+
   test(
     'ni le titre ni les participants ne sont écrits dans le journal',
     () async {
