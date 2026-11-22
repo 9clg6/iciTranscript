@@ -6,6 +6,7 @@ import 'package:core_data/model/audio_chunk.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
+import 'package:core_domain/domain/enum/transcription_health.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -389,6 +390,43 @@ void main() {
         expect(took, lessThanOrEqualTo(const Duration(seconds: 10)));
         expect(texts(), <String>['Bonjour à tous']);
         expect(h.session.status, SessionStatus.completed);
+      });
+    });
+  });
+
+  group('serveur muet : socket ouverte, aucun done (tour 3, point 4)', () {
+    test('la santé passe en reprise, puis en échec avec un repère, et '
+        'l enregistrement continue', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        final List<TranscriptionHealth> health = <TranscriptionHealth>[];
+        h.service.transcriptionHealthStream.listen(health.add);
+        mic.autoReply = false;
+        say(0, 10);
+        say(10, 15, level: _Level.silence); // commit final, jamais de done
+
+        async.elapse(const Duration(seconds: 40));
+        expect(health, contains(TranscriptionHealth.recovering));
+
+        async.elapse(const Duration(minutes: 15));
+        expect(health.last, TranscriptionHealth.failed);
+        final TranscriptSegmentEntity marker = h.segments
+            .of(AudioSource.input)
+            .singleWhere(
+              (TranscriptSegmentEntity s) =>
+                  s.text.startsWith('Transcription interrompue'),
+            );
+        expect(marker.timestampMs, 0);
+        expect(marker.text, matches(RegExp(r'00:00:00\s*[–-]\s*00:00:02')));
+
+        expect(h.session.status, SessionStatus.active);
+        expect(h.service.isRecording, isTrue);
+        final FakeWavRecorder micWav = h.recorders.singleWhere(
+          (FakeWavRecorder r) => r.path!.endsWith('_mic.wav'),
+        );
+        final int bytes = micWav.bytes;
+        say(20000, 1);
+        expect(micWav.bytes, bytes + 3200);
       });
     });
   });
