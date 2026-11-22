@@ -418,7 +418,28 @@ AudioChunk chunk(
 
 /// Serveur voxmlx factice partagé par les deux sockets.
 final class FakeVoxServer {
+  FakeVoxServer({this.now, this.speed});
+
   bool up = true;
+
+  /// Horloge du test, requise si [speed] est donné.
+  final Duration Function()? now;
+
+  /// Serveur séquentiel (comme le vrai, sonde 2026-11-22) : il traite
+  /// l'audio de toutes les sockets dans une seule file, [speed] fois plus
+  /// vite que le temps réel. Null : réponse en 400 ms, sans file.
+  final double? speed;
+  Duration _busyUntil = Duration.zero;
+
+  /// Met [audio] dans la file ; rend l'instant où il aura été traité.
+  Duration process(Duration audio) {
+    final Duration t = now!();
+    final Duration start = _busyUntil > t ? _busyUntil : t;
+    _busyUntil = start + audio * (1 / speed!);
+    return _busyUntil;
+  }
+
+  Duration get busyUntil => _busyUntil;
 }
 
 /// Socket factice qui joue voxmlx : relit le numéro de chaque chunk reçu
@@ -507,6 +528,24 @@ final class FakeVoxSocket extends WebSocketClient {
       receivedIds.add(id);
       connections.last.add(id);
       _sinceCommit.add(id);
+      if (server.speed != null) {
+        final Duration doneAt = server.process(
+          const Duration(milliseconds: 100),
+        );
+        // Le modèle émet du texte au fil du traitement : signe de vie.
+        if (autoReply && _sinceCommit.length % 20 == 0) {
+          final int generation = _generation;
+          Timer(doneAt - server.now!(), () {
+            if (!_connected || generation != _generation) return;
+            _messages.add(
+              jsonEncode(<String, Object>{
+                'type': 'response.audio_transcript.delta',
+                'delta': '… ',
+              }),
+            );
+          });
+        }
+      }
     } else if (json['type'] == 'input_audio_buffer.commit' &&
         json['final'] == true) {
       final List<int> utterance = _sinceCommit;
@@ -514,7 +553,12 @@ final class FakeVoxSocket extends WebSocketClient {
       if (!autoReply) return;
       final int generation = _generation;
       final int n = ++_phrases;
-      Timer(const Duration(milliseconds: 400), () {
+      final Duration delay = server.speed == null
+          ? const Duration(milliseconds: 400)
+          : server.busyUntil +
+                const Duration(milliseconds: 400) -
+                server.now!();
+      Timer(delay, () {
         if (!_connected || generation != _generation) return;
         for (final int id in utterance) {
           if (!transcribedIds.add(id)) transcribedTwice.add(id);
