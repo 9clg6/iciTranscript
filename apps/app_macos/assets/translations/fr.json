@@ -2,140 +2,182 @@
   "common": {
     "error": {
       "generic": "Une erreur est survenue",
-      "network": "Verifiez votre connexion internet"
+      "init": "L'application n'a pas pu démarrer : {}"
     },
     "action": {
-      "save": "Enregistrer",
       "cancel": "Annuler",
       "delete": "Supprimer",
-      "confirm": "Confirmer",
-      "retry": "Reessayer",
-      "copy": "Copier",
-      "export": "Exporter",
-      "search": "Rechercher",
+      "retry": "Réessayer",
       "close": "Fermer",
-      "edit": "Modifier"
+      "back": "Retour",
+      "open_settings": "Ouvrir les Réglages",
+      "recheck": "Revérifier",
+      "more": "Plus d'actions"
     },
     "label": {
       "today": "Aujourd'hui",
       "yesterday": "Hier",
-      "older": "Plus ancien",
-      "loading": "Chargement...",
-      "empty": "Aucun element"
+      "done": "Terminé"
     }
   },
   "app": {
-    "name": "iciTranscript",
-    "subtitle": "Coach d'anglais"
+    "name": "Oats"
+  },
+  "nav": {
+    "home": "Accueil",
+    "documents": "Documents",
+    "coach": "Coach anglais",
+    "settings": "Réglages",
+    "recording": "Enregistre"
+  },
+  "home": {
+    "new_note": "Nouvelle note",
+    "search": "Rechercher une note",
+    "empty": "Aucune note pour l'instant. Lancez un enregistrement pendant votre prochaine réunion.",
+    "no_result": "Aucune note ne correspond à « {} ».",
+    "upcoming": {
+      "title": "À venir",
+      "no_calendar": "Aucun agenda connecté. Vos prochaines réunions s'afficheront ici.",
+      "attendees": {
+        "one": "{} participant",
+        "other": "{} participants"
+      }
+    }
+  },
+  "documents": {
+    "empty_title": "Aucun document",
+    "empty": "Les documents que vous ajouterez serviront de source aux réponses pendant vos réunions. Cette page arrive bientôt."
+  },
+  "coach": {
+    "empty": "Vos retours d'anglais, réunion par réunion, s'afficheront ici. En attendant, ouvrez une note et choisissez « Coach anglais ».",
+    "category": {
+      "grammar": "Grammaire",
+      "conjugation": "Conjugaison",
+      "vocabulary": "Vocabulaire",
+      "expression": "Expression",
+      "style": "Style",
+      "suggestion": "Suggestion"
+    }
+  },
+  "llm": {
+    "configure_model": "Aucun modèle prêt. Configurez le modèle local dans Réglages pour résumer et analyser vos notes."
   },
   "transcription": {
-    "title": "Transcription",
-    "start": "Demarrer",
-    "stop": "Arreter",
-    "pause": "Pause",
-    "resume": "Reprendre",
-    "server_starting": "Demarrage du serveur...",
-    "server_ready": "Voxtral Ready",
-    "server_error": "Erreur serveur",
-    "server_stopped": "Serveur arrete",
-    "source_me": "MOI",
-    "source_system": "SYSTEME",
-    "no_session": "Appuyez sur Demarrer pour commencer",
     "live": {
-      "title": "Transcription en direct",
-      "start": "Demarrer",
-      "stop": "Arreter",
+      "start": "Démarrer",
+      "stop": "Arrêter",
       "pause": "Pause",
       "resume": "Reprendre",
-      "recording": "Enregistrement",
-      "recording_time": "Temps d'enregistrement",
-      "speaker_me": "MOI",
-      "speaker_system": "SYSTEME",
-      "no_session": "Appuyez sur Demarrer pour commencer",
-      "summary_option": "Coach d'anglais",
-      "summary_title": "Coach d'anglais",
-      "summary_loading": "Analyse de votre anglais...",
-      "summary_no_key": "Configurez ANTHROPIC_API_KEY pour activer le coach"
+      "recording_time": "Durée d'enregistrement",
+      "speaker_me": "Vous",
+      "speaker_system": "Interlocuteur",
+      "speaker_n": "Interlocuteur {}",
+      "no_session": "Appuyez sur Démarrer pour commencer",
+      "waiting": "En attente de transcription…",
+      "first_launch": "Premier lancement : installation et téléchargement du modèle de transcription (~2,5 Go), quelques minutes.",
+      "coach_option": "Coach anglais",
+      "speakers_option": "Interlocuteurs",
+      "speakers_tooltip": "Identifie qui parle dans l'audio système pendant la session (jusqu'à 8 interlocuteurs).",
+      "translation_option": "Traduction",
+      "summary_title": "Coach anglais",
+      "summary_loading": "Analyse de votre anglais…",
+      "mic_denied": "Accès au microphone refusé.",
+      "screen_denied": "Son du Mac non capté : autorisation « Enregistrement de l'écran et des sons » refusée. Si Oats est déjà coché, retirez-le (−), relancez l'app et acceptez à nouveau (chaque nouvelle version le redemande).",
+      "system_audio_error": "Son du Mac non capté : {}",
+      "ollama_binary": "Téléchargement du moteur IA ({} %)…",
+      "ollama_server": "Démarrage du moteur IA…",
+      "ollama_model": "Téléchargement du modèle Mistral ({} %, ~4 Go, une seule fois)…"
     },
     "status_bar": {
       "level": "Niveau",
-      "mic": "Micro",
-      "system": "Systeme"
+      "mic": "Micro : {}",
+      "system": "Système : {}",
+      "active": "Actif",
+      "denied": "Refusé",
+      "not_captured": "Non capté"
     }
   },
   "history": {
-    "title": "Historique",
-    "today": "Aujourd'hui",
-    "yesterday": "Hier",
-    "older": "Plus ancien",
-    "search": "Rechercher...",
-    "empty": "Aucune session",
-    "delete_confirm": "Supprimer cette session ?",
-    "list": {
-      "title": "Sessions",
-      "search_placeholder": "Rechercher...",
-      "empty": "Aucune session",
-      "active": "En cours",
-      "completed": "Terminee"
-    },
     "detail": {
-      "title": "Detail de la session",
       "copy": "Copier",
       "export_markdown": "Exporter",
-      "summarize": "Resumer",
+      "summarize": "Résumer",
+      "english_coach": "Coach anglais",
       "delete": "Supprimer",
-      "delete_confirm": "Voulez-vous vraiment supprimer cette session ?",
-      "copied": "Transcription copiee",
-      "exported": "Transcription exportee",
-      "edit_title": "Modifier le titre",
-      "no_session": "Aucune session selectionnee",
-      "duration": "Duree"
+      "delete_confirm": "Voulez-vous vraiment supprimer cette note ? Cette action est définitive.",
+      "copied": "Transcription copiée",
+      "exported": "Exporté : {}",
+      "export_error": "Échec de l'export : {}",
+      "no_session": "Note introuvable",
+      "speaker_me": "Vous",
+      "speaker": "Interlocuteur {}",
+      "summary": "Résumé",
+      "summary_loading": "Génération du résumé…",
+      "summary_delete": "Supprimer le résumé",
+      "coach_loading": "Analyse de votre anglais…",
+      "coach_delete": "Supprimer le retour",
+      "coach_perfect": "Aucune correction : votre anglais est impeccable.",
+      "transcript": "Transcription",
+      "transcript_empty": "Aucune transcription pour cette note."
     }
   },
-  "session": {
-    "duration": "Duree",
-    "rename": "Renommer",
-    "delete": "Supprimer",
-    "export": "Exporter",
-    "summarize": "Resumer",
-    "copy": "Copier",
-    "export_md": "Markdown",
-    "export_txt": "Texte brut",
-    "copied": "Copie dans le presse-papier"
-  },
   "settings": {
-    "title": "Reglages",
+    "title": "Réglages",
     "audio": {
       "title": "Audio",
       "microphone": "Microphone",
-      "system_audio": "Audio systeme",
-      "system_audio_description": "Capture via ScreenCaptureKit",
-      "level_indicator": "Indicateur de niveau"
+      "system_audio": "Audio système",
+      "system_audio_description": "Capture via ScreenCaptureKit"
+    },
+    "recording": {
+      "title": "Enregistrement",
+      "coach": "Coach anglais",
+      "coach_description": "Analyse votre anglais à la fin de chaque note",
+      "speakers": "Interlocuteurs en direct",
+      "speakers_description": "Identifie qui parle dans l'audio système"
     },
     "server": {
-      "title": "Serveur ML",
-      "model": "Modele",
+      "title": "Serveur de transcription",
+      "model": "Modèle",
       "port": "Port",
       "auto_launch": "Lancement automatique"
     },
-    "shortcuts": {
-      "title": "Raccourcis",
-      "start_stop": "Demarrer/Arreter",
-      "pause": "Pause"
+    "model": {
+      "title": "Modèle local"
     },
     "storage": {
       "title": "Stockage",
       "location": "Emplacement",
-      "change": "Modifier...",
-      "database_size": "Taille base de donnees"
+      "database_size": "Taille de la base",
+      "size_mb": "{} Mo"
     },
-    "about": "A propos",
-    "version": "Version"
+    "local_model": {
+      "description": "Résumés et coach anglais tournent sur votre Mac. Téléchargement unique : moteur Ollama (~106 Mo) et modèle Mistral (~4 Go).",
+      "install": "Installer",
+      "ready": "Modèle local prêt, sur votre Mac."
+    }
+  },
+  "ollama": {
+    "step_binary": "Moteur Ollama",
+    "step_server": "Démarrage du serveur",
+    "step_model": "Modèle Mistral",
+    "error": "Erreur de configuration",
+    "size_binary": "~106 Mo",
+    "size_model": "~4 Go"
   },
   "server_state": {
-    "ready": "Voxtral Ready",
-    "starting": "Demarrage...",
+    "ready": "Transcription prête",
+    "starting": "Démarrage…",
     "error": "Erreur serveur",
-    "stopped": "Serveur arrete"
+    "stopped": "Serveur arrêté"
+  },
+  "uv": {
+    "title": "Moteur de transcription requis",
+    "body": "Oats transcrit avec voxmlx, qui a besoin de uv, un gestionnaire de paquets Python.",
+    "detail": "uv sera installé dans ~/.local/bin (~5 Mo). Le modèle sera téléchargé au premier démarrage.",
+    "install": "Installer uv",
+    "installing": "Installation en cours…",
+    "failed": "L'installation a échoué. Ouvrez un Terminal et exécutez :\n{}",
+    "no_uvx": "uv a été installé mais uvx est introuvable.\nRedémarrez Oats ou ajoutez ~/.local/bin à votre PATH."
   }
 }

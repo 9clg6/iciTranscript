@@ -1,14 +1,12 @@
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
+import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:gap/gap.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
-/// Widget affichant une ligne de transcription avec timestamp et badge source.
-///
-/// Affiche le badge colore [MOI] ou [SYSTEME], le timestamp
-/// et le texte transcrit dans un conteneur style.
+/// Une ligne de transcription en direct : qui parle, quand, le texte, puis la
+/// traduction éventuelle.
 class TranscriptLineWidget extends StatelessWidget {
   /// Cree une instance de [TranscriptLineWidget].
   const TranscriptLineWidget({
@@ -27,146 +25,60 @@ class TranscriptLineWidget extends StatelessWidget {
   /// Interlocuteur identifié en direct (0, 1, …), null si inconnu.
   final int? speaker;
 
-  /// Une teinte par interlocuteur, stable d'une phrase à l'autre.
-  static const List<Color> _speakerColors = <Color>[
-    Color(0xFF7E57C2),
-    Color(0xFF00897B),
-    Color(0xFFEF6C00),
-    Color(0xFF1E88E5),
-    Color(0xFFD81B60),
-    Color(0xFF6D4C41),
-    Color(0xFF3949AB),
-    Color(0xFF7CB342),
-  ];
-
   String _formatTimestamp(int timestampMs) {
-    final Duration duration = Duration(milliseconds: timestampMs);
-    final String hours = duration.inHours.toString().padLeft(2, '0');
-    final String minutes = (duration.inMinutes % 60).toString().padLeft(2, '0');
-    final String seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+    final Duration d = Duration(milliseconds: timestampMs);
+    final String hours = d.inHours.toString().padLeft(2, '0');
+    final String minutes = (d.inMinutes % 60).toString().padLeft(2, '0');
+    final String seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$hours:$minutes:$seconds';
   }
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final Oats o = context.oats;
     final bool isInput = segment.source == AudioSource.input;
-
-    final int? speaker = isInput ? null : this.speaker;
-    final Color? speakerColor = speaker == null
-        ? null
-        : _speakerColors[speaker % _speakerColors.length];
-
-    final Color badgeBackgroundColor = isInput
-        ? colorScheme.primaryContainer.withValues(alpha: 0.15)
-        : speakerColor?.withValues(alpha: 0.15) ??
-              colorScheme.tertiaryContainer.withValues(alpha: 0.15);
-
-    final Color badgeTextColor = isInput
-        ? colorScheme.primary
-        : speakerColor ?? colorScheme.tertiary;
-
-    final String badgeLabel = isInput
+    final int? who = isInput ? null : speaker;
+    final String label = isInput
         ? LocaleKeys.transcription_live_speaker_me.tr()
-        : speaker != null
-        ? 'INTERLOCUTEUR ${speaker + 1}'
+        : who != null
+        ? LocaleKeys.transcription_live_speaker_n.tr(
+            args: <String>['${who + 1}'],
+          )
         : LocaleKeys.transcription_live_speaker_system.tr();
+    final String? t = translation?.trim();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        // Header: badge + timestamp
         Row(
           children: <Widget>[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: badgeBackgroundColor,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                badgeLabel,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: badgeTextColor,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.0,
-                  fontSize: 10,
-                ),
-              ),
+            Text(
+              label,
+              style: o.label.copyWith(color: isInput ? o.ink : o.muted),
             ),
-            const Gap(12),
+            const SizedBox(width: OatsSpace.sm),
             Text(
               _formatTimestamp(segment.timestampMs),
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontSize: 11,
-              ),
+              style: o.meta.copyWith(color: o.faint),
             ),
           ],
         ),
-        const Gap(8),
-        // Text content
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: isInput
-              ? BoxDecoration(
-                  color: colorScheme.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: colorScheme.outlineVariant.withValues(alpha: 0.1),
-                  ),
-                )
-              : BoxDecoration(
-                  border: Border(
-                    left: BorderSide(
-                      color: colorScheme.tertiary.withValues(alpha: 0.2),
-                      width: 2,
-                    ),
-                  ),
-                ),
-          child: Column(
+        const SizedBox(height: OatsSpace.xs),
+        Text(segment.text, style: o.body),
+        if (t != null && t.isNotEmpty) ...<Widget>[
+          const SizedBox(height: OatsSpace.xs),
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                segment.text,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: isInput
-                      ? colorScheme.onSurface
-                      : colorScheme.onSurfaceVariant,
-                  height: 1.6,
-                  fontSize: 15,
-                  fontStyle: isInput ? FontStyle.normal : FontStyle.italic,
-                ),
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Icon(Icons.translate, size: 13, color: o.faint),
               ),
-              if (translation != null && translation!.trim().isNotEmpty) ...
-                  <Widget>[
-                const Gap(6),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Icon(
-                      Icons.translate,
-                      size: 13,
-                      color: colorScheme.primary.withValues(alpha: 0.7),
-                    ),
-                    const Gap(6),
-                    Expanded(
-                      child: Text(
-                        translation!,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colorScheme.primary.withValues(alpha: 0.85),
-                          height: 1.4,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              const SizedBox(width: OatsSpace.xs + 2),
+              Expanded(child: Text(translation!, style: o.small)),
             ],
           ),
-        ),
+        ],
       ],
     );
   }

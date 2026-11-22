@@ -1,14 +1,10 @@
+import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:gap/gap.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
-/// Widget de controle de session : boutons Démarrer / Arrêter / Pause.
-///
-/// Affiche :
-/// - Quand idle : bouton "Démarrer" prominent
-/// - Quand en cours : boutons "Pause" et "Arrêter"
-/// - Quand en pause : boutons "Reprendre" et "Arrêter"
+/// Contrôles de session : Démarrer (au repos), sinon Pause/Reprendre et
+/// Arrêter. Un seul bouton plein à la fois.
 class SessionControlsWidget extends StatelessWidget {
   /// Cree une instance de [SessionControlsWidget].
   const SessionControlsWidget({
@@ -41,63 +37,28 @@ class SessionControlsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
     if (!isRecording && !isPaused) {
-      // Idle — bouton Démarrer
-      return FilledButton.icon(
+      return OatsPrimaryButton(
+        icon: Icons.fiber_manual_record_outlined,
+        label: LocaleKeys.transcription_live_start.tr(),
         onPressed: onStart,
-        icon: const Icon(Icons.fiber_manual_record, size: 16),
-        label: Text(LocaleKeys.transcription_live_start.tr()),
-        style: FilledButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
       );
     }
-
-    // En cours ou en pause — Pause/Reprendre + Arrêter
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        // Pause / Reprendre
-        OutlinedButton.icon(
+        OatsButton(
+          icon: isPaused ? Icons.play_arrow_outlined : Icons.pause_outlined,
+          label: isPaused
+              ? LocaleKeys.transcription_live_resume.tr()
+              : LocaleKeys.transcription_live_pause.tr(),
           onPressed: isPaused ? onResume : onPause,
-          icon: Icon(
-            isPaused ? Icons.play_arrow : Icons.pause,
-            size: 16,
-          ),
-          label: Text(
-            isPaused
-                ? LocaleKeys.transcription_live_resume.tr()
-                : LocaleKeys.transcription_live_pause.tr(),
-          ),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: colorScheme.onSurface,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
         ),
-        const Gap(8),
-        // Arrêter
-        FilledButton.icon(
+        const SizedBox(width: OatsSpace.sm),
+        OatsPrimaryButton(
+          icon: Icons.stop_outlined,
+          label: LocaleKeys.transcription_live_stop.tr(),
           onPressed: onStop,
-          icon: const Icon(Icons.stop, size: 16),
-          label: Text(LocaleKeys.transcription_live_stop.tr()),
-          style: FilledButton.styleFrom(
-            backgroundColor: colorScheme.error,
-            foregroundColor: colorScheme.onError,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
         ),
       ],
     );

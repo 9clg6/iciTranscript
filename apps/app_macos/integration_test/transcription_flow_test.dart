@@ -18,7 +18,7 @@ void main() {
       // Les boutons de controle doivent etre presents une fois
       // l'app completement chargee avec la sidebar + zone principale.
       // En mode MVP simple, on verifie juste que l'app est la.
-      expect($('IciTranscript'), findsOneWidget);
+      expect($('Oats'), findsOneWidget);
     });
 
     patrolTest('le timer est visible au format 00:00:00', ($) async {
@@ -28,7 +28,7 @@ void main() {
       // Verifie la presence du timer initial.
       // Note: le timer peut ne pas etre visible sur l'ecran d'accueil MVP.
       // Ce test sera etoffe quand la navigation sera en place.
-      expect($('IciTranscript'), findsOneWidget);
+      expect($('Oats'), findsOneWidget);
     });
   });
 }

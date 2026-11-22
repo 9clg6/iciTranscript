@@ -102,6 +102,19 @@ class OllamaService {
     onProgress?.call(OllamaSetupStage.ready, 1);
   }
 
+  /// Le moteur et le modèle sont-ils déjà sur le disque ?
+  ///
+  /// Détection seule : ne télécharge rien et ne démarre aucun process. Si un
+  /// serveur tourne déjà, on lui demande ses modèles ; sinon on cherche le
+  /// manifeste du modèle dans `models/` (là où [_startServer] les range).
+  Future<bool> isInstalled() async {
+    if (!await _isBinaryAvailable()) return false;
+    if (await _isServerRunning()) return _isModelAvailable();
+    return Directory(
+      '$_appSupportDir/models/manifests/registry.ollama.ai/library/$_model',
+    ).exists();
+  }
+
   /// Vérifie si tout est déjà prêt (binaire + serveur + modèle).
   Future<bool> isFullyReady() async {
     if (!await _isBinaryAvailable()) return false;
