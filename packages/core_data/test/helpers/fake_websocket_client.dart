@@ -40,6 +40,25 @@ final class FakeWebSocketClient extends WebSocketClient {
   /// Messages reçus, connexion par connexion.
   final List<List<String>> connectionMessages = <List<String>>[];
 
+  /// Si non nul, le serveur répond seul à chaque commit final par un
+  /// `done` ([autoDoneText]) après ce délai, si la connexion vit encore.
+  Duration? autoDoneAfter;
+  String autoDoneText = 'phrase';
+
+  // Audio envoyé sans `done` sur la connexion courante : phrases commitées
+  // en attente (taille en chunks) et phrase en cours.
+  final List<int> _pendingUtterances = <int>[];
+  int _currentUtterance = 0;
+  int _generation = 0;
+
+  /// Plus grand volume d'audio (en chunks de 100 ms) envoyé et pas encore
+  /// acquitté par un `done`, sur une même connexion.
+  int maxInFlightChunks = 0;
+
+  int get inFlightChunks =>
+      _pendingUtterances.fold<int>(0, (int a, int b) => a + b) +
+      _currentUtterance;
+
   final StreamController<String> _messages =
       StreamController<String>.broadcast();
 
@@ -58,12 +77,18 @@ final class FakeWebSocketClient extends WebSocketClient {
       throw const SocketException('Connection refused');
     }
     _connected = true;
+    _generation++;
+    _pendingUtterances.clear();
+    _currentUtterance = 0;
     connections.add(<int>[]);
     connectionMessages.add(<String>[]);
   }
 
   /// La socket se ferme côté serveur (crash, redémarrage).
-  void drop() => _connected = false;
+  void drop() {
+    _connected = false;
+    _generation++;
+  }
 
   @override
   void send(String message) {
@@ -76,14 +101,42 @@ final class FakeWebSocketClient extends WebSocketClient {
       final int id = chunkIdOf(json['audio'] as String);
       appendedChunkIds.add(id);
       connections.last.add(id);
+      _currentUtterance++;
+      if (inFlightChunks > maxInFlightChunks) {
+        maxInFlightChunks = inFlightChunks;
+      }
+    } else if (json['type'] == 'input_audio_buffer.commit' &&
+        json['final'] == true) {
+      _pendingUtterances.add(_currentUtterance);
+      _currentUtterance = 0;
+      final Duration? delay = autoDoneAfter;
+      if (delay == null) return;
+      final int generation = _generation;
+      Timer(delay, () {
+        if (!_connected || generation != _generation) return;
+        emit(<String, Object>{
+          'type': 'response.audio_transcript.done',
+          'text': autoDoneText,
+        });
+      });
     }
   }
 
-  /// Le serveur envoie un événement au client.
-  void emit(Map<String, Object> event) => _messages.add(jsonEncode(event));
+  /// Le serveur envoie un événement au client. Un `done` acquitte la plus
+  /// ancienne phrase commitée de la connexion.
+  void emit(Map<String, Object> event) {
+    if (event['type'] == 'response.audio_transcript.done' &&
+        _pendingUtterances.isNotEmpty) {
+      _pendingUtterances.removeAt(0);
+    }
+    _messages.add(jsonEncode(event));
+  }
 
   @override
-  Future<void> disconnect() async => _connected = false;
+  Future<void> disconnect() async {
+    _connected = false;
+    _generation++;
+  }
 
   @override
   Future<void> dispose() async {
