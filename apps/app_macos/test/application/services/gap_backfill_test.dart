@@ -10,25 +10,25 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../helpers/live_service_fakes.dart';
 
-/// Tour 5, point 6 : après la réunion, chaque repère « transcription
-/// interrompue » est retranscrit depuis le WAV de sa source, sur
-/// l'intervalle de la perte élargi d'une marge, et remplacé par les phrases
-/// retrouvées, dans l'ordre des heures. Échec : le repère reste. Jamais
-/// pendant un enregistrement ; deux passages donnent le même résultat ;
-/// sans repère, rien ne se passe.
-///
-/// API supposée (lib/application/services/gap_backfill.service.dart) :
-/// - `abstract interface class PcmTranscriber { Future<List<({int offsetMs,
-///   String text})>> transcribe(Uint8List pcm); }` : PCM16 mono 16 kHz,
-///   morceaux datés depuis le début du PCM ;
-/// - `GapBackfillService({required PcmTranscriber transcriber, required
-///   TranscriptRepository transcripts, required bool Function()
-///   isRecording})`, `static const Duration margin` (1 s),
-///   `static List<({String markerId, AudioSource source, int startMs, int
-///   endMs})> plan(List<TranscriptSegmentEntity> segments)` (décision pure),
-///   `Future<void> backfill(String sessionId, {required String
-///   recordingsDirectory})`.
-/// WAV lus : `<dossier>/<sessionId>_mic.wav` et `_system.wav`.
+// Tour 5, point 6 : après la réunion, chaque repère « transcription
+// interrompue » est retranscrit depuis le WAV de sa source, sur
+// l'intervalle de la perte élargi d'une marge, et remplacé par les phrases
+// retrouvées, dans l'ordre des heures. Échec : le repère reste. Jamais
+// pendant un enregistrement ; deux passages donnent le même résultat ;
+// sans repère, rien ne se passe.
+//
+// API supposée (lib/application/services/gap_backfill.service.dart) :
+// - `abstract interface class PcmTranscriber { Future<List<({int offsetMs,
+//   String text})>> transcribe(Uint8List pcm); }` : PCM16 mono 16 kHz,
+//   morceaux datés depuis le début du PCM ;
+// - `GapBackfillService({required PcmTranscriber transcriber, required
+//   TranscriptRepository transcripts, required bool Function()
+//   isRecording})`, `static const Duration margin` (1 s),
+//   `static List<({String markerId, AudioSource source, int startMs, int
+//   endMs})> plan(List<TranscriptSegmentEntity> segments)` (décision pure),
+//   `Future<void> backfill(String sessionId, {required String
+//   recordingsDirectory})`.
+// WAV lus : `<dossier>/<sessionId>_mic.wav` et `_system.wav`.
 void main() {
   const String sessionId = '1700000000000';
   final int margin = GapBackfillService.margin.inMilliseconds;
@@ -233,6 +233,23 @@ void main() {
 
       expect(sorted(AudioSource.input).map((s) => s.text), first);
       expect(transcriber.calls, hasLength(1));
+    });
+
+    test('WAV absent (supprimé après la réunion) : le repère reste, sans '
+        'erreur', () async {
+      final TranscriptSegmentEntity m = marker(
+        'm',
+        AudioSource.input,
+        10000,
+        20000,
+      );
+      await repo.save(m);
+      await File('${dir.path}/${sessionId}_mic.wav').delete();
+
+      await service().backfill(sessionId, recordingsDirectory: dir.path);
+
+      expect(transcriber.calls, isEmpty);
+      expect(repo.of(AudioSource.input), <TranscriptSegmentEntity>[m]);
     });
 
     test('une session sans repère ne déclenche rien', () async {
