@@ -5,10 +5,12 @@ import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/services/session_history.service.dart';
 import 'package:core_domain/domain/usecases/get_session_detail.use_case.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
 import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/summary.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
+import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
 import 'package:ici_transcript/core/providers/services/ready_llm.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
@@ -83,6 +85,30 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
         isEditing: false,
       ),
     );
+  }
+
+  /// Lie la note à [event] (elle prend son titre et les noms de ses
+  /// participants) ou, si null, retire le lien en gardant le titre.
+  Future<void> setCalendarLink(CalendarEvent? event) async {
+    final SessionDetailState current =
+        state.value ?? SessionDetailState.initial();
+    final SessionEntity? session = current.session;
+    if (session == null) return;
+    final SessionEntity next = event == null
+        ? session.copyWith(
+            calendarEventId: null,
+            calendarEventTitle: null,
+            attendees: const <String>[],
+          )
+        : session.copyWith(
+            title: event.title,
+            calendarEventId: event.id,
+            calendarEventTitle: event.title,
+            attendees: event.attendeeNames,
+          );
+    await ref.read(sessionRepositoryProvider).update(next);
+    await _sessionHistoryService.loadSessions();
+    state = AsyncData<SessionDetailState>(current.copyWith(session: next));
   }
 
   /// Supprime la session courante.

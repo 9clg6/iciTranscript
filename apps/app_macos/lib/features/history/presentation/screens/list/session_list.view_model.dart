@@ -23,7 +23,9 @@ class SessionListViewModel extends _$SessionListViewModel {
 
   Future<void> _init() async {
     await _sessionHistoryService.loadSessions();
-    _sessionHistoryService.sessionsStream.listen((List<SessionEntity> sessions) {
+    _sessionHistoryService.sessionsStream.listen((
+      List<SessionEntity> sessions,
+    ) {
       state = state.copyWith(sessions: sessions);
     });
   }

@@ -11,6 +11,7 @@ import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/transcript_turns.dart';
+import 'package:ici_transcript/features/history/presentation/screens/detail/widgets/calendar_link.widget.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/widgets/summary_text.widget.dart';
 import 'package:ici_transcript/features/home/presentation/agenda.dart';
 import 'package:ici_transcript/features/home/presentation/screens/home/home.screen.dart';
@@ -173,6 +174,13 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                       ],
                     ),
                 ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: OatsSpace.sm),
+                child: CalendarLinkBlock(
+                  session: session,
+                  onLink: _vm.setCalendarLink,
+                ),
               ),
               if (!modelReady && !state.llmAvailable) ...<Widget>[
                 const SizedBox(height: OatsSpace.xl),
