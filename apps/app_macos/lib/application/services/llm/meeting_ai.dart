@@ -132,7 +132,10 @@ EnglishFeedbackEntity parseFeedback(String answer) {
   if (start < 0 || end <= start) throw const LlmMalformedAnswerException();
   try {
     final Object? json = jsonDecode(answer.substring(start, end + 1));
+    // Un objet sans les champs attendus (`{}`, autre forme) n'est pas un
+    // retour vide valable.
     if (json is! Map<String, dynamic> ||
+        (json['overall'] is! String && json['corrections'] is! List) ||
         (json['overall'] != null && json['overall'] is! String) ||
         (json['corrections'] != null && json['corrections'] is! List)) {
       throw const LlmMalformedAnswerException();
