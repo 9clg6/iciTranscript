@@ -33,6 +33,10 @@ import '../../../helpers/live_service_fakes.dart';
 ///   `GapBackfillService(..., DictatedIntervalsStore? dictatedIntervals)`
 ///   les lit pour la session.
 ///
+/// Une perte entièrement dans une dictée n'a rien fait perdre à la réunion :
+/// son repère quitte la note au rattrapage, sans rien envoyer au serveur, et
+/// même serveur absent (il ne reste pas « en attente »).
+///
 /// Le coach (après l'appel) lit les segments micro de la note, où la dictée
 /// n'est jamais sauvée (dictation_during_meeting_test) : rien à exclure.
 void main() {
@@ -178,6 +182,36 @@ void main() {
       expect(plan, isEmpty);
     });
 
+    test('perte entièrement dictée : repère retiré de la note, rien envoyé, '
+        'même serveur absent', () async {
+      final Directory dir = await Directory.systemTemp.createTemp(
+        'oats_dictated_inside_',
+      );
+      addTearDown(() => dir.delete(recursive: true));
+      final WavRecorder recorder = WavRecorder();
+      await recorder.open('${dir.path}/${sessionId}_mic.wav');
+      for (int id = 0; id < 300; id++) {
+        await recorder.append(Uint8List(3200));
+      }
+      await recorder.close();
+      DictatedIntervalsStore(dir.path).add(sessionId, dictation);
+      final InMemoryTranscriptRepository repo = InMemoryTranscriptRepository();
+      await repo.save(marker('inside', AudioSource.input, 13200, 14800));
+      final _RecordingTranscriber transcriber = _RecordingTranscriber()
+        ..unavailable = true;
+
+      final BackfillOutcome outcome = await GapBackfillService(
+        transcriber: transcriber,
+        transcripts: repo,
+        isRecording: () => false,
+        dictatedIntervals: DictatedIntervalsStore(dir.path),
+      ).backfill(sessionId, recordingsDirectory: dir.path);
+
+      expect(repo.store.containsKey('inside'), isFalse);
+      expect(transcriber.calls, isEmpty);
+      expect(outcome.markersLeft, 0);
+    });
+
     test(
       'une perte du son du Mac n est pas touchée (la dictée est au micro)',
       () {
@@ -245,9 +279,13 @@ void main() {
 final class _RecordingTranscriber implements PcmTranscriber {
   final List<Uint8List> calls = <Uint8List>[];
 
+  /// Serveur absent : chaque appel lève [TranscriberUnavailable].
+  bool unavailable = false;
+
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
     calls.add(pcm);
+    if (unavailable) throw const TranscriberUnavailable('serveur absent');
     return <({int offsetMs, String text})>[
       (offsetMs: 0, text: 'Retrouvé ${calls.length}.'),
     ];
