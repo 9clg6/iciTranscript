@@ -13,6 +13,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
+import 'package:ici_transcript/core/platform/owned_processes.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -75,6 +76,9 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         serverState: serverState,
         serverStartupLine: serverState == ServerState.starting
             ? state.serverStartupLine
+            : null,
+        serverPortInUse: serverState == ServerState.error
+            ? state.serverPortInUse
             : null,
       );
     });
@@ -209,6 +213,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         state = state.copyWith(
           isRecording: false,
           serverState: ServerState.error,
+          serverPortInUse: e is PortInUseException ? e.port : null,
         );
       }
       _durationTimer?.cancel();
