@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:core_data/model/audio_chunk.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
+import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,7 +24,15 @@ import '../../../helpers/live_service_fakes.dart';
 ///   capture s'arrête (comme un relâchement) et tout est transcrit une fois
 ///   le serveur prêt : rien n'est jeté ;
 /// - texte final arrivé après le délai de garde : posé sur le presse-papiers,
-///   jamais collé (le champ actif a pu changer).
+///   jamais collé (le champ actif a pu changer) ;
+/// - un seul serveur, séquentiel : la dictée se déclare à l'arbitre
+///   ([TranscriptionServerArbiter]) de l'appui à sa fin, le rattrapage des
+///   pertes lui cède la place ;
+/// - post-traitement (coach, diarization) : il emprunte le serveur
+///   ([DictationController.lendServer]) ; dictée activée, le serveur est
+///   relancé dès la fin ; un appui pendant l'emprunt montre « démarrage »,
+///   garde l'audio (borné) et le délai de démarrage ne court qu'une fois le
+///   serveur relancé.
 void main() {
   const DictationSettings clipboardMode = DictationSettings(
     outputMode: DictationOutputMode.clipboard,
@@ -178,6 +188,179 @@ void main() {
         });
       },
     );
+  });
+
+  group('un seul serveur : commit du micro seul, arbitre', () {
+    test('au relâchement, seul le micro est finalisé', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+
+        d.holdAndSay(10);
+
+        expect(d.remote.finalCommitSources, isNotEmpty);
+        for (final Set<AudioSource>? sources in d.remote.finalCommitSources) {
+          expect(sources, <AudioSource>{AudioSource.input});
+        }
+      });
+    });
+
+    test(
+      'la dictée tient le serveur de l appui à sa fin, quelle qu elle soit',
+      () {
+        fakeAsync((FakeAsync async) {
+          final DictationHarness d = launched(async);
+          expect(d.arbiter.backfillMustYield, isFalse);
+
+          // Fin normale.
+          d.press();
+          expect(d.arbiter.backfillMustYield, isTrue);
+          d.say(5);
+          d.release();
+          expect(d.arbiter.backfillMustYield, isTrue);
+          d.remote.emitDone('Texte.');
+          async.elapse(Duration.zero);
+          expect(d.arbiter.backfillMustYield, isFalse);
+
+          // Annulation.
+          d.press();
+          d.cancel();
+          expect(d.arbiter.backfillMustYield, isFalse);
+
+          // Rien entendu.
+          d.press();
+          d.say(5, voiced: false);
+          d.release();
+          async.elapse(const Duration(milliseconds: 50));
+          expect(d.arbiter.backfillMustYield, isFalse);
+
+          // Délai de garde.
+          d.holdAndSay(5);
+          async.elapse(DictationController.finalTextTimeout * 2);
+          expect(d.state, isA<DictationError>());
+          expect(d.arbiter.backfillMustYield, isFalse);
+        });
+      },
+    );
+
+    test('fin de dictée : le rattrapage peut reprendre (signal émis)', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        int resumes = 0;
+        d.arbiter.backfillMayResume.listen((_) => resumes++);
+
+        dictate(d, 'Texte.');
+
+        expect(resumes, 1);
+      });
+    });
+  });
+
+  group('post-traitement : le serveur est prêté puis relancé', () {
+    test('dictée activée : serveur arrêté pendant le travail, relancé dès la '
+        'fin', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        final List<ServerState> states = <ServerState>[];
+        d.process.stateStream.listen(states.add);
+        final Completer<void> work = Completer<void>();
+        bool lent = false;
+
+        unawaited(
+          d.controller.lendServer(() async {
+            lent = true;
+            await work.future;
+          }),
+        );
+        async.elapse(const Duration(milliseconds: 10));
+        expect(lent, isTrue);
+        expect(states, contains(ServerState.stopped));
+        expect(d.process.starts, hasLength(1));
+
+        async.elapse(const Duration(minutes: 3));
+        expect(
+          d.process.starts,
+          hasLength(1),
+          reason: 'pas pendant le travail',
+        );
+        work.complete();
+        async.elapse(const Duration(seconds: 1));
+
+        expect(d.process.starts, hasLength(2));
+        expect(states.last, ServerState.ready);
+      });
+    });
+
+    test('appui pendant l emprunt : « démarrage », rien de perdu, pas d '
+        'erreur même si le travail dure plus que le délai de démarrage', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        final Completer<void> work = Completer<void>();
+        unawaited(d.controller.lendServer(() => work.future));
+        async.elapse(const Duration(seconds: 10));
+
+        d.press();
+        expect(d.state, isA<DictationStarting>());
+        d.say(50);
+        d.release();
+        async.elapse(
+          DictationController.serverStartTimeout + const Duration(seconds: 30),
+        );
+        expect(d.state, isNot(isA<DictationError>()));
+        expect(d.remote.connects, isEmpty);
+
+        work.complete();
+        async.elapse(const Duration(seconds: 1));
+        expect(d.remote.sentAudio, hasLength(50));
+        d.remote.emitDone('Pendant le coach.');
+        async.elapse(Duration.zero);
+
+        expect(d.output.copies, <String>['Pendant le coach.']);
+      });
+    });
+
+    test(
+      'dictée désactivée : le serveur n est pas relancé après le travail',
+      () {
+        fakeAsync((FakeAsync async) {
+          final DictationHarness d = launched(
+            async,
+            settings: const DictationSettings(enabled: false),
+          );
+
+          unawaited(d.controller.lendServer(() async {}));
+          async.elapse(const Duration(seconds: 5));
+
+          expect(d.process.starts, isEmpty);
+        });
+      },
+    );
+
+    test('le résultat et l erreur du travail sont rendus tels quels', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        int? value;
+        Object? error;
+
+        unawaited(
+          d.controller.lendServer(() async => 42).then((int v) {
+            value = v;
+          }),
+        );
+        async.elapse(const Duration(seconds: 1));
+        unawaited(
+          d.controller
+              .lendServer<void>(() async => throw StateError('diarization'))
+              .catchError((Object e) {
+                error = e;
+              }),
+        );
+        async.elapse(const Duration(seconds: 1));
+
+        expect(value, 42);
+        expect(error, isA<StateError>());
+        expect(d.process.starts, hasLength(3), reason: 'relancé chaque fois');
+      });
+    });
   });
 
   group('annulation : rien n est produit', () {
