@@ -101,7 +101,8 @@ class LiveAnswersService {
   ({String id, bool manual})? _waiting;
 
   /// Questions, dans l'ordre de détection.
-  List<LiveQuestion> get questions => List<LiveQuestion>.unmodifiable(_questions);
+  List<LiveQuestion> get questions =>
+      List<LiveQuestion>.unmodifiable(_questions);
 
   /// [questions] à chaque changement (réponse partielle comprise).
   Stream<List<LiveQuestion>> get questionsStream => _subject.stream;
@@ -327,9 +328,7 @@ class LiveAnswersService {
         .listen(
           (String delta) {
             raw.write(delta);
-            _put(
-              _questions[_indexOf(id)].copyWith(answer: _visible('$raw')),
-            );
+            _put(_questions[_indexOf(id)].copyWith(answer: _visible('$raw')));
           },
           onError: (Object e) => _fail(id, e, m.modelId),
           onDone: () => _complete(id, '$raw', found, m.modelId),
@@ -337,16 +336,14 @@ class LiveAnswersService {
         );
   }
 
-  Future<List<DocumentExcerpt>> _excerpts(String question) => _search(
-    question,
-    limit: kMaxExcerpts,
-  )
-      .then((List<DocumentExcerpt> e) => e.take(kMaxExcerpts).toList())
-      .timeout(kDocumentSearchBudget, onTimeout: () => <DocumentExcerpt>[])
-      .catchError((Object e) {
-        _log.warning('Recherche de documents échouée : $e');
-        return <DocumentExcerpt>[];
-      });
+  Future<List<DocumentExcerpt>> _excerpts(String question) =>
+      _search(question, limit: kMaxExcerpts)
+          .then((List<DocumentExcerpt> e) => e.take(kMaxExcerpts).toList())
+          .timeout(kDocumentSearchBudget, onTimeout: () => <DocumentExcerpt>[])
+          .catchError((Object e) {
+            _log.warning('Recherche de documents échouée : $e');
+            return <DocumentExcerpt>[];
+          });
 
   /// Texte partiel affichable : le jeton réservé ne s'affiche jamais, même
   /// en partie.
@@ -465,7 +462,8 @@ class LiveAnswersService {
     return kept.reversed.toList();
   }
 
-  int _indexOf(String id) => _questions.indexWhere((LiveQuestion q) => q.id == id);
+  int _indexOf(String id) =>
+      _questions.indexWhere((LiveQuestion q) => q.id == id);
 
   void _put(LiveQuestion q) {
     final int i = _indexOf(q.id);

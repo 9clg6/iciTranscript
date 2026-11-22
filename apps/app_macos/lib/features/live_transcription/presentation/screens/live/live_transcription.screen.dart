@@ -463,10 +463,7 @@ class _LiveTranscriptionScreenState
                     ? null
                     : () => ref
                           .read(liveAnswersServiceProvider)
-                          .answerSegment(
-                            block.segment,
-                            speaker: block.speaker,
-                          ),
+                          .answerSegment(block.segment, speaker: block.speaker),
               ),
             ),
           ),

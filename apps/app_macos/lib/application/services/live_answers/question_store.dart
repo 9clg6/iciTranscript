@@ -67,10 +67,11 @@ class DriftQuestionStore implements QuestionStore {
   Future<void> delete(String questionId) => _dao.deleteById(questionId);
 
   @override
-  Future<List<LiveQuestion>> forSession(String sessionId) async => <LiveQuestion>[
-    for (final DetectedQuestion row in await _dao.forSession(sessionId))
-      _read(row),
-  ];
+  Future<List<LiveQuestion>> forSession(String sessionId) async =>
+      <LiveQuestion>[
+        for (final DetectedQuestion row in await _dao.forSession(sessionId))
+          _read(row),
+      ];
 
   static LiveQuestion _read(DetectedQuestion row) {
     // Colonnes à venir : `row.status`, `row.speaker`, `row.source`. En

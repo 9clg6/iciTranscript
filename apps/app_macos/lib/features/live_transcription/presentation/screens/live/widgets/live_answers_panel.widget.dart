@@ -93,7 +93,10 @@ class LiveAnswersPanel extends ConsumerWidget {
                         child: Divider(height: 1, thickness: 1, color: o.line),
                       ),
                       itemBuilder: (BuildContext context, int i) =>
-                          _QuestionCard(question: questions[i], service: service),
+                          _QuestionCard(
+                            question: questions[i],
+                            service: service,
+                          ),
                     ),
             ),
           ],

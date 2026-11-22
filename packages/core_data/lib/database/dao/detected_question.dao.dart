@@ -7,7 +7,11 @@ import 'package:core_data/database/app_database.dart';
 part 'detected_question.dao.g.dart';
 
 /// Source d'une réponse rangée en JSON dans `detected_questions.sources`.
-typedef StoredAnswerSource = ({String documentId, String title, String excerpt});
+typedef StoredAnswerSource = ({
+  String documentId,
+  String title,
+  String excerpt,
+});
 
 /// DAO des questions détectées en direct : sauvées à la détection,
 /// complétées à la fin du flux, supprimées avec leur session (trigger).

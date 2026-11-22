@@ -50,7 +50,9 @@ LlmChatRequest buildLiveAnswerRequest({
   } else {
     b.writeln("Excerpts from the user's documents:");
     for (int i = 0; i < excerpts.length; i++) {
-      b.writeln('[S${i + 1}] ${excerpts[i].documentTitle}: ${excerpts[i].text}');
+      b.writeln(
+        '[S${i + 1}] ${excerpts[i].documentTitle}: ${excerpts[i].text}',
+      );
     }
   }
   b

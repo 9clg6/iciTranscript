@@ -74,8 +74,8 @@ ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts) {
 
   final List<AnswerSource> sources = <AnswerSource>[];
   final Map<int, int> renumber = <int, int>{};
-  String cite(String line) => line
-      .replaceAllMapped(RegExp(r'\s*\[S(\d+)\]'), (Match m) {
+  String cite(String line) =>
+      line.replaceAllMapped(RegExp(r'\s*\[S(\d+)\]'), (Match m) {
         final int n = int.parse(m[1]!);
         if (n < 1 || n > excerpts.length) return '';
         final int to = renumber.putIfAbsent(n, () {
@@ -90,8 +90,7 @@ ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts) {
           return sources.length;
         });
         return '${m[0]!.substring(0, m[0]!.indexOf('['))}[S$to]';
-      })
-      .trim();
+      }).trim();
   final List<String> cited = lines.map(cite).toList();
   final String last = cited.isEmpty
       ? ''

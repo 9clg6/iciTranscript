@@ -161,7 +161,9 @@ class _StatusLine extends StatelessWidget {
           ),
           const SizedBox(width: OatsSpace.xs + 2),
         ],
-        Flexible(child: Text(text, style: o.small.copyWith(color: c))),
+        Flexible(
+          child: Text(text, style: o.small.copyWith(color: c)),
+        ),
       ],
     );
   }
@@ -183,14 +185,36 @@ class AnswerText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Oats o = context.oats;
-    final String display = answer.replaceAll(
-      RegExp(r'^- ', multiLine: true),
-      '•  ',
+    final List<Widget> lines = <Widget>[];
+    for (final String line in answer.split('\n')) {
+      if (!line.startsWith('- ')) {
+        lines.add(_line(line, o));
+        continue;
+      }
+      // Puce à retrait suspendu : la suite de la ligne s'aligne sur le texte.
+      lines.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('•', style: o.body.copyWith(color: o.muted)),
+            const SizedBox(width: OatsSpace.sm),
+            Expanded(child: _line(line.substring(2), o)),
+          ],
+        ),
+      );
+    }
+    if (lines.length == 1) return lines.single;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: lines,
     );
+  }
+
+  Widget _line(String text, Oats o) {
     final List<InlineSpan> spans = <InlineSpan>[];
     int at = 0;
-    for (final RegExpMatch m in kCitation.allMatches(display)) {
-      spans.add(TextSpan(text: display.substring(at, m.start).trimRight()));
+    for (final RegExpMatch m in kCitation.allMatches(text)) {
+      spans.add(TextSpan(text: text.substring(at, m.start).trimRight()));
       at = m.end;
       final int n = int.parse(m[1]!);
       if (n < 1 || n > sources.length) continue;
@@ -207,7 +231,7 @@ class AnswerText extends StatelessWidget {
         ),
       );
     }
-    spans.add(TextSpan(text: display.substring(at)));
+    spans.add(TextSpan(text: text.substring(at)));
     return Text.rich(TextSpan(children: spans), style: o.body);
   }
 }
