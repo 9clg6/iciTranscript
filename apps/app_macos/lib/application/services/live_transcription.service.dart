@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
+import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_data/model/audio_chunk.dart' as data;
 import 'package:core_data/model/audio_gap.dart';
@@ -121,6 +122,26 @@ final class LiveTranscriptionService {
   /// Santé de la transcription en direct (l'enregistrement continue
   /// toujours, même en [TranscriptionHealth.failed]).
   Stream<TranscriptionHealth> get transcriptionHealthStream => _health.stream;
+
+  // Arrêt : attendre le rattrapage étalé (sonde 2 : 29 s et 103 s après la
+  // fin de l'audio), au plus [_stopDrainLimit] ; une pause n'attend que
+  // [_pauseDrainLimit]. Ce qui reste devient une perte signalée.
+  static const Duration _stopDrainLimit = Duration(seconds: 120);
+  static const Duration _pauseDrainLimit = Duration(seconds: 5);
+  final PublishSubject<Duration> _finalisingRemaining =
+      PublishSubject<Duration>();
+  Completer<void>? _skipDrain;
+
+  /// Audio restant à transcrire pendant l'attente de l'arrêt (décroissant),
+  /// puis [Duration.zero] : de quoi afficher « finalisation… ».
+  Stream<Duration> get finalisingRemainingStream => _finalisingRemaining.stream;
+
+  /// Arrête d'attendre le rattrapage : l'audio restant devient une perte
+  /// signalée (repère), l'arrêt se termine aussitôt.
+  void skipFinalising() {
+    final Completer<void>? skip = _skipDrain;
+    if (skip != null && !skip.isCompleted) skip.complete();
+  }
 
   /// Stream reactif de la session en cours.
   BehaviorSubject<SessionEntity?> get currentSessionStream =>
@@ -347,7 +368,7 @@ final class LiveTranscriptionService {
     _cancel(_audioSubscription);
     _audioSubscription = null;
     await _audioCaptureChannel.stopCapture();
-    await _flushRemoteTranscripts();
+    await _flushRemoteTranscripts(limit: _pauseDrainLimit);
     _log.info('Capture audio mise en pause');
   }
 
@@ -386,8 +407,9 @@ final class LiveTranscriptionService {
     }
 
     // Demander un vrai flush serveur et laisser les listeners recevoir les
-    // derniers deltas + `done`. Un timeout conserve un fallback local fiable.
-    await _flushRemoteTranscripts();
+    // derniers deltas + `done`, rattrapage compris (borné, passable). Le
+    // reste devient une perte au disconnect() ; les deltas restent en repli.
+    await _flushRemoteTranscripts(limit: _stopDrainLimit, publish: true);
 
     // Plus aucun événement distant après ce point : cela évite qu'un `done`
     // tardif duplique le fallback local.
@@ -469,6 +491,7 @@ final class LiveTranscriptionService {
     await _transcriptionSubscription?.cancel();
     await _systemTranscriptionSubscription?.cancel();
     await _health.close();
+    await _finalisingRemaining.close();
   }
 
   // ---------------------------------------------------------------------------
@@ -655,7 +678,10 @@ final class LiveTranscriptionService {
     }
   }
 
-  Future<void> _flushRemoteTranscripts() async {
+  Future<void> _flushRemoteTranscripts({
+    required Duration limit,
+    bool publish = false,
+  }) async {
     final Set<AudioSource> sourcesToFinalize =
         _transcriptionRemoteDataSource.activeSources;
     _stopFinalizationWaiters.clear();
@@ -663,18 +689,52 @@ final class LiveTranscriptionService {
       _stopFinalizationWaiters[source] = Completer<void>();
     }
     _transcriptionRemoteDataSource.sendCommit(isFinal: true);
-    if (_stopFinalizationWaiters.isEmpty) return;
-    try {
-      await Future.wait<void>(
-        _stopFinalizationWaiters.values.map(
-          (Completer<void> completer) => completer.future,
-        ),
-      ).timeout(const Duration(seconds: 5));
-    } on TimeoutException {
-      _log.warning('Timeout du flush final voxmlx, fallback sur les deltas');
-    } finally {
-      _stopFinalizationWaiters.clear();
+    if (_stopFinalizationWaiters.isEmpty) {
+      if (publish) _finalisingRemaining.add(Duration.zero);
+      return;
     }
+    final Completer<void> skip = _skipDrain = Completer<void>();
+    Duration last = _remainingAudio();
+    void report() {
+      final Duration now = _remainingAudio();
+      if (now < last) last = now; // jamais croissant à l'écran
+      _finalisingRemaining.add(last);
+    }
+
+    Timer? ticker;
+    if (publish) {
+      report();
+      ticker = Timer.periodic(
+        const Duration(milliseconds: 500),
+        (_) => report(),
+      );
+    }
+    try {
+      await Future.any<void>(<Future<void>>[
+        Future.wait<void>(
+          _stopFinalizationWaiters.values.map(
+            (Completer<void> completer) => completer.future,
+          ),
+        ),
+        skip.future,
+      ]).timeout(limit);
+    } on TimeoutException {
+      _log.warning('Rattrapage non fini en $limit : le reste sera signalé');
+    } finally {
+      ticker?.cancel();
+      _skipDrain = null;
+      _stopFinalizationWaiters.clear();
+      if (publish) _finalisingRemaining.add(Duration.zero);
+    }
+  }
+
+  Duration _remainingAudio() {
+    final TranscriptionRemoteDataSource remote = _transcriptionRemoteDataSource;
+    if (remote is! TranscriptionRemoteDataSourceImpl) return Duration.zero;
+    return AudioSource.values.fold<Duration>(
+      Duration.zero,
+      (Duration sum, AudioSource s) => sum + remote.unacknowledgedAudio(s),
+    );
   }
 
   /// Buffers d'accumulation des deltas, par source (micro / système).

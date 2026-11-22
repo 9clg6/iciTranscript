@@ -411,6 +411,11 @@ final class TranscriptionRemoteDataSourceImpl
     }
   }
 
+  /// Audio de [source] encore sans `done` (en attente ou en vol) : ce qui
+  /// reste à transcrire, par exemple pendant l'attente d'un arrêt.
+  Duration unacknowledgedAudio(AudioSource source) =>
+      Duration(milliseconds: _unacked[source]!.audioMs);
+
   /// Audio en attente d'envoi pour [source] (coupure ou renvoi étalé).
   Duration bufferedAudio(AudioSource source) =>
       Duration(milliseconds: _unacked[source]!.unsentAudioMs);
