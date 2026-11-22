@@ -52,7 +52,12 @@ void main() {
       expect(_ids(days[1]), <String>['tard']);
     });
 
-    test('aucune session donne un agenda vide', () {
+    test('une session donne un jour ; aucune session, aucun jour', () {
+      final List<AgendaDay> one = groupSessionsByDay(<SessionEntity>[
+        _s('seule', DateTime(2026, 11, 19, 11)),
+      ]);
+      expect(one.single.day, DateTime(2026, 11, 19));
+      expect(_ids(one.single), <String>['seule']);
       expect(groupSessionsByDay(<SessionEntity>[]), isEmpty);
     });
   });
@@ -121,8 +126,9 @@ void main() {
       expect(formatDuration(125 * 60), '2 h 05');
     });
 
-    test('durée inconnue : rien', () {
+    test('durée inconnue : rien, durée nulle connue : un texte', () {
       expect(formatDuration(null), isNull);
+      expect(formatDuration(5 * 60), '5 min');
     });
   });
 
@@ -145,7 +151,8 @@ void main() {
       expect(ids(filterSessionsByTitle(sessions, '')), <String>['a', 'b', 'c']);
     });
 
-    test('aucun titre ne correspond : liste vide', () {
+    test('ne garde que les titres qui correspondent', () {
+      expect(ids(filterSessionsByTitle(sessions, 'point')), <String>['b']);
       expect(filterSessionsByTitle(sessions, 'budget'), isEmpty);
     });
   });

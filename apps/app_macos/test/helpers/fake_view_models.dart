@@ -108,13 +108,12 @@ class FakeSessionDetailViewModel extends SessionDetailViewModel {
 /// Fakes réunis pour pomper l'application entière (RootAppWidget).
 class AppFakes {
   AppFakes({
-    List<SessionEntity> sessions = const <SessionEntity>[],
+    this.sessions = const <SessionEntity>[],
     this.ollama = kOllamaAbsent,
     Future<SessionDetailState> Function(String sessionId)? detail,
-  }) : sessionList = FakeSessionListViewModel(sessions),
-       detail = detail ?? _detailFrom(sessions);
+  }) : detail = detail ?? _detailFrom(sessions);
 
-  final FakeSessionListViewModel sessionList;
+  final List<SessionEntity> sessions;
   final FakeLiveTranscriptionViewModel live = FakeLiveTranscriptionViewModel();
   final OllamaSetupState ollama;
   final Future<SessionDetailState> Function(String sessionId) detail;
@@ -132,7 +131,9 @@ class AppFakes {
     ollamaSetupViewModelProvider.overrideWith(
       () => FakeOllamaSetupViewModel(ollama),
     ),
-    sessionListViewModelProvider.overrideWith(() => sessionList),
+    sessionListViewModelProvider.overrideWith(
+      () => FakeSessionListViewModel(sessions),
+    ),
     liveTranscriptionViewModelProvider.overrideWith(() => live),
     settingsViewModelProvider.overrideWith(FakeSettingsViewModel.new),
     sessionDetailViewModelProvider.overrideWith(

@@ -2,8 +2,10 @@ import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.screen.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.screen.dart';
+import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.screen.dart';
 import 'package:ici_transcript/presentation/app.dart';
 
@@ -11,8 +13,8 @@ import '../../helpers/fake_data.dart';
 import '../../helpers/fake_view_models.dart';
 import '../../helpers/localized_app.dart';
 
-/// Application entière (RootAppWidget + AppRouter réel), Ollama absent :
-/// le lancement n'est plus bloqué, la barre latérale navigue dans le shell.
+/// Application entière (RootAppWidget + AppRouter réel) : le lancement n'est
+/// plus bloqué par Ollama, la barre latérale navigue dans le shell.
 void main() {
   final DateTime now = DateTime.now();
   final DateTime today = DateTime(now.year, now.month, now.day, 9);
@@ -32,7 +34,8 @@ void main() {
       find.descendant(of: sidebar, matching: find.text(key.tr()));
 
   Future<AppFakes> pumpApp(WidgetTester tester, {AppFakes? fakes}) async {
-    final AppFakes f = fakes ?? AppFakes(sessions: sessions);
+    final AppFakes f =
+        fakes ?? AppFakes(sessions: sessions, ollama: kOllamaReady);
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -61,25 +64,42 @@ void main() {
   }
 
   group('lancement sans modèle local', () {
-    testWidgets('Ollama absent : l\'accueil s\'affiche, pas d\'écran bloquant', (
-      WidgetTester tester,
-    ) async {
-      await pumpApp(tester);
+    const Map<String, OllamaSetupState> notReady = <String, OllamaSetupState>{
+      'absent': kOllamaAbsent,
+      'en téléchargement': OllamaSetupState(
+        stage: OllamaSetupStage.downloadingBinary,
+        progress: 0.3,
+      ),
+      'pas encore vérifié': OllamaSetupState(),
+    };
 
-      expect(find.byType(OllamaSetupScreen), findsNothing);
-      expect(isOnScreen(navItem('nav.home')), isTrue);
-      expect(isOnScreen(find.text('Point équipe')), isTrue);
-    });
+    notReady.forEach((String name, OllamaSetupState ollama) {
+      testWidgets('Ollama $name : l\'accueil s\'affiche, pas d\'écran bloquant', (
+        WidgetTester tester,
+      ) async {
+        await pumpApp(
+          tester,
+          fakes: AppFakes(sessions: sessions, ollama: ollama),
+        );
 
-    testWidgets('Ollama absent : « Nouvelle note » démarre l\'enregistrement', (
-      WidgetTester tester,
-    ) async {
-      final AppFakes f = await pumpApp(tester);
+        expect(find.byType(OllamaSetupScreen), findsNothing);
+        expect(isOnScreen(navItem('nav.home')), isTrue);
+        expect(isOnScreen(find.text('Point équipe')), isTrue);
+      });
 
-      await tester.tap(find.text('home.new_note'.tr()).hitTestable().first);
-      await settle(tester);
+      testWidgets('Ollama $name : « Nouvelle note » démarre l\'enregistrement', (
+        WidgetTester tester,
+      ) async {
+        final AppFakes f = await pumpApp(
+          tester,
+          fakes: AppFakes(sessions: sessions, ollama: ollama),
+        );
 
-      expect(f.live.startCalls, 1);
+        await tester.tap(find.text('home.new_note'.tr()).hitTestable().first);
+        await settle(tester);
+
+        expect(f.live.startCalls, 1);
+      });
     });
 
     testWidgets('le nom du produit affiché dans la barre latérale est celui '
@@ -182,6 +202,7 @@ void main() {
         tester,
         fakes: AppFakes(
           sessions: sessions,
+          ollama: kOllamaReady,
           detail: (String _) async => throw StateError('base illisible'),
         ),
       );

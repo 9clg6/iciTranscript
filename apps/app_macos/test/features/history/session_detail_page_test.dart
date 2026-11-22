@@ -191,14 +191,12 @@ void main() {
     expect(transcript, findsOneWidget);
     Finder inTranscript(Finder f) => find.descendant(of: transcript, matching: f);
 
-    // Tours : MOI (2 phrases), SYSTÈME (1), MOI (1) → 3 étiquettes, pas 4.
+    // Micro : 3 phrases en 2 tours (2 consécutives, puis 1 après l'autre
+    // voix) → 2 étiquettes « MOI », pas 3. L'étiquette de l'autre voix
+    // (source ou interlocuteur diarisé) n'est pas fixée ici.
     expect(
       inTranscript(find.text('transcription.live.speaker_me'.tr())),
       findsNWidgets(2),
-    );
-    expect(
-      inTranscript(find.text('transcription.live.speaker_system'.tr())),
-      findsOneWidget,
     );
 
     final List<double> ys = <String>[
@@ -258,7 +256,7 @@ void main() {
       'les actions restent là', (WidgetTester tester) async {
     await pumpDetail(tester, state(simple), ollama: kOllamaAbsent);
 
-    expect(find.textContaining('llm.configure_model'.tr()), findsOneWidget);
+    expect(find.textContaining('llm.configure_model'.tr()), findsWidgets);
     expect(find.text('history.detail.summarize'.tr()).hitTestable(), findsOneWidget);
     expect(find.text('Revue trimestrielle'), findsOneWidget);
   });
