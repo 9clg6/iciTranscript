@@ -16,19 +16,24 @@ final class SummaryService {
   /// (y compris d'anciens formats) puis on insère avec `id == sessionId`.
   /// `getBySessionId` utilise `getSingleOrNull` qui lèverait sinon en présence
   /// de doublons.
+  ///
+  /// [model] : modèle qui a produit le résumé ; absent (coach,
+  /// diarization), celui déjà rangé est gardé.
   Future<void> saveSummary({
     required String sessionId,
     required String content,
-    String model = 'mistral',
+    String? model,
   }) async {
     _log.info('Sauvegarde résumé pour session $sessionId');
+    final String kept =
+        model ?? (await _dao.getBySessionId(sessionId))?.model ?? 'mistral';
     await _dao.deleteBySessionId(sessionId);
     await _dao.insertSummary(
       SummariesCompanion.insert(
         id: sessionId,
         sessionId: sessionId,
         content: content,
-        model: model,
+        model: kept,
         createdAt: DateTime.now().toIso8601String(),
       ),
     );

@@ -270,7 +270,9 @@ class DocumentLibrary {
     final int dot = name.lastIndexOf('.');
     final DocumentType? type = dot <= 0
         ? null
-        : DocumentType.values.asNameMap()[name.substring(dot + 1).toLowerCase()];
+        : DocumentType.values.asNameMap()[name
+              .substring(dot + 1)
+              .toLowerCase()];
     if (type == null) throw UnsupportedDocumentTypeException(path);
     return type;
   }
@@ -283,7 +285,8 @@ class DocumentLibrary {
     }
   }
 
-  static String _fileName(String path) => path.split(Platform.pathSeparator).last;
+  static String _fileName(String path) =>
+      path.split(Platform.pathSeparator).last;
 
   static String _defaultTitle(String path) {
     final String name = _fileName(path);

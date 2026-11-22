@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
@@ -10,6 +11,7 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/diarization.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
+import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
@@ -19,7 +21,7 @@ import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
-import 'package:ici_transcript/application/services/ollama.service.dart';
+import 'package:ici_transcript/core/providers/services/ready_llm.dart';
 import 'package:ici_transcript/core/providers/services/ollama.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
@@ -27,6 +29,7 @@ import 'package:ici_transcript/core/providers/services/translation.service.provi
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
+import 'package:ici_transcript/features/shared/presentation/llm_error_key.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'live_transcription.view_model.g.dart';
@@ -672,58 +675,35 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     }
   }
 
-  /// Analyse l'anglais parlé via Ollama (Mistral local) et sauvegarde le retour.
+  /// Analyse l'anglais parlé par le fournisseur actif et sauvegarde le
+  /// retour.
   ///
   /// [transcript] = parole du micro (MOI) uniquement.
-  /// Sans modèle local installé : rien n'est téléchargé, pas de retour ; la
-  /// note reste enregistrée et l'installation se fait depuis Réglages.
+  /// Rien d'utilisable (envoi coupé ou sans clé, modèle local absent) : rien
+  /// n'est envoyé ni téléchargé, pas de retour ; la note reste enregistrée.
   @visibleForTesting
   Future<void> coachAfterCall(String transcript, {String? sessionId}) async {
     if (transcript.trim().isEmpty) return;
-    if (!await ref.read(ollamaServiceProvider).isInstalled()) {
-      _log.info('Coach ignoré : modèle local non installé');
-      return;
-    }
     state = state.copyWith(isFeedbackLoading: true);
-
-    // S'assurer qu'Ollama est prêt (téléchargement binaire + modèle si besoin)
     try {
-      await ref
-          .read(ollamaServiceProvider)
-          .ensureReady(
-            onProgress: (OllamaSetupStage stage, double progress) {
-              state = state.copyWith(
-                ollamaSetupStage: stage,
-                ollamaSetupProgress: progress,
-              );
-            },
-          );
-      state = state.copyWith(
-        ollamaSetupStage: OllamaSetupStage.idle,
-        ollamaSetupProgress: 0,
+      final ReadyLlm? ready = await readyLlm(ref);
+      if (ready == null) {
+        _log.info('Coach ignoré : aucun modèle utilisable');
+        state = state.copyWith(isFeedbackLoading: false);
+        return;
+      }
+      final EnglishFeedbackEntity feedback = await coachEnglish(
+        ready.llm,
+        transcript,
       );
-    } catch (e) {
-      _log.error('Ollama setup échoué: $e');
-      state = state.copyWith(
-        isFeedbackLoading: false,
-        ollamaSetupStage: OllamaSetupStage.error,
-        ollamaSetupError: e.toString(),
-        feedback: EnglishFeedbackEntity(overall: 'Erreur Ollama : $e'),
-      );
-      return;
-    }
-
-    try {
-      final EnglishFeedbackEntity feedback = await ref
-          .read(ollamaServiceProvider)
-          .analyzeEnglish(transcript);
-
+      if (!ref.mounted) return;
       state = state.copyWith(isFeedbackLoading: false, feedback: feedback);
       _log.info(
         'Analyse anglais terminée (${feedback.corrections.length} corrections)',
       );
 
-      // Sauvegarder le retour dans l'enveloppe partagée (résumé + coach).
+      // Sauvegarder le retour dans l'enveloppe partagée (résumé + coach) ;
+      // le modèle rangé reste celui du résumé.
       if (sessionId != null && feedback.corrections.isNotEmpty) {
         final SessionAnalysis existing = SessionAnalysis.fromStored(
           await ref
@@ -738,11 +718,12 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
             );
         _log.info('Retour coach sauvegardé pour session $sessionId');
       }
-    } catch (e) {
-      _log.error('Erreur analyse anglais Ollama: $e');
+    } on Object catch (e) {
+      _log.error('Coach anglais échoué : $e');
+      if (!ref.mounted) return;
       state = state.copyWith(
         isFeedbackLoading: false,
-        feedback: EnglishFeedbackEntity(overall: 'Erreur Ollama : $e'),
+        feedback: EnglishFeedbackEntity(overall: llmErrorKey(e).tr()),
       );
     }
   }
