@@ -63,6 +63,20 @@ final class TranscriptionRemoteDataSourceImpl
   static const int _maxBufferedMs = 120000;
   static const Duration _firstRetryDelay = Duration(milliseconds: 500);
   static const Duration _maxRetryDelay = Duration(seconds: 10);
+  // Serveur muet : socket ouverte mais commit final sans `done`. Au-delà de
+  // ce délai (un serveur lent répond en quelques secondes), la socket est
+  // recyclée et la phrase renvoyée ; après [_maxSilentRecycles] recyclages
+  // sans réponse, l'audio sans `done` est déclaré perdu.
+  static const Duration _doneTimeout = Duration(seconds: 25);
+  static const int _maxSilentRecycles = 3;
+  final Map<AudioSource, Timer?> _doneWatchdogs = <AudioSource, Timer?>{
+    AudioSource.input: null,
+    AudioSource.output: null,
+  };
+  final Map<AudioSource, int> _silentRecycles = <AudioSource, int>{
+    AudioSource.input: 0,
+    AudioSource.output: 0,
+  };
   final Map<AudioSource, _Unacked> _unacked = <AudioSource, _Unacked>{
     AudioSource.input: _Unacked(_maxBufferedMs),
     AudioSource.output: _Unacked(_maxBufferedMs),
@@ -210,7 +224,7 @@ final class TranscriptionRemoteDataSourceImpl
     final bool live = _outages[source] == null && client.isConnected;
     if (live) {
       client.send(message);
-      if (window != null) _pendingWindows[source]!.add(window);
+      if (window != null) _awaitDone(source, window);
     } else if (_outages[source] == null) {
       _startOutage(source);
     }
@@ -220,7 +234,53 @@ final class TranscriptionRemoteDataSourceImpl
     );
   }
 
+  /// [window] part sur la socket vivante : son `done` est attendu au plus
+  /// [_doneTimeout] (le délai court depuis le plus ancien commit attendu).
+  void _awaitDone(AudioSource source, UtteranceWindow window) {
+    _pendingWindows[source]!.add(window);
+    _doneWatchdogs[source] ??= Timer(
+      _doneTimeout,
+      () => _onSilentServer(source),
+    );
+  }
+
+  void _onDone(AudioSource source) {
+    _silentRecycles[source] = 0;
+    _doneWatchdogs[source]?.cancel();
+    _doneWatchdogs[source] = null;
+    if (_pendingWindows[source]!.isNotEmpty) {
+      _doneWatchdogs[source] = Timer(
+        _doneTimeout,
+        () => _onSilentServer(source),
+      );
+    }
+  }
+
+  void _onSilentServer(AudioSource source) {
+    _doneWatchdogs[source] = null;
+    if (_outages[source] != null || _pendingWindows[source]!.isEmpty) return;
+    final int recycles = _silentRecycles[source]! + 1;
+    if (recycles > _maxSilentRecycles) {
+      // Abandon : une seule perte couvre l'audio sans réponse, qui n'est plus
+      // renvoyé. La socket reste ouverte pour l'audio suivant.
+      _silentRecycles[source] = 0;
+      _pendingWindows[source]!.clear();
+      final _Unacked unacked = _unacked[source]!..loseAll();
+      _emitGap(source, unacked);
+      _control[source]!.add(
+        const TranscriptEventRemoteModel(type: utteranceLostEventType),
+      );
+      _connectionStateSubject.add(domain.ConnectionState.error);
+      return;
+    }
+    _silentRecycles[source] = recycles;
+    unawaited(_client(source).disconnect());
+    _startOutage(source);
+  }
+
   void _startOutage(AudioSource source) {
+    _doneWatchdogs[source]?.cancel();
+    _doneWatchdogs[source] = null;
     // Les commits partis sur la socket morte n'auront jamais de `done` : ils
     // repartiront depuis le tampon, avec leur fenêtre.
     _pendingWindows[source]!.clear();
@@ -263,7 +323,7 @@ final class TranscriptionRemoteDataSourceImpl
         return;
       }
       client.send(item.message);
-      if (item.window != null) _pendingWindows[source]!.add(item.window!);
+      if (item.window != null) _awaitDone(source, item.window!);
     }
     _outages[source] = null;
     final bool lost = unacked.lostStartMs != null;
@@ -296,6 +356,9 @@ final class TranscriptionRemoteDataSourceImpl
   /// le serveur l'a reçu, son texte est au moins dans les deltas.
   void _clearOutages() {
     for (final AudioSource source in AudioSource.values) {
+      _doneWatchdogs[source]?.cancel();
+      _doneWatchdogs[source] = null;
+      _silentRecycles[source] = 0;
       final _Outage? outage = _outages[source];
       outage?.retry?.cancel();
       _outages[source] = null;
@@ -419,6 +482,7 @@ final class TranscriptionRemoteDataSourceImpl
               windows.isNotEmpty) {
             _eventWindows[event] = windows.removeFirst();
             _unacked[source]!.acknowledge();
+            _onDone(source);
           }
           return event;
         });
