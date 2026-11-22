@@ -95,6 +95,9 @@ class FakeCalendarPlatform {
   /// Si non null, `events` échoue avec ce code.
   String? eventsErrorCode;
 
+  /// Si non null, `events` attend ce futur avant de répondre (chargement).
+  Future<void>? eventsGate;
+
   final List<MethodCall> calls = <MethodCall>[];
 
   List<MethodCall> callsTo(String method) =>
@@ -125,6 +128,7 @@ class FakeCalendarPlatform {
         case 'calendars':
           return calendars;
         case 'events':
+          if (eventsGate != null) await eventsGate;
           if (eventsErrorCode != null) {
             throw PlatformException(code: eventsErrorCode!);
           }
