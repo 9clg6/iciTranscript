@@ -74,7 +74,6 @@ class SettingsViewModel extends _$SettingsViewModel {
       dbSizeMb: 124.0,
       systemAudioEnabled: prefValue<bool>(prefs, _systemAudioKey) ?? true,
       autoStartServer: true,
-      serverPort: '8000',
       availableDevices: inputDevices,
       selectedMicId: resolvedMicId,
       llmCloudAllowed: llm.cloudAllowed,
@@ -102,11 +101,6 @@ class SettingsViewModel extends _$SettingsViewModel {
   /// Active ou desactive le lancement automatique du serveur.
   void toggleAutoStart() {
     state = state.copyWith(autoStartServer: !state.autoStartServer);
-  }
-
-  /// Met a jour le port du serveur ML.
-  void updatePort(String port) {
-    state = state.copyWith(serverPort: port);
   }
 
   /// Range [key] au trousseau (jamais dans prefs.json) ; saisie vide = rien.

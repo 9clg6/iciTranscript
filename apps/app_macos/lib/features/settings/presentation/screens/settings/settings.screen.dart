@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_settings.dart';
+import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.screen.dart';
@@ -28,14 +29,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  TextEditingController? _port;
-
-  @override
-  void dispose() {
-    _port?.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final SettingsState state = ref.watch(settingsViewModelProvider);
@@ -47,9 +40,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       liveTranscriptionViewModelProvider.notifier,
     );
     final Oats o = context.oats;
-    final TextEditingController port = _port ??= TextEditingController(
-      text: state.serverPort,
-    );
 
     return Scaffold(
       backgroundColor: o.background,
@@ -158,36 +148,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         style: o.small,
                       ),
                     ),
+                    // Lecture seule : le port suit le dossier de données.
                     _Row(
                       label: LocaleKeys.settings_server_port.tr(),
-                      trailing: SizedBox(
-                        width: 72,
-                        height: 30,
-                        child: TextField(
-                          controller: port,
-                          textAlign: TextAlign.right,
-                          style: o.ui,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: OatsSpace.sm,
-                              vertical: OatsSpace.sm,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(
-                                OatsRadius.sm,
-                              ),
-                              borderSide: BorderSide(color: o.line),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(
-                                OatsRadius.sm,
-                              ),
-                              borderSide: BorderSide(color: o.line),
-                            ),
-                          ),
-                          onSubmitted: vm.updatePort,
-                        ),
+                      trailing: Text(
+                        '${ref.watch(launchServerPortsProvider).transcription}',
+                        style: o.small,
                       ),
                     ),
                     _Row(

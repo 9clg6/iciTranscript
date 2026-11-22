@@ -10,16 +10,16 @@ part of 'process_manager.provider.dart';
 // ignore_for_file: type=lint, type=warning
 /// Provider singleton pour [ProcessManagerChannel].
 ///
-/// Fournit le pont vers la couche plateforme Swift pour la gestion
-/// du processus voxmlx-serve (serveur ML de transcription).
+/// Gere le processus voxmlx-serve (serveur ML de transcription), lance par
+/// le registre partage sur le port du lancement.
 
 @ProviderFor(processManagerChannel)
 const processManagerChannelProvider = ProcessManagerChannelProvider._();
 
 /// Provider singleton pour [ProcessManagerChannel].
 ///
-/// Fournit le pont vers la couche plateforme Swift pour la gestion
-/// du processus voxmlx-serve (serveur ML de transcription).
+/// Gere le processus voxmlx-serve (serveur ML de transcription), lance par
+/// le registre partage sur le port du lancement.
 
 final class ProcessManagerChannelProvider
     extends
@@ -31,8 +31,8 @@ final class ProcessManagerChannelProvider
     with $Provider<ProcessManagerChannel> {
   /// Provider singleton pour [ProcessManagerChannel].
   ///
-  /// Fournit le pont vers la couche plateforme Swift pour la gestion
-  /// du processus voxmlx-serve (serveur ML de transcription).
+  /// Gere le processus voxmlx-serve (serveur ML de transcription), lance par
+  /// le registre partage sur le port du lancement.
   const ProcessManagerChannelProvider._()
     : super(
         from: null,
@@ -68,4 +68,4 @@ final class ProcessManagerChannelProvider
 }
 
 String _$processManagerChannelHash() =>
-    r'09b739583afa5f60af6cbd64664af0c7dbbc267d';
+    r'b45d8e9518276d4fd03b9ecbe178126a83c96ad4';

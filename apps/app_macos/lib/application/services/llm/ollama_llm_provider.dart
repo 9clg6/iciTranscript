@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:ici_transcript/application/services/llm/llm_http.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
 
 /// Ollama local via `/api/chat`, en streaming NDJSON. Sans cle.
 class OllamaLlmProvider implements LlmProvider {
@@ -24,7 +25,7 @@ class OllamaLlmProvider implements LlmProvider {
     final Stream<String> lines = postLines(
       _dio,
       provider: 'Ollama',
-      url: 'http://localhost:11434/api/chat',
+      url: '${ollamaBaseUrl.resolve('/api/chat')}',
       body: <String, Object?>{
         'model': request.model ?? _model,
         'stream': true,

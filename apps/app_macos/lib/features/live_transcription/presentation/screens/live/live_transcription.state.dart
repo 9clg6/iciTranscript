@@ -26,6 +26,9 @@ abstract class LiveTranscriptionState with _$LiveTranscriptionState {
     /// Etat du serveur de transcription.
     @Default(ServerState.stopped) ServerState serverState,
 
+    /// Port pris par un autre programme (erreur serveur), sinon null.
+    int? serverPortInUse,
+
     /// Titre de la session en cours.
     String? sessionTitle,
 

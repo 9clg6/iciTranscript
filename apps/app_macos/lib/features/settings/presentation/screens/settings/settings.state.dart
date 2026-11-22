@@ -39,9 +39,6 @@ abstract class SettingsState with _$SettingsState {
     /// Indique si le serveur ML doit demarrer automatiquement.
     @Default(true) bool autoStartServer,
 
-    /// Port du serveur ML (voxmlx-serve default: 8000).
-    @Default('8000') String serverPort,
-
     /// Chemin de stockage de la base de donnees.
     @Default('') String storagePath,
 
