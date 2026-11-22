@@ -256,8 +256,17 @@ final class FakeTranscriptionRemoteDataSource
   Future<void> disconnect() async =>
       _states.add(domain.ConnectionState.disconnected);
 
+  /// Sources visées par chaque commit final (null : toutes).
+  final List<Set<AudioSource>?> finalCommitSources = <Set<AudioSource>?>[];
+
   @override
-  Set<AudioSource> sendCommit({bool isFinal = false}) => <AudioSource>{};
+  Set<AudioSource> sendCommit({
+    bool isFinal = false,
+    Set<AudioSource>? sources,
+  }) {
+    if (isFinal) finalCommitSources.add(sources);
+    return <AudioSource>{};
+  }
 
   @override
   Stream<domain.ConnectionState> get connectionState => _states.stream;
