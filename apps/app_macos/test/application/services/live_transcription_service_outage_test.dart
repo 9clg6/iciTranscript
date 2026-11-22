@@ -222,50 +222,53 @@ void main() {
   });
 
   group('arrêt demandé pendant une coupure (point 5)', () {
-    test('l arrêt aboutit vite, la session est close normalement, l audio '
-        'non transcrit a son repère, plus aucune relance', () {
-      fakeAsync((FakeAsync async) {
-        setUpIn(async);
-        say(0, 100, level: _Level.silence);
-        say(100, 50); // phrase commencée à 10 s, partie sur la socket
-        mic
-          ..refusing = true
-          ..drop();
-        say(150, 200); // jusqu'à 35 s, en tampon
+    test(
+      'l arrêt aboutit en temps borné, la session est close normalement, l audio '
+      'non transcrit a son repère, plus aucune relance',
+      () {
+        fakeAsync((FakeAsync async) {
+          setUpIn(async);
+          say(0, 100, level: _Level.silence);
+          say(100, 50); // phrase commencée à 10 s, partie sur la socket
+          mic
+            ..refusing = true
+            ..drop();
+          say(150, 200); // jusqu'à 35 s, en tampon
 
-        bool stopped = false;
-        final Duration askedAt = async.elapsed;
-        unawaited(h.service.stopTranscription().then((_) => stopped = true));
-        while (!stopped &&
-            async.elapsed - askedAt < const Duration(seconds: 30)) {
-          async.elapse(const Duration(milliseconds: 100));
-        }
+          bool stopped = false;
+          final Duration askedAt = async.elapsed;
+          unawaited(h.service.stopTranscription().then((_) => stopped = true));
+          while (!stopped &&
+              async.elapsed - askedAt < const Duration(seconds: 150)) {
+            async.elapse(const Duration(milliseconds: 100));
+          }
 
-        expect(stopped, isTrue);
-        expect(
-          async.elapsed - askedAt,
-          lessThanOrEqualTo(const Duration(seconds: 10)),
-        );
-        expect(h.session.status, SessionStatus.completed);
+          expect(stopped, isTrue);
+          expect(
+            async.elapsed - askedAt,
+            lessThanOrEqualTo(const Duration(seconds: 125)),
+          );
+          expect(h.session.status, SessionStatus.completed);
 
-        final TranscriptSegmentEntity marker = h.segments
-            .of(AudioSource.input)
-            .singleWhere(
-              (TranscriptSegmentEntity s) =>
-                  s.text.startsWith('Transcription interrompue'),
-            );
-        expect(marker.timestampMs, 10000);
-        expect(marker.text, matches(RegExp(r'00:00:10\s*[–-]\s*00:00:35')));
+          final TranscriptSegmentEntity marker = h.segments
+              .of(AudioSource.input)
+              .singleWhere(
+                (TranscriptSegmentEntity s) =>
+                    s.text.startsWith('Transcription interrompue'),
+              );
+          expect(marker.timestampMs, 10000);
+          expect(marker.text, matches(RegExp(r'00:00:10\s*[–-]\s*00:00:35')));
 
-        final int connectsAtStop = mic.connectCalls;
-        mic.refusing = false;
-        async.elapse(const Duration(minutes: 5));
-        expect(mic.connectCalls, connectsAtStop);
-        expect(h.process.starts, hasLength(1));
-      });
-    });
+          final int connectsAtStop = mic.connectCalls;
+          mic.refusing = false;
+          async.elapse(const Duration(minutes: 5));
+          expect(mic.connectCalls, connectsAtStop);
+          expect(h.process.starts, hasLength(1));
+        });
+      },
+    );
 
-    test('crash du serveur puis arrêt avant la relance : arrêt rapide, '
+    test('crash du serveur puis arrêt avant la relance : arrêt borné, '
         'session close, aucune relance', () {
       fakeAsync((FakeAsync async) {
         setUpIn(async);
@@ -279,14 +282,14 @@ void main() {
         final Duration askedAt = async.elapsed;
         unawaited(h.service.stopTranscription().then((_) => stopped = true));
         while (!stopped &&
-            async.elapsed - askedAt < const Duration(seconds: 30)) {
+            async.elapsed - askedAt < const Duration(seconds: 150)) {
           async.elapse(const Duration(milliseconds: 100));
         }
 
         expect(stopped, isTrue);
         expect(
           async.elapsed - askedAt,
-          lessThanOrEqualTo(const Duration(seconds: 10)),
+          lessThanOrEqualTo(const Duration(seconds: 125)),
         );
         expect(h.session.status, SessionStatus.completed);
         async.elapse(const Duration(minutes: 10));
@@ -294,7 +297,7 @@ void main() {
       });
     });
 
-    test('arrêt pendant une relance lente : arrêt rapide, session close, '
+    test('arrêt pendant une relance lente : arrêt borné, session close, '
         'aucune relance de plus', () {
       fakeAsync((FakeAsync async) {
         setUpIn(async);
@@ -310,14 +313,14 @@ void main() {
         final Duration askedAt = async.elapsed;
         unawaited(h.service.stopTranscription().then((_) => stopped = true));
         while (!stopped &&
-            async.elapsed - askedAt < const Duration(seconds: 30)) {
+            async.elapsed - askedAt < const Duration(seconds: 150)) {
           async.elapse(const Duration(milliseconds: 100));
         }
 
         expect(stopped, isTrue);
         expect(
           async.elapsed - askedAt,
-          lessThanOrEqualTo(const Duration(seconds: 10)),
+          lessThanOrEqualTo(const Duration(seconds: 125)),
         );
         expect(h.session.status, SessionStatus.completed);
         async.elapse(const Duration(minutes: 10));
@@ -326,8 +329,11 @@ void main() {
     });
   });
 
+  // Tour 5 : l'arrêt attend le rattrapage jusqu'à 120 s (sonde 2 :
+  // rattrapages de 29 s et 103 s après la fin de l'audio) ; les bornes de
+  // 10 s des tours précédents passent donc à 125 s.
   group('arrêt pendant que le done de la dernière phrase tarde', () {
-    /// Demande l'arrêt et avance le temps jusqu'à sa fin (30 s au plus).
+    /// Demande l'arrêt et avance le temps jusqu'à sa fin (150 s au plus).
     /// [doneAfter] : délai de la réponse finale du serveur, null = jamais.
     Duration stopWhile(FakeAsync async, {Duration? doneAfter}) {
       bool stopped = false;
@@ -335,7 +341,7 @@ void main() {
       unawaited(h.service.stopTranscription().then((_) => stopped = true));
       bool answered = false;
       while (!stopped &&
-          async.elapsed - askedAt < const Duration(seconds: 30)) {
+          async.elapsed - askedAt < const Duration(seconds: 150)) {
         if (!answered &&
             doneAfter != null &&
             async.elapsed - askedAt >= doneAfter) {
@@ -387,8 +393,15 @@ void main() {
 
         final Duration took = stopWhile(async);
 
-        expect(took, lessThanOrEqualTo(const Duration(seconds: 10)));
-        expect(texts(), <String>['Bonjour à tous']);
+        expect(took, lessThanOrEqualTo(const Duration(seconds: 125)));
+        expect(texts(), contains('Bonjour à tous'));
+        expect(
+          texts().where(
+            (String t) => t.startsWith('Transcription interrompue'),
+          ),
+          hasLength(1),
+          reason: 'l audio jamais acquitté a son repère',
+        );
         expect(h.session.status, SessionStatus.completed);
       });
     });

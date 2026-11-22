@@ -4,6 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/platform/dev_data_directory.provider.dart';
+import 'package:ici_transcript/features/documents/presentation/documents.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
@@ -46,12 +47,7 @@ class OatsShellScreen extends ConsumerWidget {
           )
         : switch (view) {
             ShellView.home => const HomeScreen(),
-            ShellView.documents => _EmptyPage(
-              title: LocaleKeys.nav_documents.tr(),
-              icon: Icons.description_outlined,
-              emptyTitle: LocaleKeys.documents_empty_title.tr(),
-              message: LocaleKeys.documents_empty.tr(),
-            ),
+            ShellView.documents => const DocumentsScreen(),
             ShellView.coach => _EmptyPage(
               title: LocaleKeys.nav_coach.tr(),
               icon: Icons.school_outlined,
@@ -94,6 +90,13 @@ class _Sidebar extends ConsumerWidget {
     final bool recording = ref.watch(
       liveTranscriptionViewModelProvider.select(
         (LiveTranscriptionState s) => s.isRecording || s.isPaused,
+      ),
+    );
+    // Après Arrêter, l'enregistrement est fini : pas de pastille verte,
+    // une mention discrète tant que la transcription s'achève.
+    final bool finalising = ref.watch(
+      liveTranscriptionViewModelProvider.select(
+        (LiveTranscriptionState s) => s.finalisingRemaining != null,
       ),
     );
 
@@ -146,7 +149,26 @@ class _Sidebar extends ConsumerWidget {
             LocaleKeys.nav_documents,
           ),
           item(ShellView.coach, Icons.school_outlined, LocaleKeys.nav_coach),
-          if (recording) ...<Widget>[
+          if (finalising) ...<Widget>[
+            const SizedBox(height: OatsSpace.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(OatsRadius.pill),
+                onTap: () => onSelect(ShellView.live),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: OatsSpace.sm,
+                    vertical: OatsSpace.xxs,
+                  ),
+                  child: Text(
+                    LocaleKeys.transcription_live_finalising_short.tr(),
+                    style: o.label,
+                  ),
+                ),
+              ),
+            ),
+          ] else if (recording) ...<Widget>[
             const SizedBox(height: OatsSpace.md),
             Align(
               alignment: Alignment.centerLeft,

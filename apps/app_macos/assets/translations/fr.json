@@ -47,7 +47,33 @@
   },
   "documents": {
     "empty_title": "Aucun document",
-    "empty": "Les documents que vous ajouterez serviront de source aux réponses pendant vos réunions. Cette page arrive bientôt."
+    "empty": "Les documents que vous ajoutez servent de source aux réponses pendant vos réunions. Formats acceptés : .txt, .md, .pdf.",
+    "add": "Ajouter un document",
+    "importing": "Import en cours…",
+    "rename": "Renommer",
+    "rename_label": "Titre",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "delete_confirm": "Supprimer ce document ? Ses extraits ne serviront plus aux réponses.",
+    "excerpts": {
+      "one": "{} extrait",
+      "other": "{} extraits"
+    },
+    "type": {
+      "txt": "Texte",
+      "md": "Markdown",
+      "pdf": "PDF"
+    },
+    "error": {
+      "unsupported": "Format non pris en charge. Formats acceptés : .txt, .md, .pdf.",
+      "empty": "Document vide : aucun texte à indexer.",
+      "too_large": "Document trop volumineux (plus de 5 Mo de texte). Découpez-le en plusieurs fichiers.",
+      "unreadable": "Lecture impossible. Vérifiez que le fichier existe et n'est pas protégé par un mot de passe.",
+      "picker": "Impossible d'ouvrir le sélecteur de fichiers. Réessayez."
+    },
+    "privacy_local": "L'envoi à un service en ligne est coupé : ces documents et leurs extraits restent sur votre Mac.",
+    "privacy_cloud": "L'envoi à un service en ligne est autorisé : des extraits de vos documents utiles à une réponse peuvent partir chez le fournisseur choisi."
   },
   "coach": {
     "empty": "Vos retours d'anglais, réunion par réunion, s'afficheront ici. En attendant, ouvrez une note et choisissez « Coach anglais ».",
@@ -61,7 +87,15 @@
     }
   },
   "llm": {
-    "configure_model": "Aucun modèle prêt. Configurez le modèle local dans Réglages pour résumer et analyser vos notes."
+    "configure_model": "Aucun modèle prêt. Configurez le modèle local dans Réglages pour résumer et analyser vos notes.",
+    "error": {
+      "invalid_key": "Clé API refusée par le fournisseur. Vérifiez-la dans Réglages.",
+      "rate_limited": "Limite du fournisseur atteinte. Réessayez dans quelques minutes.",
+      "unreachable": "Fournisseur injoignable. Vérifiez votre connexion ou le modèle local.",
+      "failed": "La génération a échoué. Réessayez.",
+      "malformed": "Réponse du modèle illisible. Réessayez."
+    },
+    "incomplete": "Réponse incomplète : le modèle s'est arrêté avant la fin. Relancez pour un résumé complet."
   },
   "transcription": {
     "live": {
@@ -69,6 +103,10 @@
       "stop": "Arrêter",
       "pause": "Pause",
       "resume": "Reprendre",
+      "finalising": "Finalisation de la transcription…",
+      "finalising_short": "Finalisation…",
+      "finalising_remaining": "~{} s",
+      "skip_finalising": "Passer",
       "recording_time": "Durée d'enregistrement",
       "speaker_me": "Vous",
       "speaker_system": "Interlocuteur",
@@ -160,7 +198,7 @@
     "ai": {
       "title": "Intelligence artificielle",
       "cloud_allowed": "Autoriser l'envoi à un service en ligne",
-      "privacy_notice": "Quand l'envoi est autorisé, le texte de la transcription et des documents utiles à la réponse part chez le fournisseur choisi. L'audio reste sur votre Mac.",
+      "privacy_notice": "Quand l'envoi est autorisé, le texte des notes que vous faites résumer ou analyser, celui de la réunion en cours et des extraits de vos documents partent chez le fournisseur choisi. L'audio reste sur votre Mac.",
       "active_provider": "Fournisseur utilisé",
       "cloud_paused": "{} en pause : l'envoi à un service en ligne est coupé.",
       "cloud_off_hint": "Services en ligne en pause : l'envoi est coupé.",

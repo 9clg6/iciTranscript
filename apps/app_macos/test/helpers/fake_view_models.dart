@@ -49,6 +49,9 @@ class FakeLiveTranscriptionViewModel extends LiveTranscriptionViewModel {
 
   @override
   Future<void> recheckPermissions() async {}
+
+  /// Fixe l'état affiché (le setter de Notifier est protégé).
+  void show(LiveTranscriptionState next) => state = next;
 }
 
 /// Réglages sans canal audio ni prefs.json.
@@ -126,10 +129,11 @@ class AppFakes {
 
   static Future<SessionDetailState> Function(String) _detailFrom(
     List<SessionEntity> sessions,
-  ) => (String id) async => SessionDetailState(
-    session: sessions.firstWhere((SessionEntity s) => s.id == id),
-    segments: const <TranscriptSegmentEntity>[],
-  );
+  ) =>
+      (String id) async => SessionDetailState(
+        session: sessions.firstWhere((SessionEntity s) => s.id == id),
+        segments: const <TranscriptSegmentEntity>[],
+      );
 
   List<Override> get overrides => <Override>[
     kernelProvider.overrideWith((Ref ref) async {}),

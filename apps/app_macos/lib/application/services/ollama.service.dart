@@ -40,16 +40,35 @@ enum OllamaSetupStage {
 /// Un seul démon, partagé entre dev et release : s'il répond déjà, on s'en
 /// sert ; l'app n'arrête que celui qu'elle a lancé ([dispose]).
 class OllamaService {
-  OllamaService({ProcessHost host = const SystemProcessHost()}) : _host = host;
+  ///
+  /// [processes] lance et arrête le démon (seulement celui qu'on a lancé) et
+  /// sonde sa santé ; [dio] porte les appels au démon local (modèles,
+  /// téléchargement du modèle, déchargement). Défauts : registre et hôte
+  /// système, nouveau client.
+  OllamaService({OwnedProcessRegistry? processes, Dio? dio})
+    : _processes =
+          processes ??
+          OwnedProcessRegistry(
+            host: const SystemProcessHost(),
+            stateFile: ownedProcessesFile(),
+          ),
+      _dio = dio ?? Dio();
 
-  final ProcessHost _host;
+  static const String _role = 'ollama';
+
+  final OwnedProcessRegistry _processes;
+  final Dio _dio;
 
   final Log _log = Log.named('OllamaService');
 
   static final String _baseUrl = '$ollamaBaseUrl';
   // Mistral 7B : ~3-5x plus rapide que mistral-small (24B) sur Mac, qualite
   // suffisante pour le coaching et le resume.
-  static const String _model = 'mistral';
+  static const String defaultModel = 'mistral';
+
+  /// Modèle local choisi dans Réglages : celui que [ensureReady] installe
+  /// et que [unloadModel] décharge.
+  String model = defaultModel;
 
   /// Garde le modele charge en RAM 15 min entre deux requetes (evite le
   /// rechargement a froid ~14s qui rend la 1re analyse tres lente).
@@ -62,8 +81,6 @@ class OllamaService {
   // Le binaire CLI se trouve à Ollama.app/Contents/Resources/ollama.
   static const String _ollamaZipUrl =
       'https://github.com/ollama/ollama/releases/latest/download/Ollama-darwin.zip';
-
-  Process? _ollamaProcess;
 
   // ---------------------------------------------------------------------------
   // Paths
@@ -111,16 +128,21 @@ class OllamaService {
     onProgress?.call(OllamaSetupStage.ready, 1);
   }
 
-  /// Le moteur et le modèle sont-ils déjà sur le disque ?
+  /// Le moteur et le modèle [model] (null : [defaultModel]) sont-ils déjà
+  /// sur le disque ?
   ///
   /// Détection seule : ne télécharge rien et ne démarre aucun process. Si un
   /// serveur tourne déjà, on lui demande ses modèles ; sinon on cherche le
   /// manifeste du modèle dans `models/` (là où [_startServer] les range).
-  Future<bool> isInstalled() async {
+  Future<bool> isInstalled({String? model}) async {
+    final String name = model ?? defaultModel;
     if (!await _isBinaryAvailable()) return false;
-    if (await _isServerRunning()) return _isModelAvailable();
+    if (await _isServerRunning()) return _isModelAvailable(name);
+    // `nom[:tag]` → library/nom[/tag] ; `espace/nom[:tag]` → espace/nom[/tag].
+    final String path = name.contains('/') ? name : 'library/$name';
     return Directory(
-      '$_toolsDir/models/manifests/registry.ollama.ai/library/$_model',
+      '$_toolsDir/models/manifests/registry.ollama.ai/'
+      '${path.replaceFirst(':', '/')}',
     ).exists();
   }
 
@@ -176,15 +198,13 @@ class OllamaService {
   /// À appeler avant de lancer un autre modèle Metal lourd (Voxtral/Parakeet).
   Future<void> unloadModel() async {
     if (!await _isServerRunning()) return;
-    final Dio dio = Dio();
-    dio.options
-      ..connectTimeout = const Duration(seconds: 2)
-      ..receiveTimeout = const Duration(seconds: 15);
-    await dio.post<void>(
+    await _dio.post<void>(
       '$_baseUrl/api/generate',
-      data: <String, dynamic>{'model': _model, 'keep_alive': 0},
+      data: <String, dynamic>{'model': model, 'keep_alive': 0},
       options: Options(
         headers: <String, String>{'content-type': 'application/json'},
+        sendTimeout: const Duration(seconds: 2),
+        receiveTimeout: const Duration(seconds: 15),
       ),
     );
     _log.info('Modèle Ollama déchargé');
@@ -196,9 +216,8 @@ class OllamaService {
     required String user,
     bool json = false,
   }) async {
-    final Dio dio = Dio()..options.receiveTimeout = const Duration(minutes: 5);
     final Map<String, dynamic> payload = <String, dynamic>{
-      'model': _model,
+      'model': model,
       'stream': false,
       'keep_alive': _keepAlive,
       // Contexte borné : le défaut 32768 alloue un KV cache de plusieurs Go
@@ -212,12 +231,13 @@ class OllamaService {
     };
     if (json) payload['format'] = 'json';
 
-    final Response<Map<String, dynamic>> response = await dio
+    final Response<Map<String, dynamic>> response = await _dio
         .post<Map<String, dynamic>>(
           '$_baseUrl/api/chat',
           data: payload,
           options: Options(
             headers: <String, String>{'content-type': 'application/json'},
+            receiveTimeout: const Duration(minutes: 5),
           ),
         );
     final Map<String, dynamic> message =
@@ -245,11 +265,8 @@ class OllamaService {
     );
   }
 
-  /// Arrête le daemon démarré par ce service.
-  Future<void> dispose() async {
-    _ollamaProcess?.kill(ProcessSignal.sigterm);
-    _ollamaProcess = null;
-  }
+  /// Arrête le daemon démarré par ce service (jamais celui d'un autre).
+  Future<void> dispose() => _processes.stop(_role);
 
   // ---------------------------------------------------------------------------
   // Binary
@@ -358,39 +375,30 @@ class OllamaService {
   // ---------------------------------------------------------------------------
 
   Future<bool> _isServerRunning() async {
-    try {
-      final Dio dio = Dio()
-        ..options.connectTimeout = const Duration(seconds: 2)
-        ..options.receiveTimeout = const Duration(seconds: 2);
-      final Response<dynamic> res = await dio.get<dynamic>(
-        '$_baseUrl/api/tags',
-      );
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
+    return _processes.isHealthy(ollamaBaseUrl.resolve('/api/tags'));
   }
 
   Future<void> _startServer() async {
     final String bin = await _effectiveBinPath();
     _log.info('Démarrage de "$bin serve"');
 
-    _ollamaProcess = await _host.start(
+    final Process process = await _processes.start(
+      _role,
       bin,
       <String>['serve'],
+      port: ollamaPort,
       environment: <String, String>{
         'HOME': Platform.environment['HOME'] ?? '/tmp',
         'PATH': _extendedPath(),
         // Stocker les modèles dans le répertoire de l'app
         'OLLAMA_MODELS': '$_toolsDir/models',
       },
-      mode: ProcessStartMode.detachedWithStdio,
     );
 
-    _ollamaProcess!.stdout
+    process.stdout
         .transform(const SystemEncoding().decoder)
         .listen((String l) => _log.debug('[ollama] $l'));
-    _ollamaProcess!.stderr
+    process.stderr
         .transform(const SystemEncoding().decoder)
         .listen((String l) => _log.debug('[ollama-err] $l'));
 
@@ -420,17 +428,17 @@ class OllamaService {
   // Model
   // ---------------------------------------------------------------------------
 
-  Future<bool> _isModelAvailable() async {
+  Future<bool> _isModelAvailable([String? name]) async {
+    final String wanted = name ?? model;
     try {
-      final Dio dio = Dio();
-      final Response<Map<String, dynamic>> res = await dio
+      final Response<Map<String, dynamic>> res = await _dio
           .get<Map<String, dynamic>>('$_baseUrl/api/tags');
       final List<dynamic> models =
           res.data?['models'] as List<dynamic>? ?? <dynamic>[];
       return models.any((dynamic m) {
         final String name =
             (m as Map<String, dynamic>)['name'] as String? ?? '';
-        return name.startsWith(_model);
+        return name == wanted || name.startsWith('$wanted:');
       });
     } catch (_) {
       return false;
@@ -439,22 +447,17 @@ class OllamaService {
 
   /// Tire le modèle via l'API REST Ollama (NDJSON stream) pour avoir la progression.
   Future<void> _pullModel({void Function(double progress)? onProgress}) async {
-    _log.info('Téléchargement du modèle $_model via Ollama API...');
+    _log.info('Téléchargement du modèle $model via Ollama API...');
 
-    final HttpClient client = HttpClient();
-    final HttpClientRequest request = await client.postUrl(
-      ollamaBaseUrl.resolve('/api/pull'),
-    );
-    request.headers.contentType = ContentType.json;
-    request.write(
-      jsonEncode(<String, dynamic>{'name': _model, 'stream': true}),
+    final Response<ResponseBody> response = await _dio.post<ResponseBody>(
+      '$_baseUrl/api/pull',
+      data: <String, dynamic>{'name': model, 'stream': true},
+      options: Options(responseType: ResponseType.stream),
     );
 
-    final HttpClientResponse response = await request.close();
-
-    await for (final String chunk in response.transform(
-      const SystemEncoding().decoder,
-    )) {
+    await for (final String chunk in response.data!.stream
+        .cast<List<int>>()
+        .transform(utf8.decoder)) {
       // Plusieurs JSON peuvent arriver dans un même chunk
       for (final String line in chunk.split('\n')) {
         final String trimmed = line.trim();
@@ -470,14 +473,12 @@ class OllamaService {
             onProgress?.call(completed / total);
           } else if (status == 'success') {
             onProgress?.call(1.0);
-            _log.info('Modèle $_model téléchargé');
+            _log.info('Modèle $model téléchargé');
           }
         } catch (_) {
           // Ligne non-JSON, ignorer
         }
       }
     }
-
-    client.close();
   }
 }

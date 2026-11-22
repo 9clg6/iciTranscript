@@ -5,7 +5,8 @@
 //   OATS_SHOTS_DIR=/chemin fvm flutter test tool/render_screens.dart
 //
 // Sortie : $OATS_SHOTS_DIR (défaut : /tmp/oats-shots). Données inventées,
-// faux view models seulement : aucune base, aucun prefs.json, aucun serveur.
+// faux view models et base en mémoire : aucun vrai fichier de données,
+// aucun serveur, aucun réseau.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -25,7 +26,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
+import 'package:core_data/database/app_database.dart';
+import 'package:ici_transcript/application/services/documents/document_library.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/core/providers/data/database.provider.dart';
+import 'package:ici_transcript/core/providers/platform/file_picker.provider.dart';
+import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/llm_dio.provider.dart';
@@ -42,8 +48,10 @@ import 'package:ici_transcript/features/settings/presentation/screens/settings/s
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 import 'package:ici_transcript/presentation/app.dart';
 
+import '../test/helpers/document_fakes.dart';
 import '../test/helpers/fake_data.dart';
 import '../test/helpers/fake_view_models.dart';
+import '../test/helpers/local_model_fakes.dart';
 import '../test/helpers/settings_fakes.dart';
 
 final String _outDir =
@@ -204,16 +212,47 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
     );
   }
 
+  /// Arrêter : l'état « Finalisation… » (rattrapage en cours), sans
+  /// quitter l'écran.
+  @override
+  Future<String?> stopSession() async {
+    state = state.copyWith(finalisingRemaining: const Duration(seconds: 46));
+    return null;
+  }
+
   @override
   Future<void> recheckPermissions() async {}
 }
 
+/// Note en cours de résumé : début du texte reçu, la suite arrive.
+SessionDetailState _streaming(SessionDetailState s) => s.copyWith(
+  summary:
+      'Revue de fin de sprint : objectif atteint, deux sujets reportés.\n\n'
+      '## Décisions\n- Le tunnel d’inscription passe en **priorité',
+  isSummaryLoading: true,
+  feedback: null,
+);
+
+/// Note en erreur : résumé coupé signalé, coach en erreur.
+SessionDetailState _failed(SessionDetailState s) => s.copyWith(
+  summary:
+      'Revue de fin de sprint : objectif atteint, deux sujets reportés.\n'
+      'Les participants ont décidé que le tunnel d’inscription serait',
+  summaryIncomplete: true,
+  feedbackError: LocaleKeys.llm_error_unreachable,
+);
+
 List<Override> _overrides(
   List<SessionEntity> sessions, {
+  required AppDatabase db,
+  required FakeFilePicker picker,
   OllamaSetupState ollama = const OllamaSetupState(),
   SettingsState? settings,
+  SessionDetailState Function(SessionDetailState)? detail,
 }) => <Override>[
   kernelProvider.overrideWith((Ref ref) async {}),
+  databaseProvider.overrideWithValue(db),
+  filePickerProvider.overrideWithValue(picker),
   // Jamais le vrai trousseau ni le réseau.
   apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
   llmDioProvider.overrideWithValue(
@@ -232,19 +271,21 @@ List<Override> _overrides(
   ),
   sessionDetailViewModelProvider.overrideWith(
     () => FakeSessionDetailViewModel(
-      (String id) async => SessionDetailState(
-        session: sessions.firstWhere((SessionEntity s) => s.id == id),
-        segments: _segments(60),
-        summary: _summary,
-        speakers: <SpeakerTurn>[
-          for (int i = 0; i < 60; i++)
-            SpeakerTurn(
-              speaker: (i ~/ 6) % 2,
-              start: i * 21.0,
-              end: i * 21.0 + 21,
-              text: '',
-            ),
-        ],
+      (String id) async => (detail ?? (SessionDetailState s) => s)(
+        SessionDetailState(
+          session: sessions.firstWhere((SessionEntity s) => s.id == id),
+          segments: _segments(60),
+          summary: _summary,
+          speakers: <SpeakerTurn>[
+            for (int i = 0; i < 60; i++)
+              SpeakerTurn(
+                speaker: (i ~/ 6) % 2,
+                start: i * 21.0,
+                end: i * 21.0 + 21,
+                text: '',
+              ),
+          ],
+        ),
       ),
     ),
   ),
@@ -311,7 +352,12 @@ void main() {
         List<SessionEntity> sessions, {
         OllamaSetupState ollama = const OllamaSetupState(),
         SettingsState? settings,
+        SessionDetailState Function(SessionDetailState)? detail,
+        AppDatabase? db,
+        FakeFilePicker? picker,
       }) async {
+        final AppDatabase base = db ?? memoryDatabase();
+        addTearDown(base.close);
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
         tester.platformDispatcher.platformBrightnessTestValue = brightness;
@@ -326,8 +372,11 @@ void main() {
             child: ProviderScope(
               overrides: _overrides(
                 sessions,
+                db: base,
+                picker: picker ?? FakeFilePicker(),
                 ollama: ollama,
                 settings: settings,
+                detail: detail,
               ),
               child: EasyLocalization(
                 supportedLocales: const <Locale>[Locale('fr')],
@@ -479,11 +528,97 @@ void main() {
         await _shot(tester, key, 'delete-dialog-$suffix');
       });
 
+      // Documents : liste (titres inventés), puis un ajout refusé.
+      shoot('documents-list', (WidgetTester tester) async {
+        final AppDatabase db = memoryDatabase();
+        final Directory dir = tempFolder();
+        final FakeFilePicker picker = FakeFilePicker();
+        await tester.runAsync(() async {
+          final DocumentLibrary library = DocumentLibrary(db);
+          for (final String name in <String>[
+            'Plan de recrutement 2027 pour les équipes produit, design, '
+                'données et support client.md',
+            'Tarifs.txt',
+            'Compte rendu du comité.md',
+          ]) {
+            await library.importFile(
+              writeFile(
+                dir,
+                name,
+                List<String>.filled(40, _lines[1]).join('\n\n'),
+              ),
+            );
+          }
+        });
+        final GlobalKey key = await pumpApp(
+          tester,
+          _sessions,
+          db: db,
+          picker: picker,
+        );
+        await tester.tap(find.text('Documents'));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
+        await _pump(tester, 5);
+        await _shot(tester, key, 'documents-list-$suffix');
+        picker.next = <String>[
+          writeFile(dir, 'Contrat fournisseur signé version finale.docx', 'x'),
+          writeFile(dir, 'vide.txt', '  '),
+        ];
+        await tester.tap(find.text('Ajouter un document'));
+        for (
+          int i = 0;
+          i < 30 &&
+              (i < 3 || find.text('Import en cours…').evaluate().isNotEmpty);
+          i++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+          await _pump(tester, 1);
+        }
+        await _pump(tester, 5);
+        await _shot(tester, key, 'documents-error-$suffix');
+      });
+
+      // Note : résumé au fil de l'eau, puis états d'erreur.
+      for (final MapEntry<
+            String,
+            SessionDetailState Function(SessionDetailState)
+          >
+          d
+          in <String, SessionDetailState Function(SessionDetailState)>{
+            'streaming': _streaming,
+            'error': _failed,
+          }.entries) {
+        shoot('detail-${d.key}', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            ollama: kOllamaReady,
+            detail: d.value,
+          );
+          await tester.tap(find.text('Revue de sprint 14'));
+          await _pump(tester, 10);
+          await _shot(tester, key, 'detail-${d.key}-$suffix');
+        });
+      }
+
       shoot('live', (WidgetTester tester) async {
         final GlobalKey key = await pumpApp(tester, _sessions);
         await tester.tap(find.text('Nouvelle note'));
         await _pump(tester, 10);
         await _shot(tester, key, 'live-$suffix');
+      });
+
+      shoot('live-finalising', (WidgetTester tester) async {
+        final GlobalKey key = await pumpApp(tester, _sessions);
+        await tester.tap(find.text('Nouvelle note'));
+        await _pump(tester, 10);
+        await tester.tap(find.text('Arrêter'));
+        await _pump(tester, 10);
+        await _shot(tester, key, 'live-finalising-$suffix');
       });
     }
   }
