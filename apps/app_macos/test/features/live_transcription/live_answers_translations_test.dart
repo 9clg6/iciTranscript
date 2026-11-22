@@ -31,6 +31,7 @@ void main() {
     'live_answers.error.other': 'La réponse a échoué : réessayez.',
     'history.detail.questions': 'Questions posées',
     'history.detail.no_answer': 'Sans réponse',
+    'history.detail.answer_failed': 'La réponse avait échoué.',
   };
 
   exact.forEach((String key, String value) {

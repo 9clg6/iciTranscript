@@ -30,6 +30,9 @@ import '../../../helpers/live_answers_fakes.dart';
 ///   - `void answerLatestFromOthers()` : « Répondre » à la dernière phrase des
 ///     autres participants, même si la porte n'a rien vu.
 ///   - `void retry(String questionId)`, `void dismiss(String questionId)`.
+///   - Stockage : `saveDetected` à la détection ; `saveAnswer` une fois, à
+///     l'état final (answered, tronquée, declined, failed) ; rien si la
+///     session s'arrête en cours de flux (reste « sans réponse »).
 ///   - `List<LiveQuestion> get questions` (ordre de détection) et
 ///     `Stream<List<LiveQuestion>> get questionsStream`.
 ///   - `resolveModel` est appelé à CHAQUE question (jamais mis en cache) ;
@@ -486,6 +489,23 @@ void main() {
       });
     });
 
+    test('affirmation ASR prise par la porte (« quand on aura fini on '
+        'livrera ») puis refusée par le modèle : aucune réponse visible, '
+        'aucune erreur', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.hear('quand on aura fini on livrera');
+        async.flushMicrotasks();
+        expect(h.llm.requests, hasLength(1));
+
+        h.llm.last.reply(kNoAnswerToken);
+        async.flushMicrotasks();
+
+        expect(h.only.status, LiveQuestionStatus.declined);
+        expect(h.only.answer, isEmpty);
+        expect(h.only.failure, isNull);
+      });
+    });
+
     test('une vraie réponse qui commence comme le jeton s\'affiche dès '
         'qu\'elle en diffère', () {
       run((FakeAsync async, LiveAnswersHarness h) {
@@ -897,7 +917,8 @@ void main() {
       });
     });
 
-    test('refus ou échec : la question reste sauvée, sans réponse', () {
+    test('refus ou échec : la question reste sauvée, sans réponse, avec son '
+        'état (la note rouverte le montre)', () {
       run((FakeAsync async, LiveAnswersHarness h) {
         h.hear(q, atMs: 60000);
         async.flushMicrotasks();
@@ -908,14 +929,47 @@ void main() {
         h.llm.last.fail(const FormatException('x'));
         async.flushMicrotasks();
 
-        expect(h.store.saved, hasLength(2));
-        for (final LiveQuestion saved in h.store.saved.values) {
-          expect(saved.answer, isEmpty);
+        final List<LiveQuestion> saved = h.store.saved.values.toList()
+          ..sort(
+            (LiveQuestion a, LiveQuestion b) =>
+                a.timestampMs.compareTo(b.timestampMs),
+          );
+        expect(saved.map((LiveQuestion x) => x.status), <LiveQuestionStatus>[
+          LiveQuestionStatus.declined,
+          LiveQuestionStatus.failed,
+        ]);
+        for (final LiveQuestion x in saved) {
+          expect(x.answer, isEmpty);
         }
-        expect(
-          h.store.log.where((String l) => l.startsWith('answer:')),
-          isEmpty,
+      });
+    });
+
+    test('réponse coupée : sauvée telle quelle, marquée tronquée', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.hear(q);
+        async.flushMicrotasks();
+        h.llm.last.reply(
+          'La livraison est prévue pour le lot 1 au début du mo',
         );
+        async.flushMicrotasks();
+
+        final LiveQuestion saved = h.store.saved[h.only.id]!;
+        expect(saved.truncated, isTrue);
+        expect(
+          saved.answer,
+          'La livraison est prévue pour le lot 1 au début du mo',
+        );
+      });
+    });
+
+    test('l\'interlocuteur du segment arrive jusqu\'à la question sauvée', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.hear(q, speaker: 2);
+        async.flushMicrotasks();
+
+        expect(h.only.speaker, 2);
+        expect(h.store.saved[h.only.id]!.speaker, 2);
+        expect(h.store.saved[h.only.id]!.source, AudioSource.output);
       });
     });
   });

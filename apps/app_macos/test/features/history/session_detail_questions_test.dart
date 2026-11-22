@@ -112,4 +112,47 @@ void main() {
 
     expect(find.text('history.detail.questions'.tr()), findsNothing);
   });
+
+  testWidgets('note rouverte : refusée, coupée et en échec se distinguent, '
+      'avec qui l\'a posée', (WidgetTester tester) async {
+    LiveQuestion q(
+      String id,
+      int at,
+      LiveQuestionStatus status, {
+      String answer = '',
+      bool truncated = false,
+    }) => LiveQuestion(
+      id: id,
+      sessionId: 's1',
+      text: 'Question $id ?',
+      speaker: 1,
+      timestampMs: at,
+      status: status,
+      answer: answer,
+      truncated: truncated,
+    );
+    await pumpNote(tester, <LiveQuestion>[
+      q('refusee', 1000, LiveQuestionStatus.declined),
+      q(
+        'coupee',
+        2000,
+        LiveQuestionStatus.answered,
+        answer: 'La livraison est prévue pour le',
+        truncated: true,
+      ),
+      q('echec', 3000, LiveQuestionStatus.failed),
+    ]);
+
+    expect(find.text('live_answers.declined'.tr()), findsOneWidget);
+    expect(
+      find.textContaining('La livraison est prévue pour le'),
+      findsOneWidget,
+    );
+    expect(find.text('live_answers.truncated'.tr()), findsOneWidget);
+    expect(find.text('history.detail.answer_failed'.tr()), findsOneWidget);
+    expect(
+      find.textContaining('history.detail.speaker'.tr(args: <String>['2'])),
+      findsAtLeastNWidgets(3),
+    );
+  });
 }

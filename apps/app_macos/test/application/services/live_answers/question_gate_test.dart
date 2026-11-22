@@ -79,6 +79,9 @@ void main() {
       'could you walk us through the onboarding process',
       'how many users can we add on the basic plan',
       'so when do you expect the first release',
+      // Affirmation ASR qui commence par un mot interrogatif : candidate à la
+      // porte ; le modèle doit la refuser (NO_ANSWER), voir le service.
+      'quand on aura fini on livrera',
     ];
 
     for (final String text in positives) {
@@ -117,6 +120,12 @@ void main() {
       'Comment allez-vous ?',
       'How are you?',
       'How are you doing?',
+      // Logistique de réunion.
+      "Vous m'entendez ?",
+      'Can you hear me?',
+      "Tu m'entends ?",
+      'Is my screen visible?',
+      'Vous voyez mon écran ?',
       // Affirmations qui contiennent un mot interrogatif.
       'Le client qui a signé hier attend la facture.',
       'Quand on aura fini les tests, on livrera.',

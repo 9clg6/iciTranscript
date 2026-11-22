@@ -1,5 +1,6 @@
 import 'package:core_data/database/app_database.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -28,8 +29,10 @@ import '../../../helpers/local_model_fakes.dart';
 ///   `questionStoreProvider` (sur `databaseProvider`, via `DetectedQuestionDao`).
 /// - `SessionDetailState.questions` : `List<LiveQuestion>`, défaut vide,
 ///   chargé par `SessionDetailViewModel.build`.
-/// - Relue : question avec réponse = `answered` ; sans réponse = `detected`,
-///   `answer` vide.
+/// - Relue (colonne `status` v3) : unanswered -> `detected`, answered ->
+///   `answered`, truncated -> `answered` + `truncated`, declined -> `declined`,
+///   failed -> `failed` (raison non gardée) ; `speaker` (int, rangé en texte)
+///   et `source` relus.
 /// - `LiveQuestion({required String id, required String sessionId, String? segmentId, required String text, AudioSource source = AudioSource.output, int? speaker, required int timestampMs, LiveQuestionStatus status = LiveQuestionStatus.detected, String answer = '', bool truncated = false, LiveAnswerFailure? failure, List<AnswerSource> sources = const <AnswerSource>[], String? model})`.
 void main() {
   late AppDatabase db;
@@ -151,4 +154,90 @@ void main() {
 
     expect(await store().forSession('s1'), isEmpty);
   });
+
+  test('l\'interlocuteur et la source se relisent', () async {
+    await store().saveDetected(detected);
+    await store().saveDetected(
+      const LiveQuestion(
+        id: 'q-mine',
+        sessionId: 's1',
+        text: 'Je me demande si on peut livrer en mars.',
+        source: AudioSource.input,
+        timestampMs: 70000,
+      ),
+    );
+
+    final List<LiveQuestion> all = await store().forSession('s1');
+    expect(all[0].speaker, 1);
+    expect(all[0].source, AudioSource.output);
+    expect(all[1].speaker, isNull);
+    expect(all[1].source, AudioSource.input);
+  });
+
+  test(
+    'refusée, tronquée, en échec : chacune se relit dans son état',
+    () async {
+      LiveQuestion q(String id, int at) => LiveQuestion(
+        id: id,
+        sessionId: 's1',
+        text: 'Question $id ?',
+        speaker: 1,
+        timestampMs: at,
+      );
+      for (final LiveQuestion x in <LiveQuestion>[
+        q('declined', 1000),
+        q('truncated', 2000),
+        q('failed', 3000),
+      ]) {
+        await store().saveDetected(x);
+      }
+      await store().saveAnswer(
+        const LiveQuestion(
+          id: 'declined',
+          sessionId: 's1',
+          text: 'Question declined ?',
+          speaker: 1,
+          timestampMs: 1000,
+          status: LiveQuestionStatus.declined,
+        ),
+      );
+      await store().saveAnswer(
+        const LiveQuestion(
+          id: 'truncated',
+          sessionId: 's1',
+          text: 'Question truncated ?',
+          speaker: 1,
+          timestampMs: 2000,
+          status: LiveQuestionStatus.answered,
+          answer: 'La livraison est prévue pour le',
+          truncated: true,
+          model: 'm',
+        ),
+      );
+      await store().saveAnswer(
+        const LiveQuestion(
+          id: 'failed',
+          sessionId: 's1',
+          text: 'Question failed ?',
+          speaker: 1,
+          timestampMs: 3000,
+          status: LiveQuestionStatus.failed,
+          failure: LiveAnswerFailure.unreachable,
+        ),
+      );
+
+      final Map<String, LiveQuestion> byId = <String, LiveQuestion>{
+        for (final LiveQuestion x in await store().forSession('s1')) x.id: x,
+      };
+      expect(byId['declined']!.status, LiveQuestionStatus.declined);
+      expect(byId['declined']!.answer, isEmpty);
+      expect(byId['truncated']!.status, LiveQuestionStatus.answered);
+      expect(byId['truncated']!.truncated, isTrue);
+      expect(byId['truncated']!.answer, 'La livraison est prévue pour le');
+      expect(byId['failed']!.status, LiveQuestionStatus.failed);
+      for (final LiveQuestion x in byId.values) {
+        expect(x.speaker, 1, reason: x.id);
+      }
+    },
+  );
 }
