@@ -15,8 +15,10 @@ import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/core/platform/owned_processes.dart';
 import 'package:ici_transcript/core/platform/prefs_store.dart';
+import 'package:ici_transcript/core/platform/voxmlx_server.dart';
 import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
+import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
@@ -204,21 +206,8 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
           .systemAudioEnabled;
       await _liveService?.startTranscription(
         inputDeviceId: micId,
-        serverCommand: 'uvx',
-        serverArgs: <String>[
-          // Sans version épinglée, uv choisit le Python le plus récent
-          // (3.15+) pour lequel mlx n'a pas encore de wheel : l'installation
-          // échoue et le serveur ne démarre jamais.
-          '--python',
-          '3.12',
-          '--from',
-          'git+https://github.com/T0mSIlver/voxmlx.git@2ea0639570e447493d04349d96a41f71c031ae0d[server]',
-          'voxmlx-serve',
-          '--model',
-          'T0mSIlver/Voxtral-Mini-4B-Realtime-2602-MLX-4bit',
-          '--parent-pid',
-          '$pid',
-        ],
+        serverCommand: voxmlxCommand,
+        serverArgs: voxmlxArgs(),
         outputEnabled: systemAudio,
         enablePostProcessing: state.isCoachEnabled,
         liveDiarization: state.isLiveSpeakersEnabled,
@@ -310,18 +299,29 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// la diarization (peut télécharger un modèle au 1er lancement), et rafraîchit
   /// la fiche détail. Séquentiel pour éviter plusieurs modèles Metal en
   /// simultané (crash) et les écritures concurrentes de l'enveloppe.
+  ///
+  /// Le serveur de transcription (Voxtral MLX) est prêté le temps du travail :
+  /// arrêté pour libérer le GPU/RAM, relancé dès la fin si la dictée est
+  /// activée (une dictée demandée entre-temps attend, audio gardé).
   Future<void> _postProcess({
     required String sessionId,
     required List<TranscriptSegmentEntity> segments,
     required bool coachEnabled,
-  }) async {
-    // Libérer le GPU/RAM du serveur de transcription (Voxtral MLX).
-    try {
-      await ref.read(processManagerServiceProvider).stopServer();
-    } catch (e) {
-      _log.warning('Arrêt serveur avant post-traitement: $e');
-    }
+  }) => ref
+      .read(dictationControllerProvider)
+      .lendServer(
+        () => _postProcessWork(
+          sessionId: sessionId,
+          segments: segments,
+          coachEnabled: coachEnabled,
+        ),
+      );
 
+  Future<void> _postProcessWork({
+    required String sessionId,
+    required List<TranscriptSegmentEntity> segments,
+    required bool coachEnabled,
+  }) async {
     // Coach d'abord (mistral, rapide) → trigger immédiat si activé.
     if (coachEnabled) {
       final String transcript = segments

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 
@@ -74,6 +75,12 @@ class DiarizationService {
     await _ensureScript();
     await _removeLegacyModels();
 
+    // Mots dictés pendant la réunion : jamais dans la note, donc en silence
+    // dans le micro donné à la passe (heures et durée inchangées).
+    final String micInput = hasMic
+        ? await _micWithoutDictation(sessionId)
+        : mic;
+
     _log.info('Lancement passe post-session pour $sessionId');
     final ProcessResult result = await Process.run(
       _uvBin,
@@ -87,13 +94,14 @@ class DiarizationService {
         _diarPackage,
         'python',
         _scriptPath,
-        hasMic ? mic : '/dev/null',
+        hasMic ? micInput : '/dev/null',
         hasSys ? sys : '/dev/null',
         _pkModel,
         modelCacheDir,
       ],
       environment: <String, String>{'HOME': _home, 'PATH': extendedPath},
     );
+    if (micInput != mic) await _delete(micInput);
 
     if (result.exitCode != 0) {
       _log.error(
@@ -131,11 +139,32 @@ class DiarizationService {
       // si le traitement échoue afin de permettre une relance/diagnostic.
       await _delete(mic);
       await _delete(sys);
+      await _delete(_dictatedPath(sessionId));
       return r;
     } catch (e) {
       _log.error('Parsing JSON post-session échoué: $e');
       return null;
     }
+  }
+
+  String _dictatedPath(String sessionId) =>
+      '$_recordingsDir/${sessionId}_dictations.json';
+
+  /// WAV micro avec les intervalles dictés en silence (copie temporaire), ou
+  /// le WAV lui-même sans dictée.
+  // ponytail: WAV entier en mémoire (~115 Mo/h) ; lecture par blocs si les
+  // réunions s'allongent.
+  Future<String> _micWithoutDictation(String sessionId) async {
+    final String mic = micWavPath(sessionId);
+    final List<DictatedInterval> dictated = DictatedIntervalsStore(
+      _recordingsDir,
+    ).read(sessionId);
+    if (dictated.isEmpty) return mic;
+    final String muted = '$_recordingsDir/${sessionId}_mic.nodictation.wav';
+    await File(muted).writeAsBytes(
+      muteDictatedIntervals(await File(mic).readAsBytes(), dictated),
+    );
+    return muted;
   }
 
   Future<bool> _hasAudio(String path) async {

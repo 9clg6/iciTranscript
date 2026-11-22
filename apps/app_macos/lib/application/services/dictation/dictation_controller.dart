@@ -118,7 +118,6 @@ final class DictationController {
        _serverCommand = serverCommand,
        _serverArgs = serverArgs,
        _webSocketUrl = webSocketUrl {
-    _shortcutEvents = _shortcuts.events.listen(_onShortcut);
     _serverStates = _processes.stateStream.listen((ServerState state) {
       if (state == ServerState.ready) _serverReady = true;
       if (state == ServerState.stopped || state == ServerState.error) {
@@ -161,7 +160,9 @@ final class DictationController {
   final String _webSocketUrl;
   final Log _log = Log.named('DictationController');
 
-  late final StreamSubscription<ShortcutEvent> _shortcutEvents;
+  // Écoutés après le premier enregistrement réussi : sans plugin (tests),
+  // rien n'écoute le canal d'événements.
+  StreamSubscription<ShortcutEvent>? _shortcutEvents;
   late final StreamSubscription<ServerState> _serverStates;
   final BehaviorSubject<DictationState> _state =
       BehaviorSubject<DictationState>.seeded(const DictationIdle());
@@ -210,6 +211,7 @@ final class DictationController {
         keyCode: settings.shortcut.keyCode,
         modifiers: settings.shortcut.modifiers,
       );
+      if (ok) _shortcutEvents ??= _shortcuts.events.listen(_onShortcut);
       _shortcutStatus.add(
         ok ? ShortcutStatus.registered : ShortcutStatus.unavailable,
       );
@@ -242,7 +244,7 @@ final class DictationController {
   Future<void> dispose() async {
     if (_run case final _Run run when !run.finished) _cancel(run);
     _live.recordingHandover = null;
-    await _shortcutEvents.cancel();
+    await _shortcutEvents?.cancel();
     await _serverStates.cancel();
     await _state.close();
     await _shortcutStatus.close();

@@ -576,6 +576,7 @@ final class LiveTranscriptionService {
       segmentsStream.value
           .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
           .toList(),
+      dictated: DictatedIntervalsStore(recordingsDir).read(sessionId),
     );
     if (plan.isEmpty) return;
     if (_startRequested || skip.isCompleted) {
