@@ -85,8 +85,9 @@ final class FakeProcessManagerChannel extends ProcessManagerChannel {
     final Duration? at = now?.call();
     if (at != null) startTimes.add(at);
     _set(ServerState.starting);
-    if (startDuration > Duration.zero)
+    if (startDuration > Duration.zero) {
       await Future<void>.delayed(startDuration);
+    }
     if (failStarts) {
       _set(ServerState.error);
       throw StateError('Le serveur ML s\'est arrêté avant d\'être prêt (1)');

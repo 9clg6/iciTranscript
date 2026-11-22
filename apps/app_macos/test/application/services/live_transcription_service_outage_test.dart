@@ -324,6 +324,74 @@ void main() {
       });
     });
   });
+
+  group('arrêt pendant que le done de la dernière phrase tarde', () {
+    /// Demande l'arrêt et avance le temps jusqu'à sa fin (30 s au plus).
+    /// [doneAfter] : délai de la réponse finale du serveur, null = jamais.
+    Duration stopWhile(FakeAsync async, {Duration? doneAfter}) {
+      bool stopped = false;
+      final Duration askedAt = async.elapsed;
+      unawaited(h.service.stopTranscription().then((_) => stopped = true));
+      bool answered = false;
+      while (!stopped &&
+          async.elapsed - askedAt < const Duration(seconds: 30)) {
+        if (!answered &&
+            doneAfter != null &&
+            async.elapsed - askedAt >= doneAfter) {
+          answered = true;
+          serverSays(
+            'response.audio_transcript.done',
+            'text',
+            'Bonjour à tous, merci.',
+          );
+        }
+        async.elapse(const Duration(milliseconds: 100));
+      }
+      expect(stopped, isTrue, reason: 'l arrêt ne doit jamais rester bloqué');
+      return async.elapsed - askedAt;
+    }
+
+    test('le done arrive à temps : l arrêt l attend et sauve la phrase '
+        'finale', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        mic.autoReply = false;
+        say(0, 10);
+        serverSays(
+          'response.audio_transcript.delta',
+          'delta',
+          'Bonjour à tous',
+        );
+        say(10, 30); // provisoire sauvé
+
+        stopWhile(async, doneAfter: const Duration(seconds: 2));
+
+        expect(texts(), <String>['Bonjour à tous, merci.']);
+        expect(h.session.status, SessionStatus.completed);
+      });
+    });
+
+    test('le done ne vient jamais : l arrêt aboutit en temps borné et garde '
+        'le texte provisoire', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        mic.autoReply = false;
+        say(0, 10);
+        serverSays(
+          'response.audio_transcript.delta',
+          'delta',
+          'Bonjour à tous',
+        );
+        say(10, 30);
+
+        final Duration took = stopWhile(async);
+
+        expect(took, lessThanOrEqualTo(const Duration(seconds: 10)));
+        expect(texts(), <String>['Bonjour à tous']);
+        expect(h.session.status, SessionStatus.completed);
+      });
+    });
+  });
 }
 
 enum _Level { speech, weak, silence }
