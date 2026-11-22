@@ -1,8 +1,8 @@
 # Oats
 
-**Real-time voice transcription for macOS — 100% local, zero cloud.**
+**Real-time voice transcription for macOS — on-device by default.**
 
-Oats (formerly **iciTranscript**) captures your microphone and your Mac's system audio, transcribes both in real time with on-device MLX models, and can summarise a meeting or coach your spoken English with a local model — without sending a single byte to the cloud.
+Oats (formerly **iciTranscript**) captures your microphone and your Mac's system audio, transcribes both in real time with on-device MLX models, and can summarise a meeting or coach your spoken English with a local model. Online AI providers are optional and off by default; audio never leaves your Mac.
 
 ---
 
@@ -12,9 +12,11 @@ Oats (formerly **iciTranscript**) captures your microphone and your Mac's system
 - **Two audio sources, kept separate** — your microphone and the system audio (calls, videos) are captured as two streams, so the note knows who said what ("Vous" vs. the other side)
 - **Notes by day** — every recording is saved and listed on the home page, grouped by day, with search
 - **Speaker diarization** — after a session, remote participants (system audio) are separated and labelled, up to 8 speakers, with NVIDIA Nemotron 3 Diarization on MLX ([nemotron-diar-mlx](https://github.com/9clg6/nemotron-diar-mlx)); the model (~400 MB) is downloaded on first use
-- **Summaries and English coach (optional)** — a local [Mistral](https://mistral.ai) model via Ollama; install it once from **Réglages › Modèle local** (Ollama ~106 MB + model ~4 GB). Without it, transcription works and the note shows how to set it up
+- **Summaries and English coach (optional)** — a local [Mistral](https://mistral.ai) model via Ollama; install it once from **Réglages › Modèle local** (Ollama ~106 MB + model ~4 GB). Long meetings are summarised in full, part by part. Without a model, transcription works and the note shows how to set one up
+- **Online providers (optional, off by default)** — Claude, OpenAI or Gemini with your own API key (stored in the macOS Keychain), once you turn on online sending in **Réglages**
+- **Documents** — add .txt, .md or .pdf files as sources for answers during your meetings; their text is indexed on your Mac
 - **Export** — copy a transcript or export it as Markdown to `~/Downloads/`
-- **100% local & private** — your audio never leaves your Mac; no accounts, no subscriptions, no telemetry
+- **Private by default** — your audio never leaves your Mac; no accounts, no subscriptions, no telemetry
 
 ---
 
@@ -87,8 +89,9 @@ The transcription server (`voxmlx-serve`) runs as a child process launched by th
 
 ## Privacy
 
-- All audio processing happens **on your device**
-- No data is sent to any external server
+- All audio processing happens **on your device**: audio never leaves your Mac
+- Online AI providers (Claude, OpenAI, Gemini) are optional and off by default. Nothing is sent to them until you add a key and turn on online sending in Réglages
+- When online sending is on, the transcript text of a note (for a summary or the English coach) and excerpts of your documents are sent to the provider you chose; turn it off to keep everything on your Mac
 - No analytics, no crash reporting, no telemetry
 - Notes are stored locally in `~/Library/Application Support/IciTranscript/`
 
