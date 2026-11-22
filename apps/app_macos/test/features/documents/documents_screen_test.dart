@@ -59,6 +59,19 @@ void main() {
     }
   }
 
+  /// Attend (E/S réelles, 3 s au plus) que [done] soit vrai : une
+  /// implémentation correcte peut enchaîner plus d'attentes qu'[idle].
+  Future<void> until(WidgetTester tester, bool Function() done) async {
+    for (int i = 0; i < 30 && !done(); i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await settle(tester, frames: 2);
+    }
+  }
+
+  bool shown(Finder f) => f.evaluate().isNotEmpty;
+
   Future<LibraryDocument> seed(
     WidgetTester tester,
     String name,
@@ -109,6 +122,7 @@ void main() {
     testWidgets('aucun document : état vide et action « Ajouter un document »',
         (WidgetTester tester) async {
       await pumpPage(tester);
+      await until(tester, () => shown(addButton()));
 
       expect(find.text('documents.empty_title'.tr()), findsOneWidget);
       expect(addButton(), findsOneWidget);
@@ -146,14 +160,14 @@ void main() {
       picker.error = PlatformException(code: 'panel', message: 'boom');
 
       await tester.tap(addButton());
-      await idle(tester);
+      await until(tester, () => shown(find.text('documents.error.picker'.tr())));
 
       expect(find.text('documents.error.picker'.tr()), findsOneWidget);
       picker
         ..error = null
         ..next = <String>[writeFile(dir, 'plan.md', 'Le plan.')];
       await tester.tap(addButton());
-      await idle(tester);
+      await until(tester, () => shown(find.text('plan')));
       expect(find.text('plan'), findsOneWidget);
     });
   });
@@ -165,7 +179,7 @@ void main() {
       picker.next = <String>[writeFile(dir, 'Budget 2027.md', 'Le budget.')];
 
       await tester.tap(addButton());
-      await idle(tester);
+      await until(tester, () => shown(find.text('Budget 2027')));
 
       final LibraryDocument doc = (await stored(tester)).single;
       expect(find.descendant(of: row(doc.id), matching: find.text('Budget 2027')),
@@ -196,12 +210,12 @@ void main() {
       picker.next = <String>[writeFile(dir, 'Rapport.pdf', '%PDF-1.4')];
 
       await tester.tap(addButton());
-      await idle(tester);
+      await until(tester, () => shown(find.text('documents.importing'.tr())));
 
       expect(find.text('documents.importing'.tr()), findsOneWidget);
 
       extraction.complete('Le chiffre d\'affaires progresse.');
-      await idle(tester);
+      await until(tester, () => shown(find.text('Rapport')));
 
       expect(find.text('documents.importing'.tr()), findsNothing);
       expect(find.text('Rapport'), findsOneWidget);
@@ -219,7 +233,14 @@ void main() {
       ];
 
       await tester.tap(addButton());
-      await idle(tester);
+      await until(
+        tester,
+        () =>
+            shown(find.text('plan')) &&
+            shown(find.textContaining('contrat.docx')) &&
+            shown(find.textContaining('vide.txt')) &&
+            shown(find.textContaining('disparu.md')),
+      );
 
       expect(find.text('plan'), findsOneWidget);
       expect(find.textContaining('contrat.docx'), findsOneWidget);
@@ -248,7 +269,7 @@ void main() {
       ];
 
       await tester.tap(addButton());
-      await idle(tester);
+      await until(tester, () => shown(find.textContaining('enorme.txt')));
 
       expect(find.textContaining('enorme.txt'), findsOneWidget);
       expect(
@@ -273,6 +294,7 @@ void main() {
       );
 
       await pumpPage(tester);
+      await until(tester, () => shown(row(doc.id)));
 
       expect(doc.excerptCount, 3);
       for (final String text in <String>[
@@ -295,12 +317,14 @@ void main() {
         (WidgetTester tester) async {
       final LibraryDocument doc = await seed(tester, 'plan.md', 'Le plan.');
       await pumpPage(tester);
+      await until(tester, () => shown(row(doc.id)));
 
       await tester.tap(rowAction(doc.id, 'documents.rename'));
       await settle(tester, frames: 3);
+      expect(find.text('documents.rename_label'.tr()), findsOneWidget);
       await tester.enterText(find.byType(TextField), 'Plan validé');
       await tester.testTextInput.receiveAction(TextInputAction.done);
-      await idle(tester);
+      await until(tester, () => shown(find.text('Plan validé')));
 
       expect(find.text('Plan validé'), findsOneWidget);
       expect((await stored(tester)).single.title, 'Plan validé');
@@ -311,12 +335,13 @@ void main() {
     ) async {
       final LibraryDocument doc = await seed(tester, 'plan.md', 'Le plan.');
       await pumpPage(tester);
+      await until(tester, () => shown(row(doc.id)));
 
       await tester.tap(rowAction(doc.id, 'documents.rename'));
       await settle(tester, frames: 3);
       await tester.enterText(find.byType(TextField), 'Plan 2027');
       await tester.tap(find.text('documents.save'.tr()));
-      await idle(tester);
+      await until(tester, () => shown(find.text('Plan 2027')));
 
       expect((await stored(tester)).single.title, 'Plan 2027');
     });
@@ -326,6 +351,7 @@ void main() {
     ) async {
       final LibraryDocument doc = await seed(tester, 'plan.md', 'Le plan.');
       await pumpPage(tester);
+      await until(tester, () => shown(row(doc.id)));
 
       await tester.tap(rowAction(doc.id, 'documents.rename'));
       await settle(tester, frames: 3);
@@ -344,6 +370,7 @@ void main() {
       final LibraryDocument plan = await seed(tester, 'plan.md', 'Le plan.');
       await seed(tester, 'budget.md', 'Le budget.');
       await pumpPage(tester);
+      await until(tester, () => shown(row(plan.id)));
 
       await tester.tap(rowAction(plan.id, 'documents.delete'));
       await settle(tester, frames: 3);
@@ -357,7 +384,7 @@ void main() {
           matching: find.text('documents.delete'.tr()),
         ),
       );
-      await idle(tester);
+      await until(tester, () => !shown(row(plan.id)));
 
       expect(row(plan.id), findsNothing);
       expect(find.text('budget'), findsOneWidget);
@@ -374,6 +401,7 @@ void main() {
     ) async {
       final LibraryDocument plan = await seed(tester, 'plan.md', 'Le plan.');
       await pumpPage(tester);
+      await until(tester, () => shown(row(plan.id)));
 
       await tester.tap(rowAction(plan.id, 'documents.delete'));
       await settle(tester, frames: 3);
@@ -389,6 +417,7 @@ void main() {
     ) async {
       final LibraryDocument plan = await seed(tester, 'plan.md', 'Le plan.');
       await pumpPage(tester);
+      await until(tester, () => shown(row(plan.id)));
 
       await tester.tap(rowAction(plan.id, 'documents.delete'));
       await settle(tester, frames: 3);
@@ -398,7 +427,7 @@ void main() {
           matching: find.text('documents.delete'.tr()),
         ),
       );
-      await idle(tester);
+      await until(tester, () => !shown(row(plan.id)));
 
       expect(find.text('documents.empty_title'.tr()), findsOneWidget);
       expect(addButton(), findsOneWidget);
@@ -409,6 +438,7 @@ void main() {
     testWidgets('envoi coupé (défaut) : la page dit que les documents restent '
         'sur le Mac', (WidgetTester tester) async {
       await pumpPage(tester);
+      await until(tester, () => shown(find.text('documents.privacy_local'.tr())));
 
       expect(find.text('documents.privacy_local'.tr()), findsOneWidget);
       expect(find.text('documents.privacy_cloud'.tr()), findsNothing);
@@ -422,6 +452,7 @@ void main() {
         }),
       );
       await pumpPage(tester);
+      await until(tester, () => shown(find.text('documents.privacy_cloud'.tr())));
 
       expect(find.text('documents.privacy_cloud'.tr()), findsOneWidget);
       expect(find.text('documents.privacy_local'.tr()), findsNothing);

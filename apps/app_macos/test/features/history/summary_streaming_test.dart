@@ -246,6 +246,8 @@ void main() {
       await tapAction(tester, 'history.detail.summarize');
 
       expect(tester.takeException(), isNull);
+      expect(llm.requests, isNotEmpty);
+      expect(find.textContaining('gras'), findsWidgets);
     });
 
     final Map<String, String> badFeedback = <String, String>{
@@ -268,16 +270,27 @@ void main() {
 
     testWidgets('coach : JSON entouré d\'un bloc ```json (fréquent chez les '
         'modèles en ligne) est lu', (WidgetTester tester) async {
+      const Map<String, Object?> fenced = <String, Object?>{
+        'overall': 'Niveau solide.',
+        'corrections': <Map<String, String>>[
+          <String, String>{
+            'original': 'I work here since 2020',
+            'corrected': 'I have been working here since 2020',
+            'category': 'conjugation',
+            'explanation': 'Present perfect continu avec « since ».',
+          },
+        ],
+      };
       await pumpNote(
         tester,
         (_, _) => Stream<String>.value(
-          'Voici le retour :\n```json\n${jsonEncode(kFeedbackJson)}\n```',
+          'Voici le retour :\n```json\n${jsonEncode(fenced)}\n```',
         ),
       );
 
       await tapAction(tester, 'history.detail.english_coach');
 
-      expect(find.textContaining('I agree'), findsWidgets);
+      expect(find.textContaining('I have been working here'), findsWidgets);
       expect(find.textContaining('llm.error.malformed'.tr()), findsNothing);
     });
 

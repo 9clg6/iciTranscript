@@ -160,6 +160,7 @@ void main() {
 
       await tapAction(tester, 'history.detail.english_coach');
 
+      expect(adapter.lastHost, kProviderHost[LlmProviderId.ollama]);
       expect(
         find.textContaining(InstantOllamaService.feedback.overall!),
         findsOneWidget,

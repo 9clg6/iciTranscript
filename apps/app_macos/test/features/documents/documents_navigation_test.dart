@@ -41,11 +41,13 @@ void main() {
         matching: find.text('nav.documents'.tr()),
       ),
     );
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0;
+        i < 30 && find.text('documents.add'.tr()).evaluate().isEmpty;
+        i++) {
       await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 60)),
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
       );
-      await settle(tester, frames: 3);
+      await settle(tester, frames: 2);
     }
 
     expect(find.text('documents.add'.tr()), findsOneWidget);

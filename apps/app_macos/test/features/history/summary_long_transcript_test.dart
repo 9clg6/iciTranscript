@@ -120,6 +120,7 @@ void main() {
 
       await c.read(note.notifier).generateSummary();
 
+      expect(llm.requests.length, greaterThan(1));
       for (final LlmChatRequest r in llm.requests) {
         expect(requestText(r).length, lessThanOrEqualTo(maxRequestChars));
       }
