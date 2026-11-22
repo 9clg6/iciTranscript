@@ -28,7 +28,11 @@ Future<void> kernel(Ref ref) async {
   log.info('Base de donnees initialisee');
 
   // Une fois au lancement, avant toute session : rien n'enregistre encore.
-  await _repairAfterCrash(ref, log);
+  // Jamais sous `flutter test` : la base et les WAV réels du développeur
+  // sont sous ~/Library/Application Support/IciTranscript.
+  if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+    await _repairAfterCrash(ref, log);
+  }
 
   // Le serveur ML est demarre par LiveTranscriptionService au moment du recording
   // Ollama est initialise par OllamaSetupViewModel au demarrage
