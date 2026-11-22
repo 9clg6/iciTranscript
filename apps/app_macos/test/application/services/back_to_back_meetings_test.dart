@@ -39,7 +39,14 @@ void main() {
     expect(dir, startsWith(Directory.systemTemp.path));
     expect(dir, isNot(contains('/Library/Application Support/')));
     final Directory d = Directory(dir);
-    if (d.existsSync()) await d.delete(recursive: true);
+    // Le dossier de test est partagé par les tests du fichier : un fichier
+    // en cours d'écriture par un test précédent ne doit pas faire échouer
+    // le nettoyage (chaque rig est aussi arrêté en fin de test).
+    try {
+      if (d.existsSync()) await d.delete(recursive: true);
+    } on FileSystemException {
+      // Déjà parti.
+    }
     await d.create(recursive: true);
   });
 
@@ -56,6 +63,7 @@ void main() {
             systemClient: FakeVoxSocket(vox),
           ),
         );
+        addTearDown(rig.dispose);
         await rig.start();
         final String a = rig.sessionId;
         await rig.speak(0, 30); // phrase de A, jamais acquittée
@@ -94,13 +102,14 @@ void main() {
         'A cède avant le morceau suivant, ferme sa socket, garde son repère '
         'et sera réessayé', () async {
       final _Rig rig = _Rig(remote: FakeTranscriptionRemoteDataSource());
-      // 2 s par morceau : le rattrapage complet (4 morceaux) dépasse les 5 s
-      // laissées au démarrage de B.
+      addTearDown(rig.dispose);
+      // 2 s par morceau : le rattrapage complet (plusieurs morceaux) dépasse
+      // les 5 s laissées au démarrage de B.
       rig.backfillServer.answerAfter = const Duration(seconds: 2);
       await rig.start();
       final String a = rig.sessionId;
       await rig.speak(0, 950); // 95 s de WAV
-      rig.gap(1000, 91000); // 90 s : plusieurs morceaux de 30 s
+      rig.gap(1000, 91000); // 90 s : plusieurs morceaux
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
       unawaited(rig.service.stopTranscription());
@@ -134,6 +143,7 @@ void main() {
   test('point 2 : la relance ne démarre aucun morceau pendant le démarrage '
       'd un enregistrement', () async {
     final _Rig rig = _Rig(remote: FakeTranscriptionRemoteDataSource());
+    addTearDown(rig.dispose);
     rig.backfillServer.available = false; // A : serveur de rattrapage absent
     await rig.start();
     await rig.speak(0, 300);
@@ -157,6 +167,7 @@ void main() {
   test('point 3 : Passer pendant le rattrapage libère l écran aussitôt ; le '
       'repère reste jusqu à son remplacement', () async {
     final _Rig rig = _Rig(remote: FakeTranscriptionRemoteDataSource());
+    addTearDown(rig.dispose);
     rig.backfillServer.answerAfter = const Duration(seconds: 1);
     final List<Duration> remaining = <Duration>[];
     rig.service.finalisingRemainingStream.listen(remaining.add);
@@ -228,6 +239,13 @@ final class _Rig {
   late final TranscriptionService transcription;
   late final GapBackfillRetry retry;
   late final LiveTranscriptionService service;
+
+  /// Arrête le rattrapage différé et le service : rien ne déborde sur le
+  /// test suivant.
+  Future<void> dispose() async {
+    await retry.dispose();
+    await service.dispose();
+  }
 
   String get sessionId => transcription.currentSessionStream.value!.id;
   int get t0 => transcription
