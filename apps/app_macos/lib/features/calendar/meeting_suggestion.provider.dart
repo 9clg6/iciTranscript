@@ -55,8 +55,9 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
 
   /// « Démarrer la note ».
   Future<void> start() async {
+    final CalendarEvent? event = state?.event;
     state = null;
-    await startOrShowNote(ref.read);
+    await startOrShowNote(ref.read, event: event);
   }
 
   /// « Ignorer » : plus rien pendant [kDismissSnooze].
@@ -128,7 +129,7 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
     if (next == null) return;
     _shown.add(next.key);
     if (next.source == MeetingSource.calendar && prefs.autoStart) {
-      unawaited(startOrShowNote(ref.read));
+      unawaited(startOrShowNote(ref.read, event: next.event));
       return;
     }
     state = next;

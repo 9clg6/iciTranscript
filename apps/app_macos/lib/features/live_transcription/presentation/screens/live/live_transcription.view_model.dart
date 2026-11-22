@@ -39,6 +39,10 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'live_transcription.view_model.g.dart';
 
+/// Attente maximale de l'agenda au démarrage d'une note ; au-delà, la note
+/// démarre sans lien.
+const Duration kCalendarLinkTimeout = Duration(seconds: 1);
+
 /// ViewModel de l'ecran de transcription en direct.
 @Riverpod(keepAlive: true)
 class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
@@ -54,6 +58,8 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   // valeur choisie.
   bool _coachTouched = false;
   bool _speakersTouched = false;
+
+  CalendarEvent? _nextEvent;
 
   static const String _coachKey = 'coach_enabled';
   static const String _speakersKey = 'live_speakers_enabled';
@@ -254,26 +260,36 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// [eventToLink]) ; null si l'agenda n'est pas connecté, pas autorisé ou
   /// illisible. Ni titre ni participants ne vont au journal.
   Future<SessionCalendarLink?> _calendarLink() async {
+    final CalendarEvent? chosen = _nextEvent;
+    _nextEvent = null;
+    if (chosen != null) return _linkTo(chosen);
     try {
-      final CalendarFeed feed = await ref.read(
-        calendarFeedControllerProvider.future,
-      );
+      // Un agenda muet ne retarde jamais l'enregistrement.
+      final CalendarFeed feed = await ref
+          .read(calendarFeedControllerProvider.future)
+          .timeout(kCalendarLinkTimeout);
       if (feed is! CalendarEvents) return null;
       final CalendarEvent? event = eventToLink(
         feed.events,
         ref.read(nowProvider)(),
       );
-      if (event == null) return null;
-      return SessionCalendarLink(
-        eventId: event.id,
-        eventTitle: event.title,
-        attendees: event.attendeeNames,
-      );
+      return event == null ? null : _linkTo(event);
     } on Object catch (e) {
       _log.warning('Agenda illisible au démarrage (${e.runtimeType})');
       return null;
     }
   }
+
+  /// La prochaine note démarrée se lie à [event] (celui affiché dans une
+  /// suggestion) au lieu de l'événement choisi par [eventToLink].
+  void linkNextNoteTo(CalendarEvent event) => _nextEvent = event;
+
+  static SessionCalendarLink _linkTo(CalendarEvent event) =>
+      SessionCalendarLink(
+        eventId: event.id,
+        eventTitle: event.title,
+        attendees: event.attendeeNames,
+      );
 
   /// Arrête d'attendre la fin de la transcription : le reste devient un
   /// repère de perte, l'arrêt se termine.
