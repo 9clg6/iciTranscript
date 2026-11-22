@@ -18,6 +18,7 @@ abstract class  LocaleKeys {
   static const common_label_today = 'common.label.today';
   static const common_label_yesterday = 'common.label.yesterday';
   static const common_label_done = 'common.label.done';
+  static const common_label_tomorrow = 'common.label.tomorrow';
   static const common_label = 'common.label';
   static const common = 'common';
   static const app_name = 'app.name';
@@ -36,6 +37,13 @@ abstract class  LocaleKeys {
   static const home_upcoming_title = 'home.upcoming.title';
   static const home_upcoming_no_calendar = 'home.upcoming.no_calendar';
   static const home_upcoming_attendees = 'home.upcoming.attendees';
+  static const home_upcoming_connect = 'home.upcoming.connect';
+  static const home_upcoming_denied = 'home.upcoming.denied';
+  static const home_upcoming_open_settings = 'home.upcoming.open_settings';
+  static const home_upcoming_empty = 'home.upcoming.empty';
+  static const home_upcoming_in_progress = 'home.upcoming.in_progress';
+  static const home_upcoming_start_note = 'home.upcoming.start_note';
+  static const home_upcoming_error = 'home.upcoming.error';
   static const home_upcoming = 'home.upcoming';
   static const home = 'home';
   static const documents_empty_title = 'documents.empty_title';
@@ -136,6 +144,11 @@ abstract class  LocaleKeys {
   static const history_detail_coach_perfect = 'history.detail.coach_perfect';
   static const history_detail_transcript = 'history.detail.transcript';
   static const history_detail_transcript_empty = 'history.detail.transcript_empty';
+  static const history_detail_calendar_unlink = 'history.detail.calendar.unlink';
+  static const history_detail_calendar_change = 'history.detail.calendar.change';
+  static const history_detail_calendar_link = 'history.detail.calendar.link';
+  static const history_detail_calendar_none = 'history.detail.calendar.none';
+  static const history_detail_calendar = 'history.detail.calendar';
   static const history_detail = 'history.detail';
   static const history = 'history';
   static const settings_title = 'settings.title';
@@ -195,6 +208,17 @@ abstract class  LocaleKeys {
   static const settings_ai_test_unreachable = 'settings.ai.test_unreachable';
   static const settings_ai_test_failed = 'settings.ai.test_failed';
   static const settings_ai = 'settings.ai';
+  static const settings_calendar_title = 'settings.calendar.title';
+  static const settings_calendar_connect = 'settings.calendar.connect';
+  static const settings_calendar_disconnect = 'settings.calendar.disconnect';
+  static const settings_calendar_denied = 'settings.calendar.denied';
+  static const settings_calendar_open_settings = 'settings.calendar.open_settings';
+  static const settings_calendar_calendars = 'settings.calendar.calendars';
+  static const settings_calendar_detection = 'settings.calendar.detection';
+  static const settings_calendar_auto_start = 'settings.calendar.auto_start';
+  static const settings_calendar_mic_unsupported = 'settings.calendar.mic_unsupported';
+  static const settings_calendar_privacy = 'settings.calendar.privacy';
+  static const settings_calendar = 'settings.calendar';
   static const settings = 'settings';
   static const ollama_step_binary = 'ollama.step_binary';
   static const ollama_step_server = 'ollama.step_server';
@@ -217,5 +241,10 @@ abstract class  LocaleKeys {
   static const uv_failed = 'uv.failed';
   static const uv_no_uvx = 'uv.no_uvx';
   static const uv = 'uv';
+  static const meeting_suggestion_call_title = 'meeting.suggestion.call_title';
+  static const meeting_suggestion_start = 'meeting.suggestion.start';
+  static const meeting_suggestion_dismiss = 'meeting.suggestion.dismiss';
+  static const meeting_suggestion = 'meeting.suggestion';
+  static const meeting = 'meeting';
 
 }
