@@ -9,7 +9,12 @@ import 'package:drift/native.dart';
 /// supprimee : `DeleteSessionUseCase` supprime les segments puis la session,
 /// mais pas le resume, donc ces lignes existent sur les postes des
 /// utilisateurs.
-QueryExecutor v1DatabaseWithData() {
+///
+/// [extraStatements] s'executent apres les donnees, avant de fixer
+/// `user_version` a 1 : ils simulent une migration deja (en partie) passee.
+QueryExecutor v1DatabaseWithData({
+  List<String> extraStatements = const <String>[],
+}) {
   return NativeDatabase.memory(
     // ponytail: type `Database` de package:sqlite3, non dependance directe.
     // ignore: always_specify_types
@@ -55,6 +60,7 @@ QueryExecutor v1DatabaseWithData() {
         "INSERT INTO summaries VALUES ('summary-orphan', 'session-deleted', "
         "'Ancienne réunion.', 'mistral', '2026-10-01T10:00:00.000')",
       );
+      extraStatements.forEach(raw.execute);
       raw.execute('PRAGMA user_version = 1');
     },
   );
