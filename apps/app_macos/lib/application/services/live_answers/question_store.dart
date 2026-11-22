@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:clock/clock.dart';
 import 'package:core_data/database/app_database.dart';
 import 'package:core_data/database/dao/detected_question.dao.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 
 /// Questions détectées gardées avec la note.
@@ -74,16 +75,16 @@ class DriftQuestionStore implements QuestionStore {
       ];
 
   static LiveQuestion _read(DetectedQuestion row) {
-    // Colonnes à venir : `row.status`, `row.speaker`, `row.source`. En
-    // attendant, le statut se déduit de la réponse rangée.
     final ({LiveQuestionStatus status, bool truncated}) s = storedStatus(
-      row.answer != null ? 'answered' : 'unanswered',
+      row.status,
     );
     return LiveQuestion(
       id: row.id,
       sessionId: row.sessionId,
       segmentId: row.segmentId,
       text: row.question,
+      source: AudioSource.values.asNameMap()[row.source] ?? AudioSource.output,
+      speaker: int.tryParse(row.speaker ?? ''),
       timestampMs: row.timestampMs,
       status: s.status,
       truncated: s.truncated,

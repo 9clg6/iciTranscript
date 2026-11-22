@@ -1558,6 +1558,36 @@ class $DetectedQuestionsTable extends DetectedQuestions
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant<String>('unanswered'),
+  );
+  static const VerificationMeta _speakerMeta = const VerificationMeta(
+    'speaker',
+  );
+  @override
+  late final GeneratedColumn<String> speaker = GeneratedColumn<String>(
+    'speaker',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1579,6 +1609,9 @@ class $DetectedQuestionsTable extends DetectedQuestions
     answer,
     answerModel,
     sources,
+    status,
+    speaker,
+    source,
     createdAt,
   ];
   @override
@@ -1652,6 +1685,24 @@ class $DetectedQuestionsTable extends DetectedQuestions
         sources.isAcceptableOrUnknown(data['sources']!, _sourcesMeta),
       );
     }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('speaker')) {
+      context.handle(
+        _speakerMeta,
+        speaker.isAcceptableOrUnknown(data['speaker']!, _speakerMeta),
+      );
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -1701,6 +1752,18 @@ class $DetectedQuestionsTable extends DetectedQuestions
         DriftSqlType.string,
         data['${effectivePrefix}sources'],
       ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      speaker: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}speaker'],
+      ),
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}created_at'],
@@ -1740,6 +1803,15 @@ class DetectedQuestion extends DataClass
   /// Sources de la reponse, liste JSON {documentId, title, excerpt}.
   final String? sources;
 
+  /// Etat : unanswered, answered, declined, truncated, failed (schema v3).
+  final String status;
+
+  /// Interlocuteur (0, 1, ...) range en texte, null si inconnu (schema v3).
+  final String? speaker;
+
+  /// Source audio : input (l'utilisateur) ou output (schema v3).
+  final String? source;
+
   /// Date de creation au format ISO 8601.
   final String createdAt;
   const DetectedQuestion({
@@ -1751,6 +1823,9 @@ class DetectedQuestion extends DataClass
     this.answer,
     this.answerModel,
     this.sources,
+    required this.status,
+    this.speaker,
+    this.source,
     required this.createdAt,
   });
   @override
@@ -1771,6 +1846,13 @@ class DetectedQuestion extends DataClass
     }
     if (!nullToAbsent || sources != null) {
       map['sources'] = Variable<String>(sources);
+    }
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || speaker != null) {
+      map['speaker'] = Variable<String>(speaker);
+    }
+    if (!nullToAbsent || source != null) {
+      map['source'] = Variable<String>(source);
     }
     map['created_at'] = Variable<String>(createdAt);
     return map;
@@ -1794,6 +1876,13 @@ class DetectedQuestion extends DataClass
       sources: sources == null && nullToAbsent
           ? const Value.absent()
           : Value(sources),
+      status: Value(status),
+      speaker: speaker == null && nullToAbsent
+          ? const Value.absent()
+          : Value(speaker),
+      source: source == null && nullToAbsent
+          ? const Value.absent()
+          : Value(source),
       createdAt: Value(createdAt),
     );
   }
@@ -1812,6 +1901,9 @@ class DetectedQuestion extends DataClass
       answer: serializer.fromJson<String?>(json['answer']),
       answerModel: serializer.fromJson<String?>(json['answerModel']),
       sources: serializer.fromJson<String?>(json['sources']),
+      status: serializer.fromJson<String>(json['status']),
+      speaker: serializer.fromJson<String?>(json['speaker']),
+      source: serializer.fromJson<String?>(json['source']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
     );
   }
@@ -1827,6 +1919,9 @@ class DetectedQuestion extends DataClass
       'answer': serializer.toJson<String?>(answer),
       'answerModel': serializer.toJson<String?>(answerModel),
       'sources': serializer.toJson<String?>(sources),
+      'status': serializer.toJson<String>(status),
+      'speaker': serializer.toJson<String?>(speaker),
+      'source': serializer.toJson<String?>(source),
       'createdAt': serializer.toJson<String>(createdAt),
     };
   }
@@ -1840,6 +1935,9 @@ class DetectedQuestion extends DataClass
     Value<String?> answer = const Value.absent(),
     Value<String?> answerModel = const Value.absent(),
     Value<String?> sources = const Value.absent(),
+    String? status,
+    Value<String?> speaker = const Value.absent(),
+    Value<String?> source = const Value.absent(),
     String? createdAt,
   }) => DetectedQuestion(
     id: id ?? this.id,
@@ -1850,6 +1948,9 @@ class DetectedQuestion extends DataClass
     answer: answer.present ? answer.value : this.answer,
     answerModel: answerModel.present ? answerModel.value : this.answerModel,
     sources: sources.present ? sources.value : this.sources,
+    status: status ?? this.status,
+    speaker: speaker.present ? speaker.value : this.speaker,
+    source: source.present ? source.value : this.source,
     createdAt: createdAt ?? this.createdAt,
   );
   DetectedQuestion copyWithCompanion(DetectedQuestionsCompanion data) {
@@ -1866,6 +1967,9 @@ class DetectedQuestion extends DataClass
           ? data.answerModel.value
           : this.answerModel,
       sources: data.sources.present ? data.sources.value : this.sources,
+      status: data.status.present ? data.status.value : this.status,
+      speaker: data.speaker.present ? data.speaker.value : this.speaker,
+      source: data.source.present ? data.source.value : this.source,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -1881,6 +1985,9 @@ class DetectedQuestion extends DataClass
           ..write('answer: $answer, ')
           ..write('answerModel: $answerModel, ')
           ..write('sources: $sources, ')
+          ..write('status: $status, ')
+          ..write('speaker: $speaker, ')
+          ..write('source: $source, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -1896,6 +2003,9 @@ class DetectedQuestion extends DataClass
     answer,
     answerModel,
     sources,
+    status,
+    speaker,
+    source,
     createdAt,
   );
   @override
@@ -1910,6 +2020,9 @@ class DetectedQuestion extends DataClass
           other.answer == this.answer &&
           other.answerModel == this.answerModel &&
           other.sources == this.sources &&
+          other.status == this.status &&
+          other.speaker == this.speaker &&
+          other.source == this.source &&
           other.createdAt == this.createdAt);
 }
 
@@ -1922,6 +2035,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
   final Value<String?> answer;
   final Value<String?> answerModel;
   final Value<String?> sources;
+  final Value<String> status;
+  final Value<String?> speaker;
+  final Value<String?> source;
   final Value<String> createdAt;
   final Value<int> rowid;
   const DetectedQuestionsCompanion({
@@ -1933,6 +2049,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
     this.answer = const Value.absent(),
     this.answerModel = const Value.absent(),
     this.sources = const Value.absent(),
+    this.status = const Value.absent(),
+    this.speaker = const Value.absent(),
+    this.source = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1945,6 +2064,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
     this.answer = const Value.absent(),
     this.answerModel = const Value.absent(),
     this.sources = const Value.absent(),
+    this.status = const Value.absent(),
+    this.speaker = const Value.absent(),
+    this.source = const Value.absent(),
     required String createdAt,
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1961,6 +2083,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
     Expression<String>? answer,
     Expression<String>? answerModel,
     Expression<String>? sources,
+    Expression<String>? status,
+    Expression<String>? speaker,
+    Expression<String>? source,
     Expression<String>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -1973,6 +2098,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
       if (answer != null) 'answer': answer,
       if (answerModel != null) 'answer_model': answerModel,
       if (sources != null) 'sources': sources,
+      if (status != null) 'status': status,
+      if (speaker != null) 'speaker': speaker,
+      if (source != null) 'source': source,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1987,6 +2115,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
     Value<String?>? answer,
     Value<String?>? answerModel,
     Value<String?>? sources,
+    Value<String>? status,
+    Value<String?>? speaker,
+    Value<String?>? source,
     Value<String>? createdAt,
     Value<int>? rowid,
   }) {
@@ -1999,6 +2130,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
       answer: answer ?? this.answer,
       answerModel: answerModel ?? this.answerModel,
       sources: sources ?? this.sources,
+      status: status ?? this.status,
+      speaker: speaker ?? this.speaker,
+      source: source ?? this.source,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -2031,6 +2165,15 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
     if (sources.present) {
       map['sources'] = Variable<String>(sources.value);
     }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (speaker.present) {
+      map['speaker'] = Variable<String>(speaker.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<String>(createdAt.value);
     }
@@ -2051,6 +2194,9 @@ class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
           ..write('answer: $answer, ')
           ..write('answerModel: $answerModel, ')
           ..write('sources: $sources, ')
+          ..write('status: $status, ')
+          ..write('speaker: $speaker, ')
+          ..write('source: $source, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4018,6 +4164,9 @@ typedef $$DetectedQuestionsTableCreateCompanionBuilder =
       Value<String?> answer,
       Value<String?> answerModel,
       Value<String?> sources,
+      Value<String> status,
+      Value<String?> speaker,
+      Value<String?> source,
       required String createdAt,
       Value<int> rowid,
     });
@@ -4031,6 +4180,9 @@ typedef $$DetectedQuestionsTableUpdateCompanionBuilder =
       Value<String?> answer,
       Value<String?> answerModel,
       Value<String?> sources,
+      Value<String> status,
+      Value<String?> speaker,
+      Value<String?> source,
       Value<String> createdAt,
       Value<int> rowid,
     });
@@ -4112,6 +4264,21 @@ class $$DetectedQuestionsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get speaker => $composableBuilder(
+    column: $table.speaker,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnFilters(column),
@@ -4185,6 +4352,21 @@ class $$DetectedQuestionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get speaker => $composableBuilder(
+    column: $table.speaker,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -4247,6 +4429,15 @@ class $$DetectedQuestionsTableAnnotationComposer
 
   GeneratedColumn<String> get sources =>
       $composableBuilder(column: $table.sources, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get speaker =>
+      $composableBuilder(column: $table.speaker, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
 
   GeneratedColumn<String> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -4316,6 +4507,9 @@ class $$DetectedQuestionsTableTableManager
                 Value<String?> answer = const Value.absent(),
                 Value<String?> answerModel = const Value.absent(),
                 Value<String?> sources = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> speaker = const Value.absent(),
+                Value<String?> source = const Value.absent(),
                 Value<String> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DetectedQuestionsCompanion(
@@ -4327,6 +4521,9 @@ class $$DetectedQuestionsTableTableManager
                 answer: answer,
                 answerModel: answerModel,
                 sources: sources,
+                status: status,
+                speaker: speaker,
+                source: source,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -4340,6 +4537,9 @@ class $$DetectedQuestionsTableTableManager
                 Value<String?> answer = const Value.absent(),
                 Value<String?> answerModel = const Value.absent(),
                 Value<String?> sources = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> speaker = const Value.absent(),
+                Value<String?> source = const Value.absent(),
                 required String createdAt,
                 Value<int> rowid = const Value.absent(),
               }) => DetectedQuestionsCompanion.insert(
@@ -4351,6 +4551,9 @@ class $$DetectedQuestionsTableTableManager
                 answer: answer,
                 answerModel: answerModel,
                 sources: sources,
+                status: status,
+                speaker: speaker,
+                source: source,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
