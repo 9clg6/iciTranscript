@@ -16,6 +16,8 @@ import 'package:ici_transcript/application/services/live_answers/live_question.d
 ///   affichée et sauvegardée : tête puis une puce par ligne).
 /// - `const String kNoAnswerToken = 'NO_ANSWER'` : réponse réservée du modèle
 ///   pour « rien d'utile à dire / pas une vraie question pour l'utilisateur ».
+///   Règle choisie : une réponse qui COMMENCE par ce jeton est un refus, quoi
+///   qui suive (les modèles locaux ajoutent souvent une explication).
 /// - `const int kMaxBullets = 3`.
 /// - Citations : l'extrait n° i (à partir de 1, dans l'ordre fourni au
 ///   modèle) se cite `[S<i>]`. Une citation vers un extrait non fourni est
@@ -59,6 +61,25 @@ void main() {
         isTrue,
       );
     });
+
+    for (final String raw in <String>[
+      '$kNoAnswerToken.',
+      "$kNoAnswerToken\nCe n'est pas une question pour vous.",
+      '$kNoAnswerToken — rien dans le contexte.',
+    ]) {
+      test(
+        'jeton suivi d\'un texte « ${raw.replaceAll('\n', r'\n')} » : refus, '
+        'rien à afficher',
+        () {
+          final ParsedAnswer a = parseAnswer(
+            raw,
+            const <DocumentSearchResult>[],
+          );
+          expect(a.declined, isTrue);
+          expect(a.text, isEmpty);
+        },
+      );
+    }
 
     test('une vraie réponse n\'est pas un refus', () {
       expect(

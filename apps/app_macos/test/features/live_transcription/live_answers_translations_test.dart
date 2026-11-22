@@ -14,6 +14,7 @@ void main() {
         'Les questions des autres participants apparaîtront ici.',
     'live_answers.answer_latest': 'Répondre',
     'live_answers.answer_this': 'Répondre à cette phrase',
+    'live_answers.answer': 'Proposer une réponse',
     'live_answers.answering': 'Réponse en cours…',
     'live_answers.copy': 'Copier la réponse',
     'live_answers.copied': 'Réponse copiée',

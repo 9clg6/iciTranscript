@@ -35,7 +35,7 @@ void main() {
       id: 'seg-1',
       sessionId: 's1',
       source: AudioSource.output,
-      text: 'Est-ce que vous avez prévu une date de livraison ?',
+      text: 'Bonjour, est-ce que vous avez prévu une date de livraison ?',
       timestampMs: 65000,
       createdAt: DateTime(2026, 11, 20, 9, 31),
     ),
@@ -93,8 +93,7 @@ void main() {
     await pumpNote(tester, const <LiveQuestion>[answered]);
 
     expect(find.text('history.detail.questions'.tr()), findsOneWidget);
-    // Une fois dans la transcription, une fois dans la section.
-    expect(find.text(answered.text), findsNWidgets(2));
+    expect(find.text(answered.text), findsOneWidget);
     expect(find.textContaining('Le lot 1 arrive le 12 mars.'), findsOneWidget);
     expect(find.textContaining('Contrat Acme 2026'), findsOneWidget);
   });

@@ -7,7 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 import 'package:ici_transcript/application/services/live_answers/question_store.dart';
 import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
-import 'package:ici_transcript/core/providers/data/database.provider.dart';
 import 'package:ici_transcript/core/providers/services/question_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
@@ -41,7 +40,6 @@ void main() {
     c = ProviderContainer(
       overrides: <Override>[
         ...localModelOverrides(db, InstantOllamaService(installed: true)),
-        databaseProvider.overrideWithValue(db),
       ],
     );
     final DateTime start = DateTime(2026, 11, 22, 10);

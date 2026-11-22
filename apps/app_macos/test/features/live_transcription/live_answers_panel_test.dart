@@ -27,7 +27,8 @@ import '../../helpers/localized_app.dart';
 ///   affiche `questionsStream` et appelle `retry`, `dismiss`, `answerSegment`,
 ///   `answerLatestFromOthers`.
 /// - Actions trouvées par leur libellé (texte visible ou info-bulle) :
-///   `live_answers.copy`, `common.action.retry`, `live_answers.dismiss`,
+///   `live_answers.copy`, `common.action.retry` (échec, aucun modèle),
+///   `live_answers.answer` (question jamais lancée), `live_answers.dismiss`,
 ///   `live_answers.answer_latest`, et `live_answers.answer_this` sur chaque
 ///   ligne de transcription.
 /// - Heure d'une question : décalage depuis le début, « HH:MM:SS » comme les
@@ -113,7 +114,9 @@ void main() {
 
     expect(find.text(q), findsOneWidget);
     expect(
-      find.text('transcription.live.speaker_n'.tr(args: <String>['2'])),
+      find.textContaining(
+        'transcription.live.speaker_n'.tr(args: <String>['2']),
+      ),
       findsWidgets,
     );
     expect(find.textContaining('00:01:05'), findsWidgets);
@@ -187,6 +190,7 @@ void main() {
     const LlmInvalidKeyException('anthropic'): 'live_answers.error.invalid_key',
     const LlmRateLimitedException('openai'): 'live_answers.error.rate_limited',
     const LlmUnreachableException('gemini'): 'live_answers.error.unreachable',
+    const LlmException('autre'): 'live_answers.error.other',
     const FormatException('ligne JSON invalide'):
         'live_answers.error.malformed',
   };
@@ -218,6 +222,36 @@ void main() {
 
     expect(find.textContaining('Le 12 mars.'), findsOneWidget);
     expect(find.text('live_answers.error.unreachable'.tr()), findsNothing);
+  });
+
+  testWidgets('entre la détection et le premier morceau : « Réponse en '
+      'cours… »', (WidgetTester tester) async {
+    await pumpLive(tester);
+    await ask(tester);
+
+    expect(find.text('live_answers.answering'.tr()), findsOneWidget);
+  });
+
+  testWidgets('une question restée en attente (une plus récente est passée '
+      'avant) se lance à la main', (WidgetTester tester) async {
+    const String b = 'Combien coûte la licence par utilisateur ?';
+    const String c = 'Où sont hébergés les serveurs ?';
+    await pumpLive(tester);
+    await ask(tester);
+    h
+      ..hear(b, atMs: 66000)
+      ..hear(c, atMs: 67000);
+    await settle(tester);
+    h.llm.last.reply('Le 12 mars.');
+    await settle(tester);
+    h.llm.last.reply('En France.');
+    await settle(tester);
+    expect(h.llm.requests, hasLength(2));
+
+    await tap(tester, action('live_answers.answer'));
+
+    expect(h.llm.requests, hasLength(3));
+    expect(h.llm.last.request.messages.last.content, contains(b));
   });
 
   testWidgets('« Ignorer » retire la question', (WidgetTester tester) async {
@@ -264,6 +298,7 @@ void main() {
     expect(find.text(q), findsOneWidget);
     expect(find.textContaining('llm.configure_model'.tr()), findsOneWidget);
     expect(h.llm.requests, isEmpty);
+    expect(action('common.action.retry'), findsWidgets);
   });
 
   testWidgets('« Répondre » répond à la dernière phrase des autres même si '

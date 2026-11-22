@@ -109,7 +109,9 @@ void main() {
         h.search.pending = () => slow.future;
 
         h.hear(q);
-        async.elapse(kDocumentSearchBudget - const Duration(milliseconds: 1));
+        // Budget du besoin : 150 ms.
+        expect(kDocumentSearchBudget, const Duration(milliseconds: 150));
+        async.elapse(const Duration(milliseconds: 149));
         expect(h.llm.requests, isEmpty, reason: 'avant le budget');
 
         async.elapse(const Duration(milliseconds: 1));
@@ -461,6 +463,29 @@ void main() {
       });
     });
 
+    test('jeton suivi d\'une explication (modèle local bavard) : refus, rien '
+        'd\'affiché à aucun moment', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.hear(q);
+        async.flushMicrotasks();
+        final List<String> shown = <String>[];
+        h.service.questionsStream.listen(
+          (List<LiveQuestion> l) =>
+              shown.addAll(l.map((LiveQuestion x) => x.answer)),
+        );
+        h.llm.last
+          ..delta('NO_ANSWER')
+          ..delta('. Ce n\'est pas une question ')
+          ..delta('pour vous.');
+        async.flushMicrotasks();
+        h.llm.last.end();
+        async.flushMicrotasks();
+
+        expect(h.only.status, LiveQuestionStatus.declined);
+        expect(shown.where((String a) => a.isNotEmpty), isEmpty);
+      });
+    });
+
     test('une vraie réponse qui commence comme le jeton s\'affiche dès '
         'qu\'elle en diffère', () {
       run((FakeAsync async, LiveAnswersHarness h) {
@@ -529,7 +554,9 @@ void main() {
         async.flushMicrotasks();
         h.llm.last.reply('Le 12 mars.');
         async.flushMicrotasks();
-        h.hear(q, atMs: 60000 + kQuestionDedupeWindow.inMilliseconds - 1000);
+        // Fenêtre du besoin : 30 s.
+        expect(kQuestionDedupeWindow, const Duration(seconds: 30));
+        h.hear(q, atMs: 60000 + 29000);
         async.flushMicrotasks();
 
         expect(h.questions, hasLength(1));
@@ -566,7 +593,7 @@ void main() {
         async.flushMicrotasks();
         h.llm.last.reply('Le 12 mars.');
         async.flushMicrotasks();
-        h.hear(q, atMs: 60000 + kQuestionDedupeWindow.inMilliseconds + 1000);
+        h.hear(q, atMs: 60000 + 31000);
         async.flushMicrotasks();
 
         expect(h.questions, hasLength(2));
