@@ -54,9 +54,9 @@ void main() {
     attendees: attendees,
   );
 
-  Future<Session> row() =>
-      (db.select(db.sessions)..where(($SessionsTable t) => t.id.equals('s1')))
-          .getSingle();
+  Future<Session> row() => (db.select(
+    db.sessions,
+  )..where(($SessionsTable t) => t.id.equals('s1'))).getSingle();
 
   test('une note créée liée relit son événement et ses participants', () async {
     await repo.create(
@@ -124,9 +124,7 @@ void main() {
       ),
     );
 
-    await repo.update(
-      session().copyWith(title: 'Comité produit'),
-    );
+    await repo.update(session().copyWith(title: 'Comité produit'));
 
     final Session r = await row();
     expect(r.calendarEventId, isNull);
@@ -152,16 +150,18 @@ void main() {
   });
 
   test('une colonne attendees illisible se lit comme une liste vide', () async {
-    await db.into(db.sessions).insert(
-      SessionsCompanion.insert(
-        id: 's1',
-        title: 'Ancienne note',
-        createdAt: start.toIso8601String(),
-        updatedAt: start.toIso8601String(),
-        status: 'completed',
-        attendees: const Value<String?>('pas du json'),
-      ),
-    );
+    await db
+        .into(db.sessions)
+        .insert(
+          SessionsCompanion.insert(
+            id: 's1',
+            title: 'Ancienne note',
+            createdAt: start.toIso8601String(),
+            updatedAt: start.toIso8601String(),
+            status: 'completed',
+            attendees: const Value<String?>('pas du json'),
+          ),
+        );
 
     expect((await repo.getById('s1'))!.attendees, isEmpty);
   });
