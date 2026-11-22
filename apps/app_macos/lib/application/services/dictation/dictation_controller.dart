@@ -14,6 +14,7 @@ import 'package:ici_transcript/application/services/transcript_text_normalizer.d
 import 'package:ici_transcript/application/services/transcription_server_arbiter.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
+import 'package:ici_transcript/core/platform/prefs_store.dart';
 import 'package:ici_transcript/core/platform/text_output_channel.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:rxdart/rxdart.dart';
@@ -108,7 +109,9 @@ final class DictationController {
     required String serverCommand,
     required List<String> serverArgs,
     required String webSocketUrl,
-  }) : _arbiter = arbiter,
+    PrefsStore? prefs,
+  }) : _prefs = prefs ?? PrefsStore(),
+       _arbiter = arbiter,
        _shortcuts = shortcuts,
        _output = textOutput,
        _audio = audioCapture,
@@ -158,6 +161,7 @@ final class DictationController {
   final String _serverCommand;
   final List<String> _serverArgs;
   final String _webSocketUrl;
+  final PrefsStore _prefs;
   final Log _log = Log.named('DictationController');
 
   // Écoutés après le premier enregistrement réussi : sans plugin (tests),
@@ -174,6 +178,9 @@ final class DictationController {
   Future<void>? _serverStart;
   Future<void>? _lending;
   _Run? _run;
+  // Une réunion attend la fin de la dictée : son démarrage n'est pas une
+  // raison d'attendre.
+  bool _handingOver = false;
 
   /// État courant.
   DictationState get state => _state.value;
@@ -302,7 +309,7 @@ final class DictationController {
         continue;
       }
       if (_live.isRunning) return false; // une réunion a pris le micro
-      if (_live.isRecording) {
+      if (_live.isRecording && !_handingOver) {
         await _live.whenIdle(); // vidange d'une réunion arrêtée
         continue;
       }
@@ -389,7 +396,13 @@ final class DictationController {
     );
     unawaited(_openStream(run));
     try {
-      await _audio.startCapture(outputEnabled: false);
+      // Micro choisi dans Réglages, relu à chaque appui (null : le système).
+      final String? mic = prefValue<String>(
+        await _prefs.read(),
+        selectedMicPrefKey,
+      );
+      if (run.finished) return;
+      await _audio.startCapture(inputDeviceId: mic, outputEnabled: false);
     } on PlatformException catch (e) {
       _log.warning('Capture de la dictée refusée: ${e.code}');
       _fail(run, DictationErrorReason.microphone);
@@ -638,24 +651,38 @@ final class DictationController {
   /// Un enregistrement démarre : la dictée hors réunion se termine d'abord
   /// (texte produit), et son flux est fermé.
   Future<void> _handOverToRecording() async {
+    final _Run? run = _run;
+    if (run != null && run.meeting == null) {
+      if (!run.finished) {
+        // La réunion attend la fin de la dictée : capture arrêtée maintenant,
+        // l'audio gardé part sur le flux de la dictée dès que le serveur (que
+        // la réunion aurait attendu aussi) est prêt.
+        _handingOver = true;
+        try {
+          _endCapture(run);
+          await run.ended.future.timeout(
+            run.streaming
+                ? finalTextTimeout
+                : serverStartTimeout + finalTextTimeout,
+            onTimeout: () {
+              if (!run.finished) {
+                _fail(run, DictationErrorReason.serverUnavailable);
+              }
+            },
+          );
+        } finally {
+          _handingOver = false;
+        }
+      }
+      run.late = false;
+      await _closeStream(run);
+    }
     // Démarrage du serveur en vol (lancement, fin d'emprunt) : la réunion
     // le trouve prêt au lieu d'en lancer un second (qui tuerait le premier).
     final Future<void>? starting = _serverStart;
-    if (starting != null) await starting.catchError((Object _) {});
-    final _Run? run = _run;
-    if (run == null || run.meeting != null) return;
-    if (!run.finished) {
-      if (!run.streaming) {
-        // ponytail: pas encore de flux (serveur pas prêt) : la dictée cède,
-        // son audio n'est pas transcrit.
-        _fail(run, DictationErrorReason.serverUnavailable);
-        return;
-      }
-      _endCapture(run);
-      await run.ended.future.timeout(finalTextTimeout, onTimeout: () {});
+    if (starting != null) {
+      await starting.timeout(serverStartTimeout).catchError((Object _) {});
     }
-    run.late = false;
-    await _closeStream(run);
   }
 }
 

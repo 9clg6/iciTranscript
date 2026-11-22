@@ -7,6 +7,7 @@ import 'package:ici_transcript/core/platform/text_output_channel.dart';
 import 'package:ici_transcript/core/platform/voxmlx_server.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
+import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/transcription_server_arbiter.provider.dart';
@@ -49,6 +50,7 @@ DictationController dictationController(Ref ref) {
     liveTranscription: ref.watch(liveTranscriptionServiceProvider),
     serverCommand: voxmlxCommand,
     serverArgs: voxmlxArgs(),
+    prefs: ref.watch(prefsStoreProvider),
     webSocketUrl: ref
         .watch(launchServerPortsProvider)
         .transcriptionWebSocket
