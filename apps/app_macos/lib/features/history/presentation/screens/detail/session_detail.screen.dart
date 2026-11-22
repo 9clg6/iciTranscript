@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
@@ -233,7 +235,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
                           for (final TranscriptTurn t in groupTurns(
-                            state.segments,
+                            _localizedMarkers(state.segments),
                             state.speakers,
                           ))
                             _TurnView(turn: t),
@@ -662,3 +664,21 @@ class _Loading extends StatelessWidget {
     ],
   );
 }
+
+/// Passages non transcrits rangés en texte neutre, affichés localisés.
+List<TranscriptSegmentEntity> _localizedMarkers(
+  List<TranscriptSegmentEntity> segments,
+) => <TranscriptSegmentEntity>[
+  for (final TranscriptSegmentEntity s in segments)
+    if (LiveTranscriptionService.untranscribedTimes(s.text) case (
+      final String from,
+      final String to,
+    ))
+      s.copyWith(
+        text: LocaleKeys.transcription_gap_untranscribed.tr(
+          args: <String>[from, to],
+        ),
+      )
+    else
+      s,
+];

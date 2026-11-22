@@ -8,6 +8,7 @@ import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/summary.service.dart';
+import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/providers/services/ready_llm.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
@@ -268,8 +269,15 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  String _transcript(SessionDetailState s) =>
-      s.segments.map(TranscriptFormatter.plainLine).join('\n');
+  // Un passage non transcrit n'est la phrase de personne : il n'entre pas
+  // dans le texte envoyé au modèle comme une ligne dite.
+  String _transcript(SessionDetailState s) => s.segments
+      .where(
+        (TranscriptSegmentEntity x) =>
+            !LiveTranscriptionService.isUntranscribedMarker(x.text),
+      )
+      .map(TranscriptFormatter.plainLine)
+      .join('\n');
 
   /// Transcript du micro de l'utilisateur uniquement (source input), pour le
   /// coach d'anglais : on ne corrige que ce que l'utilisateur a dit.
