@@ -4,6 +4,9 @@ import 'dart:io';
 import 'package:core_data/database/app_database.dart';
 import 'package:core_domain/domain/usecases/repair_interrupted_sessions.use_case.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
+import 'package:core_domain/domain/enum/session_status.enum.dart';
+import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
@@ -32,9 +35,11 @@ Future<void> kernel(Ref ref) async {
 
   // Une fois au lancement, avant toute session : rien n'enregistre encore.
   // Les dossiers viennent de appDataDirectory() (temporaire sous test).
+  // Sessions tuées net (encore `active`) : leurs repères, provisoires
+  // compris, seront rattrapés depuis le WAV.
+  final List<String> killed = await _activeSessionIds(ref, log);
   await _repairAfterCrash(ref, log);
-  // Sessions dont le rattrapage attendait le serveur : réessayées (bornées).
-  unawaited(ref.read(gapBackfillRetryProvider).retryPending());
+  unawaited(_retryBackfills(ref, killed, log));
 
   // Serveurs laissés par un arrêt brutal : seulement ceux notés par cette
   // app dont le PID a encore la même identité. Ne lève jamais.
@@ -72,5 +77,31 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
     } catch (e) {
       log.warning('Réparation WAV échouée (${entry.path}): $e');
     }
+  }
+}
+
+Future<List<String>> _activeSessionIds(Ref ref, Log log) async {
+  try {
+    return <String>[
+      for (final SessionEntity s
+          in await ref.read(sessionRepositoryProvider).getAll())
+        if (s.status == SessionStatus.active) s.id,
+    ];
+  } catch (e) {
+    log.warning('Lecture des sessions au lancement échouée: $e');
+    return const <String>[];
+  }
+}
+
+/// Rattrapages en attente (reprises bornées), plus les sessions tuées net.
+Future<void> _retryBackfills(Ref ref, List<String> killed, Log log) async {
+  try {
+    final GapBackfillRetry retry = ref.read(gapBackfillRetryProvider);
+    for (final String id in killed) {
+      await retry.enqueue(id);
+    }
+    await retry.retryPending();
+  } catch (e) {
+    log.warning('Rattrapage au lancement échoué: $e');
   }
 }

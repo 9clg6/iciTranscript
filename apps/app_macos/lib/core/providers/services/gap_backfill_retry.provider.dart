@@ -26,6 +26,9 @@ GapBackfillRetry gapBackfillRetry(Ref ref) {
             .watch(launchServerPortsProvider)
             .transcriptionWebSocket
             .toString(),
+        // Vrai dès qu'un démarrage est demandé (LiveTranscriptionService) :
+        // aucun morceau ne part ensuite, la socket se ferme.
+        shouldYield: isRecording,
       ),
       transcripts: ref.watch(transcriptRepositoryProvider),
       isRecording: isRecording,
