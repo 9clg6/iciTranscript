@@ -80,4 +80,4 @@ final class LiveTranscriptionServiceProvider
 }
 
 String _$liveTranscriptionServiceHash() =>
-    r'4f331c1b644e7634d13d01372168e366ff8b6bf9';
+    r'003e4a0f4824ac23a31b89ade547ba8b42daaa5f';

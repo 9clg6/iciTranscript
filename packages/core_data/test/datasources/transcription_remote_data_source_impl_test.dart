@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:core_data/clients/websocket_client.dart';
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_data/model/audio_chunk.dart';
+import 'package:core_data/model/remote/transcript_event.remote.model.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:test/test.dart';
 
@@ -134,12 +135,12 @@ void main() {
   test('décode indépendamment les événements micro et système', () async {
     await dataSource.connect();
     final Future<String?> micDelta = dataSource.transcriptionStream.first.then(
-      (event) => event.delta,
+      (TranscriptEventRemoteModel event) => event.delta,
     );
     final Future<String?> systemDelta = dataSource
         .systemTranscriptionStream
         .first
-        .then((event) => event.delta);
+        .then((TranscriptEventRemoteModel event) => event.delta);
 
     mic.emit(<String, Object>{
       'type': 'response.audio_transcript.delta',
