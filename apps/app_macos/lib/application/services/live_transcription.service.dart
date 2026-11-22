@@ -111,6 +111,8 @@ final class LiveTranscriptionService {
   Timer? _stableTimer;
   bool _restartInFlight = false;
   bool _restartsExhausted = false;
+  // Faux dès qu'un arrêt est demandé : aucune relance ne part ensuite.
+  bool _supervising = false;
   int _restartAttempts = 0;
   domain.ConnectionState _remoteState = domain.ConnectionState.connected;
   final BehaviorSubject<TranscriptionHealth> _health =
@@ -207,6 +209,7 @@ final class LiveTranscriptionService {
       _serverCommand = serverCommand;
       _serverArgs = serverArgs;
       _resetServerSupervision();
+      _supervising = true;
 
       // 1. Demarrer le serveur ML si pas deja en cours
       final bool serverRunning = await _processManagerService.isServerRunning();
@@ -367,6 +370,7 @@ final class LiveTranscriptionService {
 
   Future<void> _stopTranscription() async {
     _log.info('Arret de la transcription en direct');
+    _supervising = false;
     _resetServerSupervision();
     _cancel(_serverStateSubscription);
     _serverStateSubscription = null;
@@ -488,7 +492,7 @@ final class LiveTranscriptionService {
 
   void _onServerState(ServerState state) {
     // Un démarrage raté émet aussi `error` : une seule relance à la fois.
-    if (!isRecording || state != ServerState.error) return;
+    if (!_supervising || !isRecording || state != ServerState.error) return;
     if (_restartPending || _restartsExhausted) return;
     _log.warning('Serveur ML tombé en pleine session, relance');
     _stableTimer?.cancel();
@@ -515,7 +519,7 @@ final class LiveTranscriptionService {
   // Hors de _serializeLifecycle : un modèle qui recharge (minutes) ne doit
   // pas bloquer l'arrêt demandé par l'utilisateur.
   Future<void> _restartServer() async {
-    if (!isRecording) return;
+    if (!_supervising || !isRecording) return;
     _restartInFlight = true;
     _restartAttempts++;
     _updateHealth();
@@ -528,11 +532,11 @@ final class LiveTranscriptionService {
     } catch (e) {
       _log.warning('Relance du serveur ML échouée: $e');
       _restartInFlight = false;
-      if (isRecording) _scheduleServerRestart();
+      if (_supervising && isRecording) _scheduleServerRestart();
       return;
     }
     _restartInFlight = false;
-    if (!isRecording) return;
+    if (!_supervising || !isRecording) return;
     _log.info('Serveur ML relancé');
     _stableTimer = Timer(_stableServerUptime, () => _restartAttempts = 0);
     _updateHealth();
@@ -682,9 +686,6 @@ final class LiveTranscriptionService {
 
   // Phrase en cours sauvée en base (sous son id final) au plus tard 2 s après
   // un nouveau mot ; l'écran garde son segment temporaire `current_*`.
-  // ponytail: si la socket d'une source tombe en pleine phrase, aucun `done`
-  // ne la clôt : le `done` suivant de la source la remplace sous le même id.
-  // Il faut un signal de coupure par source pour sceller la phrase.
   static const Duration _checkpointDelay = Duration(seconds: 2);
   final Map<AudioSource, String> _phraseId = <AudioSource, String>{};
   final Map<AudioSource, Timer> _checkpointTimers = <AudioSource, Timer>{};
@@ -720,7 +721,9 @@ final class LiveTranscriptionService {
       final String? delta = event.delta;
       if (delta == null || delta.isEmpty) return;
 
-      if (_phrase[source]!.isEmpty) {
+      // Une phrase renvoyée après coupure garde son id (et son début) : sa
+      // retranscription remplace le provisoire déjà sauvé.
+      if (!_phraseId.containsKey(source)) {
         _phraseStart[source] = _offsetOf(
           currentSession,
           clock.now().millisecondsSinceEpoch,
@@ -734,6 +737,12 @@ final class LiveTranscriptionService {
         _checkpointDelay,
         () => _checkpoint(currentSession, source),
       );
+    } else if (event.type == utteranceResentEventType) {
+      // Le serveur repart du début de la phrase : ses deltas réécrivent le
+      // texte, sous le même id.
+      _phrase[source] = StringBuffer();
+    } else if (event.type == utteranceLostEventType) {
+      _sealPhrase(currentSession, source);
     } else if (event.type == 'response.audio_transcript.done') {
       _trackFinalization(
         currentSession,
@@ -742,6 +751,43 @@ final class LiveTranscriptionService {
         window: _transcriptionRemoteDataSource.windowOf(event),
       );
     }
+  }
+
+  /// Début de phrase perdu avec une socket : le texte déjà reçu ne sera pas
+  /// retranscrit. Il devient sa propre ligne, telle quelle ; le `done`
+  /// suivant ouvre une nouvelle phrase. Le repère de perte vient à part.
+  void _sealPhrase(SessionEntity session, AudioSource source) {
+    final String? id = _phraseId.remove(source);
+    _checkpointTimers.remove(source)?.cancel();
+    final Future<void>? provisionalWrite = _provisionalWrites.remove(source);
+    final String text = TranscriptTextNormalizer.normalize(
+      _phrase[source]!.toString(),
+    );
+    _phrase[source] = StringBuffer();
+    _transcriptionService.segmentsStream.add(
+      List<TranscriptSegmentEntity>.from(
+        _transcriptionService.segmentsStream.value,
+      )..removeWhere((TranscriptSegmentEntity s) => s.id == _tempId(source)),
+    );
+    if (id == null ||
+        text.isEmpty ||
+        TranscriptTextNormalizer.isForeignScript(text)) {
+      return;
+    }
+    final TranscriptSegmentEntity segment = TranscriptSegmentEntity(
+      id: id,
+      sessionId: session.id,
+      source: source,
+      text: text,
+      timestampMs: _phraseStart[source]!,
+      createdAt: clock.now(),
+    );
+    late final Future<void> task;
+    task = (provisionalWrite ?? Future<void>.value())
+        .then((_) => _transcriptionService.saveSegment(segment))
+        .then((_) => _sortAndDedupeSegments())
+        .whenComplete(() => _pendingFinalizations.remove(task));
+    _pendingFinalizations.add(task);
   }
 
   /// Sauve en base la phrase en cours (provisoire, même id que la finale).
