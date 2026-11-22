@@ -212,4 +212,70 @@ void main() {
       });
     },
   );
+
+  group('refus habillé (markdown, guillemets, ponctuation)', () {
+    for (final String raw in <String>[
+      '**$kNoAnswerToken**',
+      '`$kNoAnswerToken`',
+      '*$kNoAnswerToken*',
+      '"$kNoAnswerToken"',
+      '« $kNoAnswerToken »',
+      '$kNoAnswerToken.',
+      '**$kNoAnswerToken**.',
+      '> $kNoAnswerToken',
+    ]) {
+      test('« $raw » : refus, jamais affiché', () {
+        final ParsedAnswer a = parseAnswer(raw, const <DocumentExcerpt>[]);
+        expect(a.declined, isTrue);
+        expect(a.text, isEmpty);
+      });
+    }
+
+    test('le jeton cité au milieu d\'une vraie réponse n\'est pas un refus', () {
+      final ParsedAnswer a = parseAnswer(
+        'Oui, livré le 12 mars.\n- Le code NO_ANSWER ne concerne que le modèle.',
+        const <DocumentExcerpt>[],
+      );
+      expect(a.declined, isFalse);
+    });
+  });
+
+  group('puces sans point final (règle choisie : sans signal de fin de '
+      'longueur du fournisseur, une dernière puce est coupée seulement si '
+      'elle finit sur un signe de suite , ; : - – ( ou sur un mot outil '
+      'de/du/des/le/la/les/un/une/et/ou/à/au/aux/pour/par/avec/en/sur/'
+      'the/a/an/of/to/and/or/for/with/in/on/at, ou si elle est vide)', () {
+    for (final String raw in <String>[
+      'Oui.\n- Lot 1 le 12 mars\n- Lot 2 en avril',
+      'Yes.\n- Batch 1 on March 12\n- Batch 2 in April',
+      'Oui.\n- Recette d\'une semaine\n- Formation incluse',
+    ]) {
+      test('« ${raw.replaceAll('\n', r'\n')} » : complète, pas tronquée', () {
+        expect(parseAnswer(raw, const <DocumentExcerpt>[]).truncated, isFalse);
+      });
+    }
+
+    for (final String raw in <String>[
+      'Oui.\n- Lot 1 le 12 mars\n- Lot 2 prévu pour le',
+      'Oui.\n- Lot 1 le 12 mars\n- Lot 2 :',
+      'Oui.\n- Lot 1 le 12 mars,',
+      'Oui.\n- Lot 1 le 12 mars\n-',
+      'Yes.\n- Batch 1 on March 12\n- Batch 2 planned for the',
+      'Oui.\n- Prix (hors',
+    ]) {
+      test('« ${raw.replaceAll('\n', r'\n')} » : tronquée', () {
+        expect(parseAnswer(raw, const <DocumentExcerpt>[]).truncated, isTrue);
+      });
+    }
+
+    test('tête seule sans ponctuation finale : tronquée, comme avant', () {
+      expect(
+        parseAnswer(
+          'La livraison est prévue pour',
+          const <DocumentExcerpt>[],
+        ).truncated,
+        isTrue,
+      );
+    });
+  });
 }

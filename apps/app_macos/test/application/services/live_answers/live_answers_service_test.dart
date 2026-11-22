@@ -509,6 +509,28 @@ void main() {
       });
     });
 
+    test('jeton habillé en markdown et coupé en morceaux (« ** », « NO_ », '
+        '« ANSWER** ») : jamais affiché, refus', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        h.hear(q);
+        async.flushMicrotasks();
+        final List<String> shown = <String>[];
+        h.service.questionsStream.listen(
+          (List<LiveQuestion> l) =>
+              shown.addAll(l.map((LiveQuestion x) => x.answer)),
+        );
+        for (final String d in <String>['**', 'NO_', 'ANSWER**']) {
+          h.llm.last.delta(d);
+          async.flushMicrotasks();
+        }
+        h.llm.last.end();
+        async.flushMicrotasks();
+
+        expect(shown.where((String a) => a.isNotEmpty), isEmpty);
+        expect(h.only.status, LiveQuestionStatus.declined);
+      });
+    });
+
     test('une vraie réponse qui commence comme le jeton s\'affiche dès '
         'qu\'elle en diffère', () {
       run((FakeAsync async, LiveAnswersHarness h) {

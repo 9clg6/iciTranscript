@@ -2,7 +2,6 @@ import 'package:ici_transcript/application/services/documents/document_library.d
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +15,7 @@ import 'package:ici_transcript/features/live_transcription/presentation/screens/
 import '../../helpers/fake_view_models.dart' show settle;
 import '../../helpers/live_answers_fakes.dart';
 import '../../helpers/localized_app.dart';
+import '../../helpers/text_weight.dart';
 
 /// Zone « Questions » de l'écran en direct (T4, besoin 11) : comportement,
 /// pas pixels. Vrai `LiveAnswersService` monté sur les faux (LLM piloté par
@@ -353,5 +353,30 @@ void main() {
     await tap(tester, action('live_answers.answer'));
 
     expect(h.llm.requests, hasLength(1));
+  });
+
+  testWidgets('la phrase de tête est en gras (semi-gras ou plus), les puces '
+      'en texte normal', (WidgetTester tester) async {
+    await pumpLive(tester);
+    await ask(tester);
+    h.llm.last.reply(
+      'Le lot 1 arrive le 12 mars.\n- Recette en avril.\n- Formation incluse.',
+    );
+    await settle(tester);
+
+    expect(
+      FontWeight.values.indexOf(
+        weightOf(tester, 'Le lot 1 arrive le 12 mars.'),
+      ),
+      greaterThanOrEqualTo(FontWeight.values.indexOf(FontWeight.w600)),
+    );
+    expect(
+      FontWeight.values.indexOf(weightOf(tester, 'Recette en avril.')),
+      lessThan(FontWeight.values.indexOf(FontWeight.w600)),
+    );
+    expect(
+      FontWeight.values.indexOf(weightOf(tester, 'Formation incluse.')),
+      lessThan(FontWeight.values.indexOf(FontWeight.w600)),
+    );
   });
 }

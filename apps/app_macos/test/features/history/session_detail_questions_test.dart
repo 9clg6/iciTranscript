@@ -15,6 +15,7 @@ import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.vie
 import '../../helpers/fake_data.dart';
 import '../../helpers/fake_view_models.dart';
 import '../../helpers/localized_app.dart';
+import '../../helpers/text_weight.dart';
 
 /// Section « Questions posées » de la note (T4, besoins 9 et 11) : les
 /// questions de la réunion avec la réponse gardée et ses sources.
@@ -153,6 +154,32 @@ void main() {
     expect(
       find.textContaining('history.detail.speaker'.tr(args: <String>['2'])),
       findsAtLeastNWidgets(3),
+    );
+  });
+
+  testWidgets('réponse gardée : tête en gras, puces en texte normal', (
+    WidgetTester tester,
+  ) async {
+    await pumpNote(tester, const <LiveQuestion>[
+      LiveQuestion(
+        id: 'q1',
+        sessionId: 's1',
+        text: 'Est-ce que vous avez prévu une date de livraison ?',
+        timestampMs: 65000,
+        status: LiveQuestionStatus.answered,
+        answer: 'Le lot 1 arrive le 12 mars.\n- Recette en avril.',
+      ),
+    ]);
+
+    expect(
+      FontWeight.values.indexOf(
+        weightOf(tester, 'Le lot 1 arrive le 12 mars.'),
+      ),
+      greaterThanOrEqualTo(FontWeight.values.indexOf(FontWeight.w600)),
+    );
+    expect(
+      FontWeight.values.indexOf(weightOf(tester, 'Recette en avril.')),
+      lessThan(FontWeight.values.indexOf(FontWeight.w600)),
     );
   });
 }
