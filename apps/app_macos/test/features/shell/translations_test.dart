@@ -9,6 +9,8 @@ void main() {
   group('fr.json : valeurs imposées par le besoin', () {
     const Map<String, String> exact = <String, String>{
       'app.name': 'Oats',
+      // Repère d'un lancement de dev (dossier de données isolé).
+      'app.dev_data': 'données de dev',
       'nav.home': 'Accueil',
       'nav.documents': 'Documents',
       'nav.coach': 'Coach anglais',
@@ -70,7 +72,9 @@ void main() {
   test('aucun « Retour » ni « Fermer » écrit en dur dans lib/', () {
     final RegExp literal = RegExp(r'''['"](Retour|Fermer)['"]''');
     final List<String> offenders = <String>[
-      for (final FileSystemEntity f in Directory('lib').listSync(recursive: true))
+      for (final FileSystemEntity f in Directory(
+        'lib',
+      ).listSync(recursive: true))
         if (f is File &&
             f.path.endsWith('.dart') &&
             !f.path.endsWith('.g.dart') &&

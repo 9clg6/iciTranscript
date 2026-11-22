@@ -13,7 +13,7 @@ import 'package:mcp_toolkit/mcp_toolkit.dart';
 Future<void> main() async {
   MCPToolkitBinding.instance.initialize();
   WidgetsFlutterBinding.ensureInitialized();
-  // Journaux consultables en release : ~/Library/Logs/iciTranscript/.
+  // Journaux : dossier choisi par le résolveur (vrai dossier en release).
   Log.writeToFile('${logDirectory()}/iciTranscript.log');
   await EasyLocalization.ensureInitialized();
 

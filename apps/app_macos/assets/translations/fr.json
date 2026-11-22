@@ -21,7 +21,8 @@
     }
   },
   "app": {
-    "name": "Oats"
+    "name": "Oats",
+    "dev_data": "données de dev"
   },
   "nav": {
     "home": "Accueil",

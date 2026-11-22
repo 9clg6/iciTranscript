@@ -3,6 +3,7 @@ import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ici_transcript/core/providers/platform/dev_data_directory.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
@@ -89,6 +90,7 @@ class _Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final Oats o = context.oats;
+    final bool devData = ref.watch(isDevDataDirectoryProvider);
     final bool recording = ref.watch(
       liveTranscriptionViewModelProvider.select(
         (LiveTranscriptionState s) => s.isRecording || s.isPaused,
@@ -128,7 +130,14 @@ class _Sidebar extends ConsumerWidget {
               OatsSpace.sm,
               OatsSpace.lg,
             ),
-            child: Text(LocaleKeys.app_name.tr(), style: o.wordmark),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(LocaleKeys.app_name.tr(), style: o.wordmark),
+                // Un lancement de dev n'ouvre pas les vraies notes : le dire.
+                if (devData) Text(LocaleKeys.app_dev_data.tr(), style: o.label),
+              ],
+            ),
           ),
           item(ShellView.home, Icons.home_outlined, LocaleKeys.nav_home),
           item(

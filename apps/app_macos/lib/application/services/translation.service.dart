@@ -16,8 +16,7 @@ class TranslationService {
   final Log _log = Log.named('TranslationService');
 
   String get _home => Platform.environment['HOME'] ?? '/tmp';
-  String get _diarDir => '${appDataDirectory()}/diar';
-  String get _scriptPath => '$_diarDir/translate_server.py';
+  String get _scriptPath => '${scriptsDirectory()}/translate_server.py';
   String get _uvBin => '$_home/.local/bin/uv';
 
   Process? _proc;
