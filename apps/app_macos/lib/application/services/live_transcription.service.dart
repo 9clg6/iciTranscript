@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
@@ -15,6 +14,7 @@ import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -77,9 +77,7 @@ final class LiveTranscriptionService {
   bool _capturePaused = false;
   int _audioChunkCount = 0;
 
-  String get _recordingsDir =>
-      '${Platform.environment['HOME'] ?? '/tmp'}'
-      '/Library/Application Support/IciTranscript/recordings';
+  String get _recordingsDir => '${appDataDirectory()}/recordings';
 
   /// Stream reactif de la session en cours.
   BehaviorSubject<SessionEntity?> get currentSessionStream =>

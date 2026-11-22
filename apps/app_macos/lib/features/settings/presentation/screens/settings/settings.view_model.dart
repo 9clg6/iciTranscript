@@ -2,15 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:core_domain/domain/entities/audio_device.entity.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'settings.view_model.g.dart';
 
-File get _prefFile => File(
-  '${Platform.environment['HOME']}/Library/Application Support/IciTranscript/prefs.json',
-);
+File get _prefFile => File('${appDataDirectory()}/prefs.json');
 
 /// ViewModel de l'ecran des reglages.
 ///
@@ -48,7 +47,7 @@ class SettingsViewModel extends _$SettingsViewModel {
         : null;
 
     state = state.copyWith(
-      storagePath: '${Platform.environment['HOME']}/Library/Application Support/IciTranscript',
+      storagePath: appDataDirectory(),
       dbSizeMb: 124.0,
       systemAudioEnabled: savedSystemAudio,
       autoStartServer: true,

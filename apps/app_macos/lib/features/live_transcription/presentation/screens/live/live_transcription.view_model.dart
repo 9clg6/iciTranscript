@@ -11,6 +11,7 @@ import 'package:ici_transcript/application/services/diarization.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -605,10 +606,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   ) async {
     if (segments.isEmpty) return;
     try {
-      final String home = Platform.environment['HOME'] ?? '';
-      final Directory dir = Directory(
-        '$home/Library/Application Support/IciTranscript/transcripts',
-      );
+      final Directory dir = Directory('${appDataDirectory()}/transcripts');
       await dir.create(recursive: true);
 
       final String timestamp = DateTime.now()

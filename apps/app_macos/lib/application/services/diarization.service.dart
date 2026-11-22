@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 
 /// Résultat brut de la passe post-session.
@@ -41,8 +42,7 @@ class DiarizationService {
       'nemotron-diar-mlx[server] @ $_diarArchive';
 
   static String get _home => Platform.environment['HOME'] ?? '/tmp';
-  static String get _appSupportDir =>
-      '$_home/Library/Application Support/IciTranscript';
+  static String get _appSupportDir => appDataDirectory();
   String get _recordingsDir => '$_appSupportDir/recordings';
   static String get _diarDir => '$_appSupportDir/diar';
   String get _scriptPath => '$_diarDir/process_session.py';

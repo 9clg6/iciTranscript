@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 
 /// Service de traduction par phrase, hors-ligne, via Argos Translate.
 ///
@@ -15,8 +16,7 @@ class TranslationService {
   final Log _log = Log.named('TranslationService');
 
   String get _home => Platform.environment['HOME'] ?? '/tmp';
-  String get _diarDir =>
-      '$_home/Library/Application Support/IciTranscript/diar';
+  String get _diarDir => '${appDataDirectory()}/diar';
   String get _scriptPath => '$_diarDir/translate_server.py';
   String get _uvBin => '$_home/.local/bin/uv';
 

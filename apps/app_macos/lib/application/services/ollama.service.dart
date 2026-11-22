@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:dio/dio.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 
 enum OllamaSetupStage {
   /// Tout est prêt.
@@ -60,10 +61,7 @@ class OllamaService {
   // Paths
   // ---------------------------------------------------------------------------
 
-  String get _appSupportDir {
-    final String home = Platform.environment['HOME'] ?? '/tmp';
-    return '$home/Library/Application Support/IciTranscript';
-  }
+  String get _appSupportDir => appDataDirectory();
 
   String get _binDir => '$_appSupportDir/bin';
   String get _ollamaBin => '$_binDir/ollama';
