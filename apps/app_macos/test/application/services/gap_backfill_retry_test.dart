@@ -142,24 +142,55 @@ void main() {
     expect(markerKept(), isFalse);
   });
 
-  test(
-    'après 3 tentatives sans serveur, on arrête et le repère reste',
-    () async {
-      final GapBackfillRetry first = launch();
-      transcriber.available = false;
-      await first.afterSession(sessionId);
-      for (int i = 0; i < 4; i++) {
-        states.add(ServerState.ready);
-        await settle();
-      }
-      await first.dispose();
-      await launch().retryPending();
+  // Revue PR #16, point 4 : une tentative ratée faute de serveur
+  // (connexion refusée) ne consomme pas de tentative, sinon les pertes dues
+  // à une panne du serveur s'épuisent avant son retour. Seules comptent les
+  // tentatives qui ont atteint le serveur sans rien retrouver. Le compte
+  // survit au relancement (fichier tenu à côté des WAV, sous
+  // recordingsDirectory). Remplace « après 3 tentatives sans serveur, on
+  // arrête », contraire à cette règle.
+  test('un serveur absent ne consomme aucune tentative', () async {
+    final GapBackfillRetry first = launch();
+    transcriber.available = false;
+    await first.afterSession(sessionId);
+    for (int i = 0; i < 5; i++) {
+      states.add(ServerState.ready);
       await settle();
+    }
+    await first.dispose();
+    final GapBackfillRetry second = launch();
+    await second.retryPending();
+    expect(markerKept(), isTrue);
 
-      expect(transcriber.calls, 3);
-      expect(markerKept(), isTrue);
-    },
-  );
+    transcriber.available = true;
+    states.add(ServerState.ready);
+    await settle();
+
+    expect(markerKept(), isFalse, reason: 'rattrapé au retour du serveur');
+  });
+
+  test('un serveur qui répond sans rien retrouver : 3 tentatives, compte '
+      'gardé au relancement, puis le repère reste', () async {
+    transcriber.reply = const <({int offsetMs, String text})>[];
+    final GapBackfillRetry first = launch();
+    await first.afterSession(sessionId); // 1
+    states.add(ServerState.ready); // 2
+    await settle();
+    await first.dispose();
+
+    final GapBackfillRetry second = launch();
+    await second.retryPending(); // 3
+    for (int i = 0; i < 3; i++) {
+      states.add(ServerState.ready);
+      await settle();
+    }
+    await second.dispose();
+    await launch().retryPending();
+    await settle();
+
+    expect(transcriber.calls, 3);
+    expect(markerKept(), isTrue);
+  });
 
   test('une session dont le WAV a disparu n est plus réessayée', () async {
     final GapBackfillRetry first = launch();
@@ -194,6 +225,8 @@ void main() {
 final class _Transcriber implements PcmTranscriber {
   bool available = true;
   int calls = 0;
+  List<({int offsetMs, String text})> reply =
+      const <({int offsetMs, String text})>[(offsetMs: 0, text: 'Retrouvé.')];
 
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
@@ -201,6 +234,6 @@ final class _Transcriber implements PcmTranscriber {
     if (!available) {
       throw const SocketException('Connection refused');
     }
-    return <({int offsetMs, String text})>[(offsetMs: 0, text: 'Retrouvé.')];
+    return reply;
   }
 }
