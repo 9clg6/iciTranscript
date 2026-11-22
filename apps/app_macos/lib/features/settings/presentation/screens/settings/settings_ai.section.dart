@@ -122,6 +122,9 @@ class _LlmProviderBlockState extends ConsumerState<_LlmProviderBlock> {
   String _shownModel = '';
   bool _replacing = false;
 
+  // Clé enregistrée à l'instant : l'envoi coupé est proposé à la suite.
+  bool _justSaved = false;
+
   LlmProviderId get _id => widget.id;
 
   @override
@@ -159,13 +162,19 @@ class _LlmProviderBlockState extends ConsumerState<_LlmProviderBlock> {
     if (ref.read(settingsViewModelProvider).llmKeySuffixes.containsKey(_id) &&
         !ref.read(settingsViewModelProvider).llmKeyErrors.contains(_id)) {
       _key.clear();
-      setState(() => _replacing = false);
+      setState(() {
+        _replacing = false;
+        _justSaved = true;
+      });
     }
   }
 
   Future<void> _remove() async {
     _key.clear();
-    setState(() => _replacing = false);
+    setState(() {
+      _replacing = false;
+      _justSaved = false;
+    });
     await widget.vm.removeApiKey(_id);
   }
 
@@ -218,14 +227,14 @@ class _LlmProviderBlockState extends ConsumerState<_LlmProviderBlock> {
           style: o.ui.copyWith(color: o.muted),
         ),
       ),
-      OatsButton(
-        label: LocaleKeys.settings_ai_test.tr(),
-        onPressed:
-            state.llmCloudAllowed &&
-                state.llmTests[_id] != LlmTestStatus.testing
-            ? () => widget.vm.testLlmProvider(_id)
-            : null,
-      ),
+      // Caché tant que l'envoi est coupé : rien ne partirait.
+      if (state.llmCloudAllowed)
+        OatsButton(
+          label: LocaleKeys.settings_ai_test.tr(),
+          onPressed: state.llmTests[_id] == LlmTestStatus.testing
+              ? null
+              : () => widget.vm.testLlmProvider(_id),
+        ),
       OatsButton(
         label: LocaleKeys.settings_ai_replace.tr(),
         onPressed: () => setState(() => _replacing = true),
@@ -296,7 +305,7 @@ class _LlmProviderBlockState extends ConsumerState<_LlmProviderBlock> {
             _ => o.danger,
           },
         ),
-      if (suffix != null && !state.llmCloudAllowed) ...<Widget>[
+      if (_justSaved && suffix != null && !state.llmCloudAllowed) ...<Widget>[
         const SizedBox(height: OatsSpace.sm),
         OatsNotice(
           icon: Icons.cloud_off_outlined,
