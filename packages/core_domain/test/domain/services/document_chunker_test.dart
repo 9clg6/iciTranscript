@@ -93,6 +93,33 @@ void main() {
     expect(_words(chunks.join(' ')), _words(text));
   });
 
+  test('un mot plus long que la taille maximale est coupé à la limite, '
+      'seul cas où un mot est coupé', () {
+    // Ex. une URL ou un bloc base64 colle dans un document.
+    final String token = List<String>.generate(3000, (int i) => 'abcdé'[i % 5])
+        .join();
+    final String text = 'Avant le bloc.\n\n$token\n\nAprès le bloc.';
+
+    final List<String> chunks = chunkDocument(text);
+
+    for (final String chunk in chunks) {
+      expect(chunk.length, inInclusiveRange(1, 1200));
+    }
+    final List<String> pieces = <String>[
+      for (final String chunk in chunks) ..._words(chunk),
+    ];
+    final int start = pieces.indexWhere((String w) => w.startsWith('abc'));
+    final List<String> tokenPieces = pieces
+        .sublist(start)
+        .takeWhile((String w) => w.startsWith(RegExp('[abcdé]')))
+        .toList();
+    expect(tokenPieces.length, greaterThanOrEqualTo(3),
+        reason: '3000 caractères, coupés à 1200 au plus');
+    expect(tokenPieces.join(), token);
+    expect(pieces.take(start), _words('Avant le bloc.'));
+    expect(pieces.skip(start + tokenPieces.length), _words('Après le bloc.'));
+  });
+
   test('aucun morceau n’est vide ni fait seulement de blancs', () {
     final String text = <String>[
       _paragraph(0, 1190),
