@@ -5,12 +5,18 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Client WebSocket configurable pour la communication avec voxmlx-serve.
 ///
-/// Wrape [WebSocketChannel] et gere la connexion, la deconnexion,
-/// la reconnexion, l'envoi et la reception de messages.
+/// Wrape [WebSocketChannel] et gere la connexion, la deconnexion, l'envoi et
+/// la reception de messages. La reconnexion et le tampon de coupure sont
+/// dans `TranscriptionRemoteDataSourceImpl`, qui lit [isConnected] avant
+/// chaque envoi : il doit donc etre faux des que la socket est fermee.
 class WebSocketClient {
   /// Cree une instance de [WebSocketClient].
-  WebSocketClient();
+  ///
+  /// [connectChannel] ouvre le canal (injectable pour les tests).
+  WebSocketClient({WebSocketChannel Function(Uri uri)? connectChannel})
+    : _connectChannel = connectChannel ?? WebSocketChannel.connect;
 
+  final WebSocketChannel Function(Uri uri) _connectChannel;
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _subscription;
 
@@ -28,20 +34,22 @@ class WebSocketClient {
   /// Se connecte au serveur WebSocket a l'URL donnee.
   Future<void> connect(String url) async {
     await disconnect();
-    final Uri uri = Uri.parse(url);
-    _channel = WebSocketChannel.connect(uri);
-    await _channel!.ready;
-    _subscription = _channel!.stream.listen(
+    final WebSocketChannel channel = _connectChannel(Uri.parse(url));
+    // Un echec de connexion leve ici : le canal n'est jamais marque connecte.
+    await channel.ready;
+    _channel = channel;
+    _subscription = channel.stream.listen(
       (dynamic data) {
         if (data is String) {
           _messageSubject.add(data);
         }
       },
       onError: (Object error) {
+        if (identical(_channel, channel)) _channel = null;
         _messageSubject.addError(error);
       },
       onDone: () {
-        _channel = null;
+        if (identical(_channel, channel)) _channel = null;
       },
     );
   }

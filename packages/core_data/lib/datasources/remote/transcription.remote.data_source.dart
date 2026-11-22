@@ -1,4 +1,5 @@
 import 'package:core_data/model/audio_chunk.dart';
+import 'package:core_data/model/audio_gap.dart';
 import 'package:core_data/model/remote/transcript_event.remote.model.dart';
 import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -20,6 +21,10 @@ abstract interface class TranscriptionRemoteDataSource {
 
   /// Stream des evenements de transcription de l'audio SYSTEME (interlocuteurs).
   Stream<TranscriptEventRemoteModel> get systemTranscriptionStream;
+
+  /// Audio jamais transcrit (coupure plus longue que le tampon, ou session
+  /// close avant la reconnexion) : une perte par coupure et par source.
+  Stream<AudioGap> get audioGaps;
 
   /// Sources ayant actuellement un tour de parole non finalisé.
   Set<AudioSource> get activeSources;

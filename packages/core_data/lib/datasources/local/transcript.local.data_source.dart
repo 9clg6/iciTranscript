@@ -5,11 +5,14 @@ abstract interface class TranscriptLocalDataSource {
   /// Recupere les segments d'une session.
   Future<List<TranscriptSegmentLocalModel>> getBySessionId(String sessionId);
 
-  /// Insere un nouveau segment.
+  /// Insere un segment, ou remplace celui de meme id.
   Future<void> insert(TranscriptSegmentLocalModel segment);
 
   /// Insere un lot de segments.
   Future<void> insertBatch(List<TranscriptSegmentLocalModel> segments);
+
+  /// Supprime un segment par son identifiant.
+  Future<void> deleteById(String id);
 
   /// Supprime tous les segments d'une session.
   Future<void> deleteBySessionId(String sessionId);

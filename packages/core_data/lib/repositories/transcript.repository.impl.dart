@@ -42,6 +42,11 @@ final class TranscriptRepositoryImpl implements TranscriptRepository {
   }
 
   @override
+  Future<void> deleteById(String id) {
+    return _localDataSource.deleteById(id);
+  }
+
+  @override
   Future<void> deleteBySessionId(String sessionId) {
     return _localDataSource.deleteBySessionId(sessionId);
   }
