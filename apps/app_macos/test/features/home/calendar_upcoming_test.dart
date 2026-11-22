@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -67,6 +68,7 @@ Map<String, Object?> _event(
 
 void main() {
   setUp(resetPrefs);
+  tearDown(resetPrefs);
 
   late FakeLiveTranscriptionViewModel live;
 
@@ -423,8 +425,8 @@ void main() {
     });
   });
 
-  testWidgets('aujourd\'hui, un événement sans note n\'est pas inventé dans '
-      'l\'historique', (WidgetTester tester) async {
+  testWidgets('aujourd\'hui, un événement fini sans note n\'est pas inventé '
+      'dans l\'historique', (WidgetTester tester) async {
     _writePrefs(<String, Object?>{'calendar_connected': true});
     FakeCalendarPlatform(
       status: 'fullAccess',
@@ -433,11 +435,26 @@ void main() {
         _event('a', 'Point de 11 h', DateTime(2026, 11, 23, 11)),
       ],
     ).install();
+    final DateTime older = DateTime(2026, 11, 20, 9);
 
-    await pumpHome(tester);
+    await pumpHome(
+      tester,
+      sessions: <SessionEntity>[
+        SessionEntity(
+          id: 'old',
+          title: 'Ancienne note',
+          createdAt: older,
+          updatedAt: older,
+          durationSeconds: 600,
+          status: SessionStatus.completed,
+        ),
+      ],
+    );
 
-    // Fini et sans note : ni dans « À venir », ni dans l'historique.
+    // L'historique reste la liste des notes ; « À venir » ne garde pas ce
+    // qui est fini.
+    expect(find.text('Ancienne note'), findsOneWidget);
+    expect(find.text('Point de 11 h'), findsOneWidget);
     expect(find.text('Réunion du matin'), findsNothing);
-    expect(find.text('common.label.today'.tr()), findsNothing);
   });
 }

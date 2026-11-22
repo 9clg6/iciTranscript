@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,8 +49,17 @@ void _writePrefs(Map<String, Object?> prefs) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(resetPrefs);
+  tearDown(resetPrefs);
 
   late LiveServiceHarness harness;
+  late ProviderContainer container;
+
+  /// Session telle que rangée, une fois [check] vérifié (lien écrit en
+  /// différé après la création).
+  Future<SessionEntity> linked(void Function(SessionEntity s) check) async {
+    await eventually(() => check(harness.sessions.store.values.single));
+    return harness.sessions.store.values.single;
+  }
 
   Future<SessionEntity> startNote() async {
     harness = LiveServiceHarness(FakeAsync());
@@ -65,6 +75,7 @@ void main() {
       ],
     );
     addTearDown(c.dispose);
+    container = c;
     c.read(liveTranscriptionViewModelProvider);
     await Future<void>.delayed(const Duration(milliseconds: 200));
     unawaited(
@@ -100,9 +111,11 @@ void main() {
       events: <Map<String, Object?>>[comite()],
     ).install();
 
-    final SessionEntity s = await startNote();
+    await startNote();
+    final SessionEntity s = await linked(
+      (SessionEntity s) => expect(s.calendarEventId, 'evt-comite'),
+    );
 
-    expect(s.calendarEventId, 'evt-comite');
     expect(s.calendarEventTitle, 'Comité produit');
     expect(s.title, 'Comité produit');
     expect(s.attendees, <String>['Alice Martin', 'Chloé Durand']);
@@ -117,7 +130,29 @@ void main() {
       ],
     ).install();
 
-    expect((await startNote()).calendarEventId, 'evt-comite');
+    await startNote();
+    await linked((SessionEntity s) => expect(s.calendarEventId, 'evt-comite'));
+  });
+
+  test('le lien survit à l\'arrêt de l\'enregistrement', () async {
+    _writePrefs(<String, Object?>{'calendar_connected': true});
+    FakeCalendarPlatform(
+      status: 'fullAccess',
+      events: <Map<String, Object?>>[comite()],
+    ).install();
+    await startNote();
+    await linked((SessionEntity s) => expect(s.calendarEventId, 'evt-comite'));
+
+    unawaited(
+      container.read(liveTranscriptionViewModelProvider.notifier).stopSession(),
+    );
+
+    final SessionEntity s = await linked(
+      (SessionEntity s) => expect(s.status, SessionStatus.completed),
+    );
+    expect(s.calendarEventId, 'evt-comite');
+    expect(s.title, 'Comité produit');
+    expect(s.attendees, <String>['Alice Martin', 'Chloé Durand']);
   });
 
   test('aucun événement proche : pas de lien, titre par défaut', () async {

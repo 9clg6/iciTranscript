@@ -40,6 +40,8 @@ void main() {
   late AppDatabase db;
   late FakeCalendarPlatform platform;
 
+  tearDown(resetPrefs);
+
   Map<String, Object?> event(String id, String title, int hour) => eventJson(
     id: id,
     title: title,

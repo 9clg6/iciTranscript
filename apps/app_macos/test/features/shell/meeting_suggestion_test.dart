@@ -34,6 +34,7 @@ final DateTime _anchor = DateTime(2026, 11, 23, 10);
 
 void main() {
   setUp(resetPrefs);
+  tearDown(resetPrefs);
 
   void writePrefs(Map<String, Object?> prefs) {
     prefsFile.parent.createSync(recursive: true);
@@ -62,9 +63,9 @@ void main() {
     return f;
   }
 
-  final Finder callTitle = find.text('meeting.suggestion.call_title'.tr());
-  final Finder startButton = find.text('meeting.suggestion.start'.tr());
-  final Finder dismissButton = find.text('meeting.suggestion.dismiss'.tr());
+  Finder callTitle() => find.text('meeting.suggestion.call_title'.tr());
+  Finder startButton() => find.text('meeting.suggestion.start'.tr());
+  Finder dismissButton() => find.text('meeting.suggestion.dismiss'.tr());
 
   Future<void> hold(
     WidgetTester tester,
@@ -86,15 +87,15 @@ void main() {
       await hold(tester, mic, <String>[
         'us.zoom.xos',
       ], const Duration(seconds: 1));
-      expect(callTitle, findsNothing, reason: 'pas avant 3 s');
+      expect(callTitle(), findsNothing, reason: 'pas avant 3 s');
 
       await tester.pump(const Duration(seconds: 3));
       await settle(tester);
 
-      expect(callTitle, findsOneWidget);
+      expect(callTitle(), findsOneWidget);
       expect(find.textContaining('Zoom'), findsWidgets);
-      expect(startButton, findsOneWidget);
-      expect(dismissButton, findsOneWidget);
+      expect(startButton(), findsOneWidget);
+      expect(dismissButton(), findsOneWidget);
     });
 
     testWidgets('« Démarrer la note » lance l\'enregistrement et ferme '
@@ -105,11 +106,11 @@ void main() {
         'us.zoom.xos',
       ], const Duration(seconds: 4));
 
-      await tester.tap(startButton);
+      await tester.tap(startButton());
       await settle(tester);
 
       expect(f.live.startCalls, 1);
-      expect(callTitle, findsNothing);
+      expect(callTitle(), findsNothing);
       final ProviderContainer c = ProviderScope.containerOf(
         tester.element(find.byType(RootAppWidget)),
       );
@@ -126,23 +127,23 @@ void main() {
         'us.zoom.xos',
       ], const Duration(seconds: 4));
 
-      await tester.tap(dismissButton);
+      await tester.tap(dismissButton());
       await settle(tester);
-      expect(callTitle, findsNothing);
+      expect(callTitle(), findsNothing);
       expect(f.live.startCalls, 0);
 
       await hold(tester, mic, <String>[], const Duration(seconds: 1));
       await hold(tester, mic, <String>[
         'us.zoom.xos',
       ], const Duration(minutes: 5));
-      expect(callTitle, findsNothing, reason: 'en sourdine 10 min');
+      expect(callTitle(), findsNothing, reason: 'en sourdine 10 min');
 
       await hold(tester, mic, <String>[], const Duration(seconds: 1));
       await tester.pump(const Duration(minutes: 5));
       await hold(tester, mic, <String>[
         'us.zoom.xos',
       ], const Duration(seconds: 4));
-      expect(callTitle, findsOneWidget);
+      expect(callTitle(), findsOneWidget);
     });
 
     testWidgets('l\'app lâche le micro : l\'invite disparaît', (
@@ -153,11 +154,11 @@ void main() {
       await hold(tester, mic, <String>[
         'us.zoom.xos',
       ], const Duration(seconds: 4));
-      expect(callTitle, findsOneWidget);
+      expect(callTitle(), findsOneWidget);
 
       await hold(tester, mic, <String>[], const Duration(seconds: 1));
 
-      expect(callTitle, findsNothing);
+      expect(callTitle(), findsNothing);
     });
 
     testWidgets('la même prise de micro ne redemande pas après Ignorer, même '
@@ -167,13 +168,13 @@ void main() {
       await hold(tester, mic, <String>[
         'us.zoom.xos',
       ], const Duration(seconds: 4));
-      await tester.tap(dismissButton);
+      await tester.tap(dismissButton());
       await settle(tester);
 
       await tester.pump(const Duration(minutes: 11));
       await settle(tester);
 
-      expect(callTitle, findsNothing);
+      expect(callTitle(), findsNothing);
     });
 
     testWidgets('une app inconnue qui tient le micro : rien', (
@@ -186,8 +187,8 @@ void main() {
         'com.example.recorder',
       ], const Duration(seconds: 10));
 
-      expect(callTitle, findsNothing);
-      expect(startButton, findsNothing);
+      expect(callTitle(), findsNothing);
+      expect(startButton(), findsNothing);
     });
 
     testWidgets('pendant qu\'Oats enregistre : rien', (
@@ -202,7 +203,7 @@ void main() {
         'us.zoom.xos',
       ], const Duration(seconds: 10));
 
-      expect(callTitle, findsNothing);
+      expect(callTitle(), findsNothing);
     });
 
     testWidgets('détection coupée dans Réglages : rien', (
@@ -216,7 +217,7 @@ void main() {
         'us.zoom.xos',
       ], const Duration(seconds: 10));
 
-      expect(callTitle, findsNothing);
+      expect(callTitle(), findsNothing);
     });
 
     testWidgets('invite non bloquante : la barre latérale reste utilisable', (
@@ -240,7 +241,7 @@ void main() {
         tester.element(find.byType(RootAppWidget)),
       );
       expect(c.read(shellViewControllerProvider), ShellView.documents);
-      expect(callTitle, findsOneWidget);
+      expect(callTitle(), findsOneWidget);
     });
 
     testWidgets('mode auto : un appel détecté demande quand même', (
@@ -254,7 +255,7 @@ void main() {
         'us.zoom.xos',
       ], const Duration(seconds: 4));
 
-      expect(callTitle, findsOneWidget);
+      expect(callTitle(), findsOneWidget);
       expect(f.live.startCalls, 0);
     });
   });
@@ -301,7 +302,7 @@ void main() {
       await pumpApp(tester);
       await goToDocuments(tester);
 
-      expect(startButton, findsOneWidget);
+      expect(startButton(), findsOneWidget);
       expect(find.text('Stand-up équipe'), findsOneWidget);
     });
 
@@ -316,7 +317,7 @@ void main() {
       await pumpApp(tester);
       await goToDocuments(tester);
 
-      expect(startButton, findsNothing);
+      expect(startButton(), findsNothing);
     });
 
     testWidgets('en cours mais une note existe déjà pour lui : pas d\'invite', (
@@ -344,7 +345,7 @@ void main() {
       );
       await goToDocuments(tester);
 
-      expect(startButton, findsNothing);
+      expect(startButton(), findsNothing);
     });
 
     testWidgets('l\'événement se termine : l\'invite disparaît', (
@@ -354,12 +355,12 @@ void main() {
       FakeMeetingPlatform().install();
       await pumpApp(tester);
       await goToDocuments(tester);
-      expect(startButton, findsOneWidget);
+      expect(startButton(), findsOneWidget);
 
       await tester.pump(const Duration(minutes: 16));
       await settle(tester);
 
-      expect(startButton, findsNothing);
+      expect(startButton(), findsNothing);
     });
 
     testWidgets('mode auto : la note démarre sans invite', (
@@ -376,7 +377,7 @@ void main() {
       await goToDocuments(tester);
 
       expect(f.live.startCalls, 1);
-      expect(startButton, findsNothing);
+      expect(startButton(), findsNothing);
     });
 
     testWidgets('macOS < 14 : les suggestions de l\'agenda restent', (
@@ -388,7 +389,7 @@ void main() {
       await pumpApp(tester);
       await goToDocuments(tester);
 
-      expect(startButton, findsOneWidget);
+      expect(startButton(), findsOneWidget);
     });
 
     testWidgets('agenda non connecté : aucune invite d\'agenda, rien lu', (
@@ -403,7 +404,7 @@ void main() {
       await pumpApp(tester);
       await goToDocuments(tester);
 
-      expect(startButton, findsNothing);
+      expect(startButton(), findsNothing);
       expect(platform.dataReads, isEmpty);
     });
   });

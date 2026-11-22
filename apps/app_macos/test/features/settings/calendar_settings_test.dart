@@ -41,6 +41,7 @@ import '../../helpers/settings_fakes.dart';
 // absent = true), `meeting_detection_mode` (`ask` | `auto`, absent = ask).
 void main() {
   setUp(resetPrefs);
+  tearDown(resetPrefs);
 
   List<Override> overrides(WidgetTester tester) => <Override>[
     apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
