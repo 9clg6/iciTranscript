@@ -13,6 +13,7 @@ final class DictationSettingsState {
     this.settings = const DictationSettings(),
     this.accessibilityTrusted = false,
     this.keyLabel,
+    this.download = ModelDownload.idle,
   });
 
   /// Réglages enregistrés (défauts tant que prefs.json n'est pas lu).
@@ -25,7 +26,11 @@ final class DictationSettingsState {
   /// inconnue).
   final String? keyLabel;
 
+  /// Téléchargement du modèle demandé dans Réglages.
+  final ModelDownload download;
+
   DictationSettingsState _with({
+    ModelDownload? download,
     DictationSettings? settings,
     bool? accessibilityTrusted,
     String? Function()? keyLabel,
@@ -33,8 +38,12 @@ final class DictationSettingsState {
     settings: settings ?? this.settings,
     accessibilityTrusted: accessibilityTrusted ?? this.accessibilityTrusted,
     keyLabel: keyLabel != null ? keyLabel() : this.keyLabel,
+    download: download ?? this.download,
   );
 }
+
+/// Téléchargement du modèle de transcription.
+enum ModelDownload { idle, running, failed }
 
 /// Section « Dictée » de Réglages : lit et écrit prefs.json par le
 /// `PrefsStore` partagé, puis fait appliquer les réglages par la dictée.
@@ -108,6 +117,20 @@ class DictationSettingsViewModel extends _$DictationSettingsViewModel {
   /// Ouvre le volet Accessibilité des Réglages Système.
   Future<void> openAccessibilitySettings() =>
       _output.openAccessibilitySettings();
+
+  /// Geste explicite : démarre le serveur, qui télécharge le modèle.
+  Future<void> downloadModel() async {
+    state = state._with(download: ModelDownload.running);
+    try {
+      await ref.read(dictationControllerProvider).downloadModel();
+    } catch (_) {
+      if (ref.mounted) state = state._with(download: ModelDownload.failed);
+      return;
+    }
+    if (!ref.mounted) return;
+    state = state._with(download: ModelDownload.idle);
+    ref.invalidate(transcriptionModelCachedProvider);
+  }
 
   Future<void> _save(DictationSettings settings) async {
     final bool newKey =

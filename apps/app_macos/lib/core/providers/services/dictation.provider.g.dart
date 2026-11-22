@@ -232,7 +232,7 @@ final class DictationControllerProvider
 }
 
 String _$dictationControllerHash() =>
-    r'fbf6f3ba69ac688dda8b53223e9ae7f67d94aec7';
+    r'ee732ca23a2eacd6497ac5e74b39561e231be838';
 
 /// État du raccourci global (Réglages : raccourci déjà pris).
 
@@ -278,3 +278,45 @@ final class DictationShortcutStatusProvider
 
 String _$dictationShortcutStatusHash() =>
     r'38ea026782085f892974953656734b4ba8c04e2e';
+
+/// Modèle de transcription déjà dans le cache (Réglages : proposer le
+/// téléchargement). Relu à chaque lecture (non gardé).
+
+@ProviderFor(transcriptionModelCached)
+const transcriptionModelCachedProvider = TranscriptionModelCachedProvider._();
+
+/// Modèle de transcription déjà dans le cache (Réglages : proposer le
+/// téléchargement). Relu à chaque lecture (non gardé).
+
+final class TranscriptionModelCachedProvider
+    extends $FunctionalProvider<AsyncValue<bool>, bool, FutureOr<bool>>
+    with $FutureModifier<bool>, $FutureProvider<bool> {
+  /// Modèle de transcription déjà dans le cache (Réglages : proposer le
+  /// téléchargement). Relu à chaque lecture (non gardé).
+  const TranscriptionModelCachedProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'transcriptionModelCachedProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$transcriptionModelCachedHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<bool> $createElement($ProviderPointer pointer) =>
+      $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<bool> create(Ref ref) {
+    return transcriptionModelCached(ref);
+  }
+}
+
+String _$transcriptionModelCachedHash() =>
+    r'72133fdb974dcbbe6f88a457a7977eea66899159';

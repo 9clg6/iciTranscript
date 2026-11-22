@@ -213,6 +213,10 @@ abstract class  LocaleKeys {
   static const settings_dictation_accessibility_missing = 'settings.dictation.accessibility_missing';
   static const settings_dictation_accessibility_request = 'settings.dictation.accessibility_request';
   static const settings_dictation_accessibility_open = 'settings.dictation.accessibility_open';
+  static const settings_dictation_model_missing = 'settings.dictation.model_missing';
+  static const settings_dictation_download_model = 'settings.dictation.download_model';
+  static const settings_dictation_model_downloading = 'settings.dictation.model_downloading';
+  static const settings_dictation_model_download_failed = 'settings.dictation.model_download_failed';
   static const settings_dictation = 'settings.dictation';
   static const settings = 'settings';
   static const ollama_step_binary = 'ollama.step_binary';

@@ -244,7 +244,11 @@
       "accessibility_granted": "Autorisée : le texte est collé directement.",
       "accessibility_missing": "Requise pour coller. Sans elle, le texte reste dans le presse-papiers.",
       "accessibility_request": "Autoriser",
-      "accessibility_open": "Ouvrir les Réglages"
+      "accessibility_open": "Ouvrir les Réglages",
+      "model_missing": "Le modèle de transcription (plusieurs Go) n'est pas encore sur ce Mac. Rien n'est téléchargé sans votre accord.",
+      "download_model": "Télécharger le modèle",
+      "model_downloading": "Téléchargement du modèle… La dictée sera prête à la fin.",
+      "model_download_failed": "Le téléchargement a échoué. Vérifiez la connexion, puis réessayez."
     }
   },
   "ollama": {

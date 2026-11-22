@@ -238,11 +238,16 @@ class _DictationViewModel extends DictationSettingsViewModel {
 }
 
 /// Section Dictée : état montré et état du raccourci.
-typedef _Dictation = ({DictationSettingsState state, ShortcutStatus status});
+typedef _Dictation = ({
+  DictationSettingsState state,
+  ShortcutStatus status,
+  bool cached,
+});
 
 const _Dictation _dictationOn = (
   state: DictationSettingsState(accessibilityTrusted: true),
   status: ShortcutStatus.registered,
+  cached: true,
 );
 
 final Map<String, _Dictation> _dictationStates = <String, _Dictation>{
@@ -253,16 +258,41 @@ final Map<String, _Dictation> _dictationStates = <String, _Dictation>{
       accessibilityTrusted: true,
     ),
     status: ShortcutStatus.disabled,
+    cached: true,
   ),
   'shortcut-error': (
     state: const DictationSettingsState(accessibilityTrusted: true),
     status: ShortcutStatus.unavailable,
+    cached: true,
   ),
   'no-accessibility': (
     state: const DictationSettingsState(),
     status: ShortcutStatus.registered,
+    cached: true,
+  ),
+  'model-missing': (
+    state: const DictationSettingsState(accessibilityTrusted: true),
+    status: ShortcutStatus.registered,
+    cached: false,
+  ),
+  'model-downloading': (
+    state: const DictationSettingsState(
+      accessibilityTrusted: true,
+      download: ModelDownload.running,
+    ),
+    status: ShortcutStatus.registered,
+    cached: false,
+  ),
+  'model-failed': (
+    state: const DictationSettingsState(
+      accessibilityTrusted: true,
+      download: ModelDownload.failed,
+    ),
+    status: ShortcutStatus.registered,
+    cached: false,
   ),
 };
+
 /// Note en cours de résumé : début du texte reçu, la suite arrive.
 SessionDetailState _streaming(SessionDetailState s) => s.copyWith(
   summary:
@@ -295,6 +325,9 @@ List<Override> _overrides(
   ),
   dictationShortcutStatusProvider.overrideWith(
     (Ref ref) => Stream<ShortcutStatus>.value(dictation.status),
+  ),
+  transcriptionModelCachedProvider.overrideWith(
+    (Ref ref) async => dictation.cached,
   ),
   kernelProvider.overrideWith((Ref ref) async {}),
   databaseProvider.overrideWithValue(db),

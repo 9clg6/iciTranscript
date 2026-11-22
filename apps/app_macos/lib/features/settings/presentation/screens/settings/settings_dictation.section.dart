@@ -128,6 +128,9 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
         ref.watch(dictationShortcutStatusProvider).value ==
         ShortcutStatus.unavailable;
     final DictationSettings settings = state.settings;
+    final bool modelMissing =
+        settings.enabled &&
+        ref.watch(transcriptionModelCachedProvider).value == false;
     final Oats o = context.oats;
     // Dictée coupée : réglages visibles mais estompés.
     final TextStyle value = settings.enabled
@@ -146,6 +149,11 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
               onChanged: vm.setEnabled,
             ),
           ),
+          if (modelMissing)
+            Padding(
+              padding: const EdgeInsets.all(OatsSpace.lg),
+              child: _ModelDownloadNotice(download: state.download, vm: vm),
+            ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
@@ -262,4 +270,44 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
     DictationOutputMode.clipboard =>
       LocaleKeys.settings_dictation_output_clipboard.tr(),
   };
+}
+
+/// Modèle absent : jamais téléchargé sans ce geste (plusieurs Go).
+class _ModelDownloadNotice extends StatelessWidget {
+  const _ModelDownloadNotice({required this.download, required this.vm});
+
+  final ModelDownload download;
+  final DictationSettingsViewModel vm;
+
+  @override
+  Widget build(BuildContext context) {
+    final Oats o = context.oats;
+    return switch (download) {
+      ModelDownload.running => OatsNotice(
+        icon: Icons.downloading_outlined,
+        message: LocaleKeys.settings_dictation_model_downloading.tr(),
+        actions: <Widget>[
+          SizedBox.square(
+            dimension: OatsIconSize.md,
+            child: CircularProgressIndicator(strokeWidth: 2, color: o.muted),
+          ),
+        ],
+      ),
+      ModelDownload.idle || ModelDownload.failed => OatsNotice(
+        icon: download == ModelDownload.failed
+            ? Icons.error_outline
+            : Icons.download_outlined,
+        danger: download == ModelDownload.failed,
+        message: download == ModelDownload.failed
+            ? LocaleKeys.settings_dictation_model_download_failed.tr()
+            : LocaleKeys.settings_dictation_model_missing.tr(),
+        actions: <Widget>[
+          OatsButton(
+            label: LocaleKeys.settings_dictation_download_model.tr(),
+            onPressed: vm.downloadModel,
+          ),
+        ],
+      ),
+    };
+  }
 }

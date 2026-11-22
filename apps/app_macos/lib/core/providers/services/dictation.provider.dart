@@ -4,6 +4,7 @@ import 'package:ici_transcript/application/services/dictation/dictation_controll
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
 import 'package:ici_transcript/core/platform/text_output_channel.dart';
+import 'package:ici_transcript/core/platform/transcription_model_cache.dart';
 import 'package:ici_transcript/core/platform/voxmlx_server.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
@@ -51,6 +52,7 @@ DictationController dictationController(Ref ref) {
     serverCommand: voxmlxCommand,
     serverArgs: voxmlxArgs(),
     prefs: ref.watch(prefsStoreProvider),
+    isTranscriptionModelCached: () async => transcriptionModelCachedNow(),
     webSocketUrl: ref
         .watch(launchServerPortsProvider)
         .transcriptionWebSocket
@@ -76,3 +78,9 @@ DictationController dictationController(Ref ref) {
 @riverpod
 Stream<ShortcutStatus> dictationShortcutStatus(Ref ref) =>
     ref.watch(dictationControllerProvider).shortcutStatusStream;
+
+/// Modèle de transcription déjà dans le cache (Réglages : proposer le
+/// téléchargement). Relu à chaque lecture (non gardé).
+@riverpod
+Future<bool> transcriptionModelCached(Ref ref) async =>
+    transcriptionModelCachedNow();

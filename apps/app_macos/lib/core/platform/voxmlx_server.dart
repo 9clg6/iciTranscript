@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:ici_transcript/core/platform/transcription_model_cache.dart';
+
 /// Commande du serveur de transcription (voxmlx-serve), partagée par les
 /// réunions et la dictée : un seul serveur, démarré une seule fois.
 const String voxmlxCommand = 'uvx';
@@ -15,7 +17,7 @@ List<String> voxmlxArgs() => <String>[
   'git+https://github.com/T0mSIlver/voxmlx.git@2ea0639570e447493d04349d96a41f71c031ae0d[server]',
   'voxmlx-serve',
   '--model',
-  'T0mSIlver/Voxtral-Mini-4B-Realtime-2602-MLX-4bit',
+  transcriptionModelId,
   '--parent-pid',
   '$pid',
 ];

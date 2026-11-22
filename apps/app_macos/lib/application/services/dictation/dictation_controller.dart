@@ -57,6 +57,12 @@ final class DictationNothingHeard extends DictationState {
   const DictationNothingHeard();
 }
 
+/// Modèle de transcription absent : rien n'est téléchargé sans un geste
+/// explicite ([DictationController.downloadModel], dans Réglages).
+final class DictationModelMissing extends DictationState {
+  const DictationModelMissing();
+}
+
 /// Échec explicite.
 final class DictationError extends DictationState {
   const DictationError(this.reason);
@@ -110,7 +116,9 @@ final class DictationController {
     required List<String> serverArgs,
     required String webSocketUrl,
     PrefsStore? prefs,
+    Future<bool> Function()? isTranscriptionModelCached,
   }) : _prefs = prefs ?? PrefsStore(),
+       _modelCached = isTranscriptionModelCached,
        _arbiter = arbiter,
        _shortcuts = shortcuts,
        _output = textOutput,
@@ -162,6 +170,8 @@ final class DictationController {
   final List<String> _serverArgs;
   final String _webSocketUrl;
   final PrefsStore _prefs;
+  // Null : pas de vérification, le modèle est supposé là.
+  final Future<bool> Function()? _modelCached;
   final Log _log = Log.named('DictationController');
 
   // Écoutés après le premier enregistrement réussi : sans plugin (tests),
@@ -275,6 +285,9 @@ final class DictationController {
   Future<void> _warmServer() async {
     if (_lending != null || _live.isRecording) return;
     try {
+      // Démarrer le serveur téléchargerait le modèle (plusieurs Go) sans
+      // que l'utilisateur l'ait demandé.
+      if (!await _isModelCached()) return;
       if (await _processes.isServerRunning()) {
         _serverReady = true;
         return;
@@ -283,6 +296,23 @@ final class DictationController {
     } catch (e) {
       _log.warning('Démarrage du serveur pour la dictée: $e');
     }
+  }
+
+  Future<bool> _isModelCached() async {
+    final Future<bool> Function()? check = _modelCached;
+    if (check == null) return true;
+    try {
+      return await check();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Geste explicite de Réglages : démarre le serveur, qui télécharge le
+  /// modèle ; rend la main une fois prêt, ou lève si le démarrage échoue.
+  Future<void> downloadModel() async {
+    await _startServerOnce();
+    if (state is DictationModelMissing) _state.add(const DictationIdle());
   }
 
   // Un seul démarrage en vol : pas de 2e démarrage à froid.
@@ -375,6 +405,12 @@ final class DictationController {
   Future<void> _begin(_Run? previous) async {
     final _Run run = _Run(clock.now());
     _run = run;
+    if (_modelCached != null && !await _isModelCached()) {
+      // Ni capture, ni Échap, ni serveur : Réglages propose le téléchargement.
+      run.finished = true;
+      if (identical(_run, run)) _state.add(const DictationModelMissing());
+      return;
+    }
     unawaited(_shortcuts.setCancelKeyEnabled(true));
     _arbiter.dictationStarted();
     // Ancien flux resté ouvert après un délai de garde : fermé d'abord.
