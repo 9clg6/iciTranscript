@@ -33,6 +33,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
+import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -69,6 +70,7 @@ final class FileStore implements SessionRepository, TranscriptRepository {
         text: m['text'] as String,
         timestampMs: m['timestampMs'] as int,
         createdAt: DateTime.parse(m['createdAt'] as String),
+        isPartial: m['isPartial'] as bool? ?? false,
       );
     }
   }
@@ -102,6 +104,7 @@ final class FileStore implements SessionRepository, TranscriptRepository {
                 'text': s.text,
                 'timestampMs': s.timestampMs,
                 'createdAt': s.createdAt.toIso8601String(),
+                'isPartial': s.isPartial,
               },
           ],
         }),
@@ -170,12 +173,21 @@ final class FileStore implements SessionRepository, TranscriptRepository {
 
 /// Logs every transcribe call (start, end, outcome) of the real transcriber.
 final class TimedTranscriber implements PcmTranscriber {
-  TimedTranscriber(this.inner);
+  TimedTranscriber(this.inner, {this.onStart});
   final PcmTranscriber inner;
+  final void Function()? onStart;
 
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
-    log('transcribe_start', <String, Object?>{'ms': pcm.length ~/ 32});
+    onStart?.call();
+    log('transcribe_start', <String, Object?>{
+      'ms': pcm.length ~/ 32,
+      'pieces_ms': <List<int>>[
+        for (final ({int start, int end}) p
+            in WebSocketPcmTranscriber.splitAtSilences(pcm))
+          <int>[p.start ~/ 32, p.end ~/ 32],
+      ],
+    });
     try {
       final List<({int offsetMs, String text})> r = await inner.transcribe(pcm);
       log('transcribe_end', <String, Object?>{'pieces': r.length});
@@ -219,6 +231,52 @@ void main() {
         StreamController<ServerState>.broadcast();
 
     String recordingsDir = LiveTranscriptionService.recordingsDir;
+    if (mode == 'langcheck') {
+      // False positives of the language check: reference sentences of both
+      // corpora, and the server's real `done` texts from fault-free runs
+      // (FILES, comma-separated JSONL).
+      bool flagged(String t) {
+        final String n = TranscriptTextNormalizer.normalize(t);
+        return TranscriptTextNormalizer.isForeignScript(n) ||
+            TranscriptTextNormalizer.isUnexpectedLanguage(n);
+      }
+
+      for (final String corpus in <String>['live', 'live60']) {
+        final Map<String, dynamic> sched =
+            jsonDecode(File('$audio/$corpus/schedule.json').readAsStringSync())
+                as Map<String, dynamic>;
+        final List<String> texts = <String>[
+          for (final dynamic src in sched.values)
+            for (final dynamic x in src as List<dynamic>)
+              (x as Map<String, dynamic>)['text'] as String,
+        ];
+        final List<String> hits = texts.where(flagged).toList();
+        log('langcheck', <String, Object?>{
+          'set': 'reference:$corpus',
+          'n': texts.length,
+          'flagged': hits.length,
+          'examples': hits.take(5).toList(),
+        });
+      }
+      for (final String f in (env['FILES'] ?? '').split(',')) {
+        if (f.isEmpty) continue;
+        final List<String> texts = <String>[
+          for (final String l in File(f).readAsLinesSync())
+            if ((jsonDecode(l) as Map<String, dynamic>)['ev'] == 'done')
+              (jsonDecode(l) as Map<String, dynamic>)['text'] as String,
+        ].where((String t) => t.trim().isNotEmpty).toList();
+        final List<String> hits = texts.where(flagged).toList();
+        log('langcheck', <String, Object?>{
+          'set': 'server:$f',
+          'n': texts.length,
+          'flagged': hits.length,
+          'examples': hits.take(8).toList(),
+        });
+      }
+      await closeProbeLog();
+      return;
+    }
+
     if (mode == 'relaunch') {
       recordingsDir =
           (jsonDecode(File('$stateDir/run_info.json').readAsStringSync())
@@ -232,6 +290,24 @@ void main() {
     final GapBackfillService backfill = GapBackfillService(
       transcriber: TimedTranscriber(
         WebSocketPcmTranscriber(url: serverUrl, shouldYield: isRecording),
+        onStart: () => log('plan', <String, Object?>{
+          'gaps': <Map<String, Object?>>[
+            for (final SessionEntity se in store.sessions.values)
+              for (final BackfillGap g in GapBackfillService.plan(
+                store.segments.values
+                    .where((TranscriptSegmentEntity x) => x.sessionId == se.id)
+                    .toList(),
+              ))
+                <String, Object?>{
+                  'session': se.id,
+                  'marker': g.markerId,
+                  'src': g.source.name,
+                  'start_s': g.startMs / 1000,
+                  'end_s': g.endMs / 1000,
+                  'replaced': g.replacedIds,
+                },
+          ],
+        }),
       ),
       transcripts: store,
       isRecording: isRecording,
@@ -269,6 +345,7 @@ void main() {
               'src': s.source == AudioSource.input ? 'mic' : 'sys',
               't': s.timestampMs / 1000,
               'id': s.id,
+              'partial': s.isPartial,
               'text': s.text,
             },
       ],
@@ -352,7 +429,8 @@ void main() {
         log('segment', <String, Object?>{
           'session': s.sessionId,
           'src': s.source == AudioSource.input ? 'mic' : 'sys',
-          't': s.timestampMs / 1000,
+          'ts': s.timestampMs / 1000,
+          'partial': s.isPartial,
           'id': s.id,
           'text': s.text,
         });
@@ -443,6 +521,29 @@ void main() {
       await f(sysProxy);
     }
 
+    Future<void> waitNoMarkers(String step, {int seconds = 180}) async {
+      final Stopwatch sw = Stopwatch()..start();
+      while (sw.elapsed.inSeconds < seconds &&
+          store.segments.values.any(
+            (TranscriptSegmentEntity s) =>
+                s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix),
+          )) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      log('markers_gone', <String, Object?>{
+        'step': step,
+        'after_s': sw.elapsedMilliseconds / 1000,
+        'left': store.segments.values
+            .where(
+              (TranscriptSegmentEntity s) =>
+                  s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix),
+            )
+            .map((TranscriptSegmentEntity s) => s.text)
+            .toList(),
+      });
+      snap('$step+wait');
+    }
+
     final String live = '$audio/live';
     final String live60 = '$audio/live60';
 
@@ -466,10 +567,34 @@ void main() {
       await feed(live60, 90, label: 'B');
       await stop('B');
       snap('after_B_stopped');
-      await Future<void>.delayed(const Duration(seconds: 20));
-      snap('after_B_plus_20s');
-      await retry.retryPending(); // what the next launch would do
-      snap('after_retryPending');
+      await waitNoMarkers('after_B');
+      dumpSegments();
+    } else if (mode == 'D' || mode == 'long20') {
+      // D: refusal 60-210 s over 300 s. long20: 20 min of live60 with a 3 s
+      // mic cut at 5 min and a 45 s refusal at 12 min. Stop drains, then
+      // the backfill runs as in the app.
+      final bool d = mode == 'D';
+      await start(mode);
+      await feed(
+        d ? live : live60,
+        d ? 300 : 1200,
+        label: mode,
+        faults: d
+            ? <double, Future<void> Function()>{
+                60: () => both((Proxy p) => p.refuse()),
+                210: () => both((Proxy p) => p.reopen()),
+              }
+            : <double, Future<void> Function()>{
+                301.5: () => micProxy.refuse(),
+                304.5: () => micProxy.reopen(),
+                720: () => both((Proxy p) => p.refuse()),
+                765: () => both((Proxy p) => p.reopen()),
+              },
+      );
+      snap('before_stop');
+      await stop(mode);
+      snap('after_stop');
+      await waitNoMarkers('after_stop', seconds: 60);
       dumpSegments();
     } else if (mode == 'yield') {
       // A: refusal from 20 s until its stop drain gives up -> gap -> backfill.
@@ -508,8 +633,7 @@ void main() {
       await feed(live60, 40, label: 'B');
       await stop('B');
       snap('after_B_stopped');
-      await Future<void>.delayed(const Duration(seconds: 20));
-      snap('after_B_plus_20s');
+      await waitNoMarkers('after_B', seconds: 120);
       serverStates.add(ServerState.ready); // a server-ready event, if any
       await Future<void>.delayed(const Duration(seconds: 1));
       await retry.dispose();
@@ -549,6 +673,7 @@ void main() {
         }
       }
       await stop('L');
+      await waitNoMarkers('after_L', seconds: 120);
       dumpSegments();
     }
     log('done_mode', <String, Object?>{'t': now()});
