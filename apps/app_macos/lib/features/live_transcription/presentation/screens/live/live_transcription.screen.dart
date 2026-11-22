@@ -10,6 +10,7 @@ import 'package:ici_transcript/features/history/presentation/screens/list/sessio
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/server_status.widget.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/finalising.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/session_controls.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
@@ -281,7 +282,11 @@ class _LiveTranscriptionScreenState
 
   Widget _buildToolbar(LiveTranscriptionState state) {
     final Oats o = context.oats;
-    final bool live = state.isRecording && !state.isPaused;
+    // Pendant la finalisation, la capture est arrêtée : plus de pastille.
+    final bool live =
+        state.isRecording &&
+        !state.isPaused &&
+        state.finalisingRemaining == null;
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: OatsSpace.lg,
@@ -292,10 +297,15 @@ class _LiveTranscriptionScreenState
       ),
       child: Row(
         children: <Widget>[
-          Flexible(child: ServerStatusWidget(
-              serverState: state.serverState,
-              portInUse: state.serverPortInUse,
-            )),
+          // Pendant la finalisation, l'état du serveur n'apporte rien : la
+          // place va au libellé de finalisation.
+          if (state.finalisingRemaining == null)
+            Flexible(
+              child: ServerStatusWidget(
+                serverState: state.serverState,
+                portInUse: state.serverPortInUse,
+              ),
+            ),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -311,28 +321,38 @@ class _LiveTranscriptionScreenState
               ],
             ),
           ),
-          SessionControlsWidget(
-            isRecording: state.isRecording,
-            isPaused: state.isPaused,
-            onStart: _vm.startSession,
-            onPause: _vm.pauseSession,
-            onResume: _vm.resumeSession,
-            onStop: () async {
-              final String? sessionId = await _vm.stopSession();
-              if (sessionId != null) {
-                // Ouvrir la note dans le shell. Retour ramène à l'accueil,
-                // ou ici si le coach prépare son retour (panneau du bas).
-                ref
-                    .read(shellViewControllerProvider.notifier)
-                    .show(
-                      state.isCoachEnabled ? ShellView.live : ShellView.home,
-                    );
-                ref
-                    .read(sessionListViewModelProvider.notifier)
-                    .selectSession(sessionId);
-              }
-            },
-          ),
+          if (state.finalisingRemaining case final Duration remaining)
+            // Plus de place que le chrono : le libellé reste lisible.
+            Flexible(
+              flex: 3,
+              child: FinalisingWidget(
+                remaining: remaining,
+                onSkip: _vm.skipFinalising,
+              ),
+            )
+          else
+            SessionControlsWidget(
+              isRecording: state.isRecording,
+              isPaused: state.isPaused,
+              onStart: _vm.startSession,
+              onPause: _vm.pauseSession,
+              onResume: _vm.resumeSession,
+              onStop: () async {
+                final String? sessionId = await _vm.stopSession();
+                if (sessionId != null) {
+                  // Ouvrir la note dans le shell. Retour ramène à l'accueil,
+                  // ou ici si le coach prépare son retour (panneau du bas).
+                  ref
+                      .read(shellViewControllerProvider.notifier)
+                      .show(
+                        state.isCoachEnabled ? ShellView.live : ShellView.home,
+                      );
+                  ref
+                      .read(sessionListViewModelProvider.notifier)
+                      .selectSession(sessionId);
+                }
+              },
+            ),
         ],
       ),
     );

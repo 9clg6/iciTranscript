@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
+import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_data/model/audio_chunk.dart' as data;
 import 'package:core_data/model/audio_gap.dart';
@@ -17,6 +18,8 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/enum/transcription_health.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/gap_backfill.service.dart';
+import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
@@ -50,8 +53,12 @@ final class LiveTranscriptionService {
     required TranscriptionService transcriptionService,
     LiveDiarizationService? liveDiarization,
     WavRecorder Function()? createWavRecorder,
+    GapBackfillService? gapBackfill,
+    GapBackfillRetry? gapBackfillRetry,
     ServerPorts? ports,
-  }) : _ports = ports ?? serverPorts(),
+  }) : _gapBackfill = gapBackfill,
+       _gapBackfillRetry = gapBackfillRetry,
+       _ports = ports ?? serverPorts(),
        _processManagerService = processManagerService,
        _audioCaptureChannel = audioCaptureChannel,
        _transcriptionRemoteDataSource = transcriptionRemoteDataSource,
@@ -66,6 +73,10 @@ final class LiveTranscriptionService {
   final TranscriptionService _transcriptionService;
   final LiveDiarizationService? _liveDiarization;
   final WavRecorder Function() _createWavRecorder;
+  final GapBackfillService? _gapBackfill;
+  // Si présent, la première tentative passe par lui : un serveur absent
+  // laisse la session en attente de reprise.
+  final GapBackfillRetry? _gapBackfillRetry;
 
   // Interlocuteurs en direct : id de segment système -> index (0, 1, …).
   final BehaviorSubject<Map<String, int>> _speakerLabels =
@@ -126,6 +137,35 @@ final class LiveTranscriptionService {
   /// toujours, même en [TranscriptionHealth.failed]).
   Stream<TranscriptionHealth> get transcriptionHealthStream => _health.stream;
 
+  // Arrêt : attendre le rattrapage étalé (sonde 2 : 29 s et 103 s après la
+  // fin de l'audio), au plus [_stopDrainLimit] ; une pause n'attend que
+  // [_pauseDrainLimit]. Ce qui reste devient une perte signalée.
+  static const Duration _stopDrainLimit = Duration(seconds: 120);
+  static const Duration _pauseDrainLimit = Duration(seconds: 5);
+  final PublishSubject<Duration> _finalisingRemaining =
+      PublishSubject<Duration>();
+  // Signal « Passer » de l'arrêt en cours : vaut pour l'attente du
+  // rattrapage comme pour le rattrapage depuis le WAV.
+  Completer<void>? _skipStop;
+
+  // Démarrage demandé (pas encore fini) : le serveur est réservé à
+  // l'enregistrement dès cet instant (le rattrapage cède), et un arrêt en
+  // cours passe sa finalisation.
+  bool _startRequested = false;
+  // Session réellement démarrée (et pas encore arrêtée).
+  bool _running = false;
+
+  /// Audio restant à transcrire pendant l'attente de l'arrêt (décroissant),
+  /// puis [Duration.zero] : de quoi afficher « finalisation… ».
+  Stream<Duration> get finalisingRemainingStream => _finalisingRemaining.stream;
+
+  /// Arrête d'attendre le rattrapage : l'audio restant devient une perte
+  /// signalée (repère), l'arrêt se termine aussitôt.
+  void skipFinalising() {
+    final Completer<void>? skip = _skipStop;
+    if (skip != null && !skip.isCompleted) skip.complete();
+  }
+
   /// Stream reactif de la session en cours.
   BehaviorSubject<SessionEntity?> get currentSessionStream =>
       _transcriptionService.currentSessionStream;
@@ -181,16 +221,25 @@ final class LiveTranscriptionService {
     String? webSocketUrl,
     bool enablePostProcessing = false,
     bool liveDiarization = false,
-  }) => _serializeLifecycle(
-    () => _startTranscription(
-      inputDeviceId: inputDeviceId,
-      outputEnabled: outputEnabled,
-      serverCommand: serverCommand,
-      serverArgs: serverArgs,
-      webSocketUrl: webSocketUrl ?? '${_ports.transcriptionWebSocket}',
-      liveDiarization: liveDiarization,
-    ),
-  );
+  }) {
+    // Dès la demande : l'enregistrement a la priorité sur le serveur
+    // (séquentiel). Le prédicat « enregistrement » lu par le rattrapage
+    // devient vrai tout de suite, et la finalisation d'une réunion
+    // précédente passe à son repère au lieu de retarder celle-ci.
+    _startRequested = true;
+    _transcriptionService.isTranscribingStream.add(true);
+    skipFinalising();
+    return _serializeLifecycle(
+      () => _startTranscription(
+        inputDeviceId: inputDeviceId,
+        outputEnabled: outputEnabled,
+        serverCommand: serverCommand,
+        serverArgs: serverArgs,
+        webSocketUrl: webSocketUrl ?? '${_ports.transcriptionWebSocket}',
+        liveDiarization: liveDiarization,
+      ),
+    ).whenComplete(() => _startRequested = false);
+  }
 
   Future<void> _startTranscription({
     required String? inputDeviceId,
@@ -200,7 +249,7 @@ final class LiveTranscriptionService {
     required String webSocketUrl,
     required bool liveDiarization,
   }) async {
-    if (isRecording) {
+    if (_running) {
       _log.warning('Une transcription est déjà en cours');
       return;
     }
@@ -321,12 +370,18 @@ final class LiveTranscriptionService {
       // 6. Relayer l'audio vers le WebSocket.
       _subscribeToAudio();
       _log.info('Audio subscription active, en attente de chunks...');
+      _running = true;
+      _provisionalTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) => _updateProvisionalMarkers(),
+      );
 
       _log.info('=== TRANSCRIPTION EN DIRECT DEMARREE ===');
     } catch (e, st) {
       _log.error('Erreur demarrage transcription', e);
       _log.error('Stack: $st');
       await _stopTranscription();
+      _transcriptionService.isTranscribingStream.add(false);
       rethrow;
     }
   }
@@ -351,7 +406,7 @@ final class LiveTranscriptionService {
     _cancel(_audioSubscription);
     _audioSubscription = null;
     await _audioCaptureChannel.stopCapture();
-    await _flushRemoteTranscripts();
+    await _flushRemoteTranscripts(limit: _pauseDrainLimit);
     _log.info('Capture audio mise en pause');
   }
 
@@ -374,6 +429,11 @@ final class LiveTranscriptionService {
 
   Future<void> _stopTranscription() async {
     _log.info('Arret de la transcription en direct');
+    _running = false;
+    _draining = true;
+    final Completer<void> skip = _skipStop = Completer<void>();
+    // Un démarrage déjà demandé : pas d'attente, droit au repère.
+    if (_startRequested) skip.complete();
     _supervising = false;
     _resetServerSupervision();
     _cancel(_serverStateSubscription);
@@ -390,8 +450,13 @@ final class LiveTranscriptionService {
     }
 
     // Demander un vrai flush serveur et laisser les listeners recevoir les
-    // derniers deltas + `done`. Un timeout conserve un fallback local fiable.
-    await _flushRemoteTranscripts();
+    // derniers deltas + `done`, rattrapage compris (borné, passable). Le
+    // reste devient une perte au disconnect() ; les deltas restent en repli.
+    await _flushRemoteTranscripts(
+      limit: _stopDrainLimit,
+      publish: true,
+      skip: skip.future,
+    );
 
     // Plus aucun événement distant après ce point : cela évite qu'un `done`
     // tardif duplique le fallback local.
@@ -450,11 +515,144 @@ final class LiveTranscriptionService {
     _gapSubscription = null;
     _cancel(_connectionSubscription);
     _connectionSubscription = null;
+    // Tout est livré ou signalé par un vrai repère : plus de provisoire.
+    _provisionalTimer?.cancel();
+    _provisionalTimer = null;
+    _draining = false;
+    await _clearProvisionalMarkers();
 
     // Arreter la session
+    final String? closedSessionId = currentSessionStream.valueOrNull?.id;
     await _transcriptionService.stopSession();
+    // stopSession() remet le prédicat à faux : un démarrage demandé entre-
+    // temps doit le garder vrai (aucun rattrapage ne doit partir).
+    if (_startRequested) _transcriptionService.isTranscribingStream.add(true);
+
+    // Session close (l'écran le voit déjà) : ses repères de perte sont
+    // retranscrits depuis les WAV AVANT de rendre la main, car la passe
+    // post-session qui suit supprime ces WAV. Sans repère, rien n'attend.
+    if (closedSessionId != null) await _backfillGaps(closedSessionId, skip);
+    _skipStop = null;
 
     _log.info('Transcription en direct arretee');
+  }
+
+  // Borne du rattrapage à l'arrêt ; au-delà, les repères restent (journal).
+  static const Duration _backfillLimit = Duration(minutes: 5);
+
+  Future<void> _backfillGaps(String sessionId, Completer<void> skip) async {
+    final GapBackfillService? backfill = _gapBackfill;
+    final GapBackfillRetry? retry = _gapBackfillRetry;
+    if (backfill == null && retry == null) return;
+    final List<({String markerId, AudioSource source, int startMs, int endMs})>
+    plan = GapBackfillService.plan(
+      segmentsStream.value
+          .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
+          .toList(),
+    );
+    if (plan.isEmpty) return;
+    if (_startRequested || skip.isCompleted) {
+      // Un enregistrement arrive (ou l'utilisateur a passé) : la session est
+      // mise en attente de reprise, sans tentative ; le repère reste.
+      await retry?.enqueue(sessionId);
+      return;
+    }
+    // Même flux que l'attente du rattrapage : « transcription en cours
+    // d'achèvement », puis zéro.
+    _finalisingRemaining.add(
+      plan.fold<Duration>(
+        Duration.zero,
+        (
+          Duration sum,
+          ({String markerId, AudioSource source, int startMs, int endMs}) g,
+        ) => sum + Duration(milliseconds: g.endMs - g.startMs),
+      ),
+    );
+    // « Passer » rend la main tout de suite ; le rattrapage continue en
+    // tâche de fond (ou sera réessayé), le repère reste jusqu'à son
+    // remplacement.
+    final Future<void> work =
+        (retry != null
+                ? retry.afterSession(sessionId)
+                : backfill!.backfill(
+                    sessionId,
+                    recordingsDirectory: recordingsDir,
+                  ))
+            .timeout(_backfillLimit)
+            .then<void>((_) {})
+            .catchError((Object e) {
+              _log.warning('Rattrapage des repères interrompu: $e');
+            });
+    try {
+      await Future.any<void>(<Future<void>>[work, skip.future]);
+    } finally {
+      _finalisingRemaining.add(Duration.zero);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Repère provisoire : audio en attente (coupure, ou arrêt qui attend le
+  // rattrapage) écrit en base tout de suite, pour qu'un arrêt brutal de l'app
+  // laisse de quoi rattraper depuis le WAV au lancement suivant.
+  // ---------------------------------------------------------------------------
+
+  Timer? _provisionalTimer;
+  bool _draining = false;
+  final Map<AudioSource, String> _provisionalMarkers = <AudioSource, String>{};
+  Future<void> _markerWrites = Future<void>.value();
+
+  String _provisionalMarkerId(SessionEntity session, AudioSource source) =>
+      '${session.id}_${source.name}_pending';
+
+  void _updateProvisionalMarkers() {
+    final TranscriptionRemoteDataSource remote = _transcriptionRemoteDataSource;
+    final SessionEntity? session = currentSessionStream.valueOrNull;
+    if (remote is! TranscriptionRemoteDataSourceImpl || session == null) return;
+    for (final AudioSource source in AudioSource.values) {
+      final ({int startMs, int endMs})? range = remote.pendingRange(source);
+      final bool waiting =
+          remote.bufferedAudio(source) >= const Duration(seconds: 1) ||
+          (_draining && remote.unacknowledgedAudio(source) > Duration.zero);
+      final String id = _provisionalMarkerId(session, source);
+      if (waiting && range != null) {
+        final int start = _offsetOf(session, range.startMs);
+        final String text = gapMarkerText(
+          start,
+          _offsetOf(session, range.endMs),
+        );
+        if (_provisionalMarkers[source] == text) continue;
+        _provisionalMarkers[source] = text;
+        final TranscriptSegmentEntity marker = TranscriptSegmentEntity(
+          id: id,
+          sessionId: session.id,
+          source: source,
+          text: text,
+          timestampMs: start,
+          createdAt: clock.now(),
+        );
+        _markerWrites = _markerWrites.then(
+          (_) => _transcriptionService.saveProvisional(marker),
+        );
+      } else if (_provisionalMarkers.remove(source) != null) {
+        _markerWrites = _markerWrites.then(
+          (_) => _transcriptionService.discardProvisional(id),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearProvisionalMarkers() async {
+    final SessionEntity? session = currentSessionStream.valueOrNull;
+    if (session != null) {
+      for (final AudioSource source in _provisionalMarkers.keys.toList()) {
+        final String id = _provisionalMarkerId(session, source);
+        _markerWrites = _markerWrites.then(
+          (_) => _transcriptionService.discardProvisional(id),
+        );
+      }
+    }
+    _provisionalMarkers.clear();
+    await _markerWrites;
   }
 
   /// Libere les ressources du service.
@@ -473,6 +671,7 @@ final class LiveTranscriptionService {
     await _transcriptionSubscription?.cancel();
     await _systemTranscriptionSubscription?.cancel();
     await _health.close();
+    await _finalisingRemaining.close();
   }
 
   // ---------------------------------------------------------------------------
@@ -558,9 +757,12 @@ final class LiveTranscriptionService {
     if (!_health.isClosed && _health.value != next) _health.add(next);
   }
 
+  /// Début du texte d'un repère de perte (lu par GapBackfillService).
+  static const String gapMarkerPrefix = 'Transcription interrompue';
+
   /// Repère d'une perte d'audio, en heures:minutes:secondes de réunion.
   static String gapMarkerText(int startMs, int endMs) =>
-      'Transcription interrompue : ${TranscriptFormatter.timestamp(startMs)} '
+      '$gapMarkerPrefix : ${TranscriptFormatter.timestamp(startMs)} '
       '– ${TranscriptFormatter.timestamp(endMs)}';
 
   void _onAudioGap(AudioGap gap) {
@@ -659,7 +861,11 @@ final class LiveTranscriptionService {
     }
   }
 
-  Future<void> _flushRemoteTranscripts() async {
+  Future<void> _flushRemoteTranscripts({
+    required Duration limit,
+    bool publish = false,
+    Future<void>? skip,
+  }) async {
     final Set<AudioSource> sourcesToFinalize =
         _transcriptionRemoteDataSource.activeSources;
     _stopFinalizationWaiters.clear();
@@ -667,18 +873,50 @@ final class LiveTranscriptionService {
       _stopFinalizationWaiters[source] = Completer<void>();
     }
     _transcriptionRemoteDataSource.sendCommit(isFinal: true);
-    if (_stopFinalizationWaiters.isEmpty) return;
-    try {
-      await Future.wait<void>(
-        _stopFinalizationWaiters.values.map(
-          (Completer<void> completer) => completer.future,
-        ),
-      ).timeout(const Duration(seconds: 5));
-    } on TimeoutException {
-      _log.warning('Timeout du flush final voxmlx, fallback sur les deltas');
-    } finally {
-      _stopFinalizationWaiters.clear();
+    if (_stopFinalizationWaiters.isEmpty) {
+      if (publish) _finalisingRemaining.add(Duration.zero);
+      return;
     }
+    Duration last = _remainingAudio();
+    void report() {
+      final Duration now = _remainingAudio();
+      if (now < last) last = now; // jamais croissant à l'écran
+      _finalisingRemaining.add(last);
+    }
+
+    Timer? ticker;
+    if (publish) {
+      report();
+      ticker = Timer.periodic(
+        const Duration(milliseconds: 500),
+        (_) => report(),
+      );
+    }
+    try {
+      await Future.any<void>(<Future<void>>[
+        Future.wait<void>(
+          _stopFinalizationWaiters.values.map(
+            (Completer<void> completer) => completer.future,
+          ),
+        ),
+        ?skip,
+      ]).timeout(limit);
+    } on TimeoutException {
+      _log.warning('Rattrapage non fini en $limit : le reste sera signalé');
+    } finally {
+      ticker?.cancel();
+      _stopFinalizationWaiters.clear();
+      if (publish) _finalisingRemaining.add(Duration.zero);
+    }
+  }
+
+  Duration _remainingAudio() {
+    final TranscriptionRemoteDataSource remote = _transcriptionRemoteDataSource;
+    if (remote is! TranscriptionRemoteDataSourceImpl) return Duration.zero;
+    return AudioSource.values.fold<Duration>(
+      Duration.zero,
+      (Duration sum, AudioSource s) => sum + remote.unacknowledgedAudio(s),
+    );
   }
 
   /// Buffers d'accumulation des deltas, par source (micro / système).

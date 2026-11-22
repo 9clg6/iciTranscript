@@ -132,6 +132,13 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       _translateNewSegments(segments);
     });
 
+    // Après Arrêter : rattrapage restant, pour l'état « Finalisation… ».
+    _liveService?.finalisingRemainingStream.listen((Duration remaining) {
+      state = state.copyWith(
+        finalisingRemaining: remaining > Duration.zero ? remaining : null,
+      );
+    });
+
     // Interlocuteurs identifiés en direct sur l'audio système.
     _liveService?.speakerLabelsStream.listen((Map<String, int> labels) {
       state = state.copyWith(speakerLabels: labels);
@@ -232,6 +239,10 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       await _liveService?.stopTranscription();
     }
   }
+
+  /// Arrête d'attendre la fin de la transcription : le reste devient un
+  /// repère de perte, l'arrêt se termine.
+  void skipFinalising() => _liveService?.skipFinalising();
 
   /// Arrete la session et sauvegarde la transcription.
   ///
