@@ -21,6 +21,7 @@ abstract class  LocaleKeys {
   static const common_label = 'common.label';
   static const common = 'common';
   static const app_name = 'app.name';
+  static const app_dev_data = 'app.dev_data';
   static const app = 'app';
   static const nav_home = 'nav.home';
   static const nav_documents = 'nav.documents';
