@@ -57,11 +57,19 @@ void main() {
   /// Session telle que rangée, une fois [check] vérifié (lien écrit en
   /// différé après la création).
   Future<SessionEntity> linked(void Function(SessionEntity s) check) async {
-    await eventually(() => check(harness.sessions.store.values.single));
+    await eventually(
+      () => check(harness.sessions.store.values.single),
+      timeout: const Duration(seconds: 10),
+    );
     return harness.sessions.store.values.single;
   }
 
-  Future<SessionEntity> startNote() async {
+  /// Démarre une note ; la session doit exister avant [within] (borne
+  /// large par défaut : la charge de la suite complète ralentit le faux
+  /// serveur).
+  Future<SessionEntity> startNote({
+    Duration within = const Duration(seconds: 10),
+  }) async {
     harness = LiveServiceHarness(FakeAsync());
     final ProviderContainer c = ProviderContainer(
       overrides: <Override>[
@@ -75,13 +83,18 @@ void main() {
       ],
     );
     addTearDown(c.dispose);
+    // Arrête l'enregistrement avant le test suivant.
+    addTearDown(() => harness.service.stopTranscription());
     container = c;
     c.read(liveTranscriptionViewModelProvider);
     await Future<void>.delayed(const Duration(milliseconds: 200));
     unawaited(
       c.read(liveTranscriptionViewModelProvider.notifier).startSession(),
     );
-    await eventually(() => expect(harness.sessions.store.values, hasLength(1)));
+    await eventually(
+      () => expect(harness.sessions.store.values, hasLength(1)),
+      timeout: within,
+    );
     // Laisse le temps au lien de s'écrire.
     await Future<void>.delayed(const Duration(milliseconds: 300));
     return harness.sessions.store.values.single;
@@ -244,8 +257,10 @@ void main() {
         ..eventsGate = Completer<void>().future
         ..install();
 
-      // startNote attend la session (3 s au plus, `eventually`).
-      final SessionEntity s = await startNote();
+      // Borne du besoin « n'empêche jamais l'enregistrement » : 3 s.
+      final SessionEntity s = await startNote(
+        within: const Duration(seconds: 3),
+      );
 
       expect(s.status, SessionStatus.active);
     },

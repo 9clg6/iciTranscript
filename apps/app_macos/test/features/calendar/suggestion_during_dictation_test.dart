@@ -13,6 +13,8 @@ import 'package:ici_transcript/core/providers/services/api_key_store.provider.da
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_prefs.provider.dart';
 import 'package:ici_transcript/features/calendar/meeting_suggestion.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
@@ -92,8 +94,18 @@ void main() {
     addTearDown(c.dispose);
     c.read(liveTranscriptionViewModelProvider);
     c.listen(meetingSuggestionControllerProvider, (_, _) {});
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // Les recordings éventuels s'arrêtent avant la fin du test : rien ne
+    // tourne encore pendant le suivant.
+    addTearDown(() => harness.service.stopTranscription());
+    // Entrées chargées (réglages, agenda) : une évaluation après ce point
+    // porte sur les vraies données, un « rien » n'est pas vide de sens.
+    await c.read(calendarPrefsControllerProvider.future);
+    await c.read(calendarFeedControllerProvider.future);
   }
+
+  /// Attente bornée d'une suggestion ou d'un démarrage attendu.
+  Future<void> soon(void Function() check) =>
+      eventually(check, timeout: const Duration(seconds: 10));
 
   MeetingSuggestion? shown() => c.read(meetingSuggestionControllerProvider);
   void dictating(bool on) => c.read(dictationActiveProvider.notifier).set(on);
@@ -131,7 +143,6 @@ void main() {
   Future<void> zoomHolds(FakeMeetingPlatform mic) async {
     await mic.micUsers(<String>['us.zoom.xos']);
     now = now.add(const Duration(seconds: 4));
-    await tick();
   }
 
   group('pendant une dictée', () {
@@ -166,6 +177,8 @@ void main() {
       dictating(true);
 
       await zoomHolds(mic);
+      await tick();
+      await tick();
 
       expect(shown(), isNull);
     });
@@ -180,10 +193,12 @@ void main() {
       await mic.micUsers(<String>[kOwnBundleId, '$kOwnBundleId.helper']);
       now = now.add(const Duration(seconds: 10));
       await tick();
+      await tick();
       expect(shown(), isNull);
 
       dictating(false);
       now = now.add(const Duration(seconds: 10));
+      await tick();
       await tick();
       expect(shown(), isNull);
     });
@@ -195,9 +210,10 @@ void main() {
       final FakeMeetingPlatform mic = withoutCalendar();
       await launch();
       await zoomHolds(mic);
-      expect(shown()?.appName, 'Zoom');
+      await soon(() => expect(shown()?.appName, 'Zoom'));
 
       dictating(true);
+      await tick();
       await tick();
       expect(shown()?.appName, 'Zoom', reason: 'reste affichée');
 
@@ -210,7 +226,7 @@ void main() {
       now = t0;
       withCalendar();
       await launch();
-      await eventually(() => expect(shown()?.event?.id, 'evt-atelier'));
+      await soon(() => expect(shown()?.event?.id, 'evt-atelier'));
 
       dictating(true);
       await tick();
@@ -227,13 +243,13 @@ void main() {
       await launch();
       dictating(true);
       await tick();
+      await tick();
       expect(shown(), isNull);
 
       dictating(false);
       now = now.add(const Duration(seconds: 30));
-      await tick();
 
-      expect(shown()?.event?.id, 'evt-atelier');
+      await soon(() => expect(shown()?.event?.id, 'evt-atelier'));
     });
 
     test('Zoom tient toujours le micro : la suggestion apparaît, sans '
@@ -243,13 +259,14 @@ void main() {
       await launch();
       dictating(true);
       await zoomHolds(mic);
+      await tick();
+      await tick();
       expect(shown(), isNull);
 
       dictating(false);
       now = now.add(const Duration(seconds: 2));
-      await tick();
 
-      expect(shown()?.appName, 'Zoom');
+      await soon(() => expect(shown()?.appName, 'Zoom'));
     });
 
     test('une suggestion masquée par la dictée revient à sa fin', () async {
@@ -259,15 +276,15 @@ void main() {
       final FakeMeetingPlatform mic = withoutCalendar();
       await launch();
       await zoomHolds(mic);
-      expect(shown()?.appName, 'Zoom');
+      await soon(() => expect(shown()?.appName, 'Zoom'));
 
       dictating(true);
       await tick();
+      await tick();
       dictating(false);
       now = now.add(const Duration(seconds: 2));
-      await tick();
 
-      expect(shown()?.appName, 'Zoom');
+      await soon(() => expect(shown()?.appName, 'Zoom'));
     });
   });
 }

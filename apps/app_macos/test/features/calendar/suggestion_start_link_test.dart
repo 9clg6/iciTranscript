@@ -66,9 +66,16 @@ void main() {
       ],
     );
     addTearDown(c.dispose);
+    // Arrête l'enregistrement démarré par le test avant le suivant.
+    addTearDown(() => harness.service.stopTranscription());
     c.read(liveTranscriptionViewModelProvider);
     c.listen(meetingSuggestionControllerProvider, (_, _) {});
   }
+
+  // Au lancement, la première suggestion d'agenda arrive en ~3 s (réglages
+  // puis agenda lus au fil des évaluations d'une seconde) : borne à 10 s.
+  Future<void> soon(FutureOr<void> Function() check) =>
+      eventually(check, timeout: const Duration(seconds: 10));
 
   MeetingSuggestion? shown() => c.read(meetingSuggestionControllerProvider);
 
@@ -94,7 +101,7 @@ void main() {
   ];
 
   Future<SessionEntity> session() async {
-    await eventually(() => expect(harness.sessions.store.values, hasLength(1)));
+    await soon(() => expect(harness.sessions.store.values, hasLength(1)));
     return harness.sessions.store.values.single;
   }
 
@@ -105,7 +112,7 @@ void main() {
     FakeCalendarPlatform(status: 'fullAccess', events: overlapping()).install();
     FakeMeetingPlatform().install();
     await launch();
-    await eventually(() => expect(shown()?.event?.id, 'evt-atelier'));
+    await soon(() => expect(shown()?.event?.id, 'evt-atelier'));
 
     now = t0.add(const Duration(minutes: 3, seconds: 30));
     await Future<void>.delayed(const Duration(milliseconds: 1500));
@@ -113,7 +120,7 @@ void main() {
 
     unawaited(c.read(meetingSuggestionControllerProvider.notifier).start());
 
-    await eventually(() async {
+    await soon(() async {
       final SessionEntity s = await session();
       expect(s.calendarEventId, 'evt-atelier');
     });
@@ -139,8 +146,12 @@ void main() {
       FakeMeetingPlatform().install();
       await launch();
 
-      await eventually(() async {
-        expect((await session()).calendarEventId, 'evt-atelier');
+      await soon(() {
+        expect(harness.sessions.store.values, hasLength(1));
+        expect(
+          harness.sessions.store.values.single.calendarEventId,
+          'evt-atelier',
+        );
       });
     },
   );
@@ -172,7 +183,7 @@ void main() {
       ).install();
       FakeMeetingPlatform().install();
       await launch();
-      await eventually(() => expect(shown(), isNotNull));
+      await soon(() => expect(shown(), isNotNull));
 
       c.read(meetingSuggestionControllerProvider.notifier).dismiss();
       final String text = await log();
@@ -199,7 +210,7 @@ void main() {
 
       await mic.micUsers(<String>['us.zoom.xos', 'com.example.recorder']);
       now = t0.add(const Duration(seconds: 4));
-      await eventually(() => expect(shown()?.appName, 'Zoom'));
+      await soon(() => expect(shown()?.appName, 'Zoom'));
       c.read(meetingSuggestionControllerProvider.notifier).dismiss();
       final String text = await log();
 
