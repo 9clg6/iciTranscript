@@ -25,6 +25,54 @@ void main() {
     });
   });
 
+  // Comportement actuel du filtre non latin, épinglé avant d'ajouter le
+  // filtre d'hallucinations (T1.5) : il ne doit pas changer.
+  group('TranscriptTextNormalizer.isForeignScript', () {
+    test('écarte un texte cyrillique ou japonais', () {
+      expect(
+        TranscriptTextNormalizer.isForeignScript('Продолжение следует'),
+        isTrue,
+      );
+      expect(
+        TranscriptTextNormalizer.isForeignScript('ご視聴ありがとうございました'),
+        isTrue,
+      );
+    });
+
+    test('garde le français, l anglais et le latin étendu', () {
+      expect(
+        TranscriptTextNormalizer.isForeignScript('Ça marche, à demain œuvre.'),
+        isFalse,
+      );
+      expect(
+        TranscriptTextNormalizer.isForeignScript('See you tomorrow.'),
+        isFalse,
+      );
+      expect(TranscriptTextNormalizer.isForeignScript('Tiếng Việt'), isFalse);
+    });
+
+    test('garde un texte surtout latin avec un mot étranger', () {
+      expect(
+        TranscriptTextNormalizer.isForeignScript(
+          'On dit merci, 谢谢, en chinois',
+        ),
+        isFalse,
+      );
+    });
+
+    test('garde un texte sans lettre (chiffres, ponctuation)', () {
+      expect(TranscriptTextNormalizer.isForeignScript('12 345 !'), isFalse);
+      expect(TranscriptTextNormalizer.isForeignScript(''), isFalse);
+    });
+
+    test('écarte dès que les lettres latines sont moins de la moitié', () {
+      // 2 lettres latines sur 5.
+      expect(TranscriptTextNormalizer.isForeignScript('ab где'), isTrue);
+      // 3 sur 6 : moitié exacte, gardé.
+      expect(TranscriptTextNormalizer.isForeignScript('abc где'), isFalse);
+    });
+  });
+
   group('TranscriptFormatter', () {
     test('exporte la source et le timestamp de chaque piste', () {
       final TranscriptSegmentEntity me = _segment(
