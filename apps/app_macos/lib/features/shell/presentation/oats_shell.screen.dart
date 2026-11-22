@@ -4,6 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/platform/dev_data_directory.provider.dart';
+import 'package:ici_transcript/features/documents/presentation/documents.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
@@ -46,12 +47,7 @@ class OatsShellScreen extends ConsumerWidget {
           )
         : switch (view) {
             ShellView.home => const HomeScreen(),
-            ShellView.documents => _EmptyPage(
-              title: LocaleKeys.nav_documents.tr(),
-              icon: Icons.description_outlined,
-              emptyTitle: LocaleKeys.documents_empty_title.tr(),
-              message: LocaleKeys.documents_empty.tr(),
-            ),
+            ShellView.documents => const DocumentsScreen(),
             ShellView.coach => _EmptyPage(
               title: LocaleKeys.nav_coach.tr(),
               icon: Icons.school_outlined,
