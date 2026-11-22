@@ -5,22 +5,32 @@ import 'dart:typed_data';
 import 'package:core_data/clients/websocket_client.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
 
 /// [PcmTranscriber] sur le serveur voxmlx, par une socket dédiée de courte
 /// durée, utilisée seulement hors enregistrement. Le PCM part par morceaux
 /// de 30 s au plus, un à la fois, comme le renvoi étalé : chaque morceau
 /// attend son `done` avant le suivant.
 // ponytail: morceaux à taille fixe (une phrase peut être coupée au bord) ;
-// couper sur les silences si les bords gênent. URL par défaut du serveur
-// local, pas celle de la dernière session.
+// couper sur les silences si les bords gênent. L'URL vient des ports
+// résolus pour ce lancement (ServerPorts), comme la transcription en direct.
 final class WebSocketPcmTranscriber implements PcmTranscriber {
   /// Cree une instance de [WebSocketPcmTranscriber].
   WebSocketPcmTranscriber({
-    this.url = 'ws://localhost:8000/v1/realtime',
+    String? url,
     WebSocketClient Function()? createClient,
-  }) : _createClient = createClient ?? WebSocketClient.new;
+    bool Function()? shouldYield,
+  }) : url = url ?? serverPorts().transcriptionWebSocket.toString(),
+       _createClient = createClient ?? WebSocketClient.new,
+       _shouldYield = shouldYield ?? _never;
 
-  /// Point d'entrée du serveur de transcription.
+  static bool _never() => false;
+
+  /// Lu avant la connexion et avant chaque morceau : vrai (un enregistrement
+  /// démarre) → la retranscription s'arrête, socket fermée, sans compter.
+  final bool Function() _shouldYield;
+
+  /// Point d'entrée du serveur de transcription (ports de ce lancement).
   final String url;
   final WebSocketClient Function() _createClient;
 
@@ -28,14 +38,45 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
   static const int _chunkBytes = 3200; // 100 ms
   static const Duration _doneTimeout = Duration(seconds: 60);
 
+  static const Duration _yieldPoll = Duration(milliseconds: 100);
+
+  /// [done], ou [TranscriberUnavailable] dès qu'un enregistrement démarre :
+  /// la socket se ferme sans attendre la fin du morceau en vol.
+  Future<String> _unlessYield(Future<String> done) {
+    final Completer<String> result = Completer<String>();
+    final Timer poll = Timer.periodic(_yieldPoll, (_) {
+      if (_shouldYield() && !result.isCompleted) {
+        result.completeError(const TranscriberUnavailable('enregistrement'));
+      }
+    });
+    done.then(
+      (String text) {
+        if (!result.isCompleted) result.complete(text);
+      },
+      onError: (Object e, StackTrace st) {
+        if (!result.isCompleted) result.completeError(e, st);
+      },
+    );
+    return result.future.whenComplete(poll.cancel);
+  }
+
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
+    if (_shouldYield()) throw const TranscriberUnavailable('enregistrement');
     final WebSocketClient client = _createClient();
-    await client.connect(url);
+    try {
+      await client.connect(url);
+    } on Exception catch (e) {
+      await client.dispose();
+      throw TranscriberUnavailable('connexion refusée ($e)');
+    }
     try {
       final List<({int offsetMs, String text})> pieces =
           <({int offsetMs, String text})>[];
       for (int start = 0; start < pcm.length; start += _pieceBytes) {
+        if (_shouldYield()) {
+          throw const TranscriberUnavailable('enregistrement');
+        }
         final int end = (start + _pieceBytes).clamp(0, pcm.length);
         final Future<String> done = client.messageStream
             .map((String m) => jsonDecode(m) as Map<String, dynamic>)
@@ -56,7 +97,9 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
           );
         }
         client.send('{"type":"input_audio_buffer.commit","final":true}');
-        final String text = TranscriptTextNormalizer.normalize(await done);
+        final String text = TranscriptTextNormalizer.normalize(
+          await _unlessYield(done),
+        );
         if (text.isNotEmpty &&
             !TranscriptTextNormalizer.isForeignScript(text)) {
           pieces.add((offsetMs: start ~/ 32, text: text));

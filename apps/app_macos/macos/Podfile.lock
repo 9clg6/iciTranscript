@@ -29,9 +29,9 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  patrol: 5a504c6012be7a84369231475ede1fce6e777268
-  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
+  patrol: 5df5d241d7f95f0df12a6906bbf45acb43a1e537
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
 
 PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.17.0

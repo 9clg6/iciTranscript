@@ -169,6 +169,9 @@ final class FakeTranscriptionRemoteDataSource
   final List<AudioChunk> sentAudio = <AudioChunk>[];
   int connectCalls = 0;
 
+  /// URL reçue à chaque connexion.
+  final List<String> connectedUrls = <String>[];
+
   final StreamController<TranscriptEventRemoteModel> _mic =
       StreamController<TranscriptEventRemoteModel>.broadcast();
   final StreamController<TranscriptEventRemoteModel> _system =
@@ -208,6 +211,7 @@ final class FakeTranscriptionRemoteDataSource
     bool systemAudioEnabled = true,
   }) async {
     connectCalls++;
+    connectedUrls.add(url);
     _states.add(domain.ConnectionState.connected);
   }
 

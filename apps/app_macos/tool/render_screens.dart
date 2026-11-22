@@ -24,7 +24,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dio/dio.dart';
+import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/core/providers/services/llm_dio.provider.dart';
 import 'package:ici_transcript/core/providers/kernel.provider.dart';
 import 'package:ici_transcript/core/providers/platform/uvx_available.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
@@ -40,6 +44,7 @@ import 'package:ici_transcript/presentation/app.dart';
 
 import '../test/helpers/fake_data.dart';
 import '../test/helpers/fake_view_models.dart';
+import '../test/helpers/settings_fakes.dart';
 
 final String _outDir =
     Platform.environment['OATS_SHOTS_DIR'] ?? '/tmp/oats-shots';
@@ -124,17 +129,62 @@ class _FrLoader extends AssetLoader {
 }
 
 /// Réglages avec des micros et un long chemin de stockage.
+final SettingsState _settings = SettingsState(
+  availableDevices: FakeData.createAudioDeviceList()
+      .where((AudioDeviceEntity d) => d.isInput)
+      .toList(),
+  storagePath:
+      '/Users/demo/Library/Application Support/Exemple/un/chemin/assez/long',
+  dbSizeMb: 182,
+);
+
 class _SettingsViewModel extends SettingsViewModel {
+  _SettingsViewModel(this._state);
+
+  final SettingsState _state;
+
   @override
-  SettingsState build() => SettingsState(
-    availableDevices: FakeData.createAudioDeviceList()
-        .where((AudioDeviceEntity d) => d.isInput)
-        .toList(),
-    storagePath:
-        '/Users/demo/Library/Application Support/Exemple/un/chemin/assez/long',
-    dbSizeMb: 182,
-  );
+  SettingsState build() => _state;
 }
+
+/// États de la section IA (clés inventées : seuls les 4 derniers caractères
+/// existent ici).
+final Map<String, SettingsState> _aiStates = <String, SettingsState>{
+  'no-key': _settings,
+  // Saisie puis Enregistrer pendant le rendu (offre d'autoriser l'envoi).
+  'key-saved': _settings,
+  'test-ok': _settings.copyWith(
+    llmCloudAllowed: true,
+    llmActive: LlmProviderId.anthropic,
+    llmKeySuffixes: const <LlmProviderId, String>{
+      LlmProviderId.anthropic: 'a1b2',
+      LlmProviderId.openai: 'z9y8',
+    },
+    llmTests: const <LlmProviderId, LlmTestStatus>{
+      LlmProviderId.anthropic: LlmTestStatus.ok,
+    },
+  ),
+  'test-error': _settings.copyWith(
+    llmCloudAllowed: true,
+    llmActive: LlmProviderId.anthropic,
+    llmKeySuffixes: const <LlmProviderId, String>{
+      LlmProviderId.anthropic: 'a1b2',
+    },
+    llmTests: const <LlmProviderId, LlmTestStatus>{
+      LlmProviderId.anthropic: LlmTestStatus.invalidKey,
+    },
+    llmModels: const <LlmProviderId, String>{
+      LlmProviderId.anthropic: 'modele-exemple-long-nom-2026',
+    },
+  ),
+  'cloud-paused': _settings.copyWith(
+    llmPreferred: LlmProviderId.openai,
+    llmKeySuffixes: const <LlmProviderId, String>{
+      LlmProviderId.anthropic: 'a1b2',
+      LlmProviderId.openai: 'z9y8',
+    },
+  ),
+};
 
 /// Live : enregistrement en cours, quelques phrases déjà transcrites.
 class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
@@ -154,6 +204,14 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
     );
   }
 
+  /// Arrêter : l'état « Finalisation… » (rattrapage en cours), sans
+  /// quitter l'écran.
+  @override
+  Future<String?> stopSession() async {
+    state = state.copyWith(finalisingRemaining: const Duration(seconds: 46));
+    return null;
+  }
+
   @override
   Future<void> recheckPermissions() async {}
 }
@@ -161,8 +219,14 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
 List<Override> _overrides(
   List<SessionEntity> sessions, {
   OllamaSetupState ollama = const OllamaSetupState(),
+  SettingsState? settings,
 }) => <Override>[
   kernelProvider.overrideWith((Ref ref) async {}),
+  // Jamais le vrai trousseau ni le réseau.
+  apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
+  llmDioProvider.overrideWithValue(
+    Dio()..httpClientAdapter = RecordingHttpAdapter(),
+  ),
   uvxAvailableProvider.overrideWith((Ref ref) async => true),
   ollamaSetupViewModelProvider.overrideWith(
     () => FakeOllamaSetupViewModel(ollama),
@@ -171,7 +235,9 @@ List<Override> _overrides(
     () => FakeSessionListViewModel(sessions),
   ),
   liveTranscriptionViewModelProvider.overrideWith(_RecordingLiveViewModel.new),
-  settingsViewModelProvider.overrideWith(_SettingsViewModel.new),
+  settingsViewModelProvider.overrideWith(
+    () => _SettingsViewModel(settings ?? _settings),
+  ),
   sessionDetailViewModelProvider.overrideWith(
     () => FakeSessionDetailViewModel(
       (String id) async => SessionDetailState(
@@ -252,6 +318,7 @@ void main() {
         WidgetTester tester,
         List<SessionEntity> sessions, {
         OllamaSetupState ollama = const OllamaSetupState(),
+        SettingsState? settings,
       }) async {
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
@@ -265,7 +332,11 @@ void main() {
           RepaintBoundary(
             key: key,
             child: ProviderScope(
-              overrides: _overrides(sessions, ollama: ollama),
+              overrides: _overrides(
+                sessions,
+                ollama: ollama,
+                settings: settings,
+              ),
               child: EasyLocalization(
                 supportedLocales: const <Locale>[Locale('fr')],
                 path: 'assets/translations',
@@ -358,6 +429,41 @@ void main() {
         });
       }
 
+      // Section IA : titre en haut, puis blocs des fournisseurs.
+      for (final MapEntry<String, SettingsState> ai in _aiStates.entries) {
+        shoot('settings-ai-${ai.key}', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            settings: ai.value,
+          );
+          await tester.tap(find.text('Réglages'));
+          await _pump(tester, 10);
+          final Finder title = find.text('Intelligence artificielle');
+          await tester.ensureVisible(title);
+          await _pump(tester, 5);
+          await tester.drag(title, Offset(0, 40 - tester.getTopLeft(title).dy));
+          await _pump(tester, 10);
+          if (ai.key == 'key-saved') {
+            // Vraie saisie dans le trousseau factice : clé inventée.
+            final Finder field = find.descendant(
+              of: find.byKey(const ValueKey<String>('llm-anthropic')),
+              matching: find.byType(TextField),
+            );
+            await tester.enterText(field.first, 'exemple-cle-inventee-a1b2');
+            await tester.tap(find.text('Enregistrer').first);
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 50)),
+            );
+            await _pump(tester, 10);
+          }
+          await _shot(tester, key, 'settings-ai-${ai.key}-$suffix');
+          await tester.drag(title, Offset(0, -(size.value.height - 200)));
+          await _pump(tester, 10);
+          await _shot(tester, key, 'settings-ai-${ai.key}-blocks-$suffix');
+        });
+      }
+
       shoot('pages', (WidgetTester tester) async {
         final GlobalKey key = await pumpApp(tester, _sessions);
         await tester.enterText(find.byType(TextField), 'budget');
@@ -386,6 +492,15 @@ void main() {
         await tester.tap(find.text('Nouvelle note'));
         await _pump(tester, 10);
         await _shot(tester, key, 'live-$suffix');
+      });
+
+      shoot('live-finalising', (WidgetTester tester) async {
+        final GlobalKey key = await pumpApp(tester, _sessions);
+        await tester.tap(find.text('Nouvelle note'));
+        await _pump(tester, 10);
+        await tester.tap(find.text('Arrêter'));
+        await _pump(tester, 10);
+        await _shot(tester, key, 'live-finalising-$suffix');
       });
     }
   }

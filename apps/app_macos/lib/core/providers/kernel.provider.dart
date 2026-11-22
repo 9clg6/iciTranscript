@@ -2,19 +2,18 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:core_data/database/app_database.dart';
-import 'package:core_domain/domain/entities/session.entity.dart';
-import 'package:core_domain/domain/repositories/session.repository.dart';
-import 'package:core_domain/domain/services/transcription.service.dart';
-import 'package:ici_transcript/application/services/gap_backfill.service.dart';
-import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
-import 'package:ici_transcript/core/providers/services/transcription.service.provider.dart';
 import 'package:core_domain/domain/usecases/repair_interrupted_sessions.use_case.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
+import 'package:core_domain/domain/enum/session_status.enum.dart';
+import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
 import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 import 'package:ici_transcript/core/providers/data/database.provider.dart';
+import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
+import 'package:ici_transcript/core/providers/services/gap_backfill_retry.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'kernel.provider.g.dart';
@@ -36,8 +35,15 @@ Future<void> kernel(Ref ref) async {
 
   // Une fois au lancement, avant toute session : rien n'enregistre encore.
   // Les dossiers viennent de appDataDirectory() (temporaire sous test).
+  // Sessions tuées net (encore `active`) : leurs repères, provisoires
+  // compris, seront rattrapés depuis le WAV.
+  final List<String> killed = await _activeSessionIds(ref, log);
   await _repairAfterCrash(ref, log);
-  unawaited(_backfillMarkedSessions(ref, log));
+  unawaited(_retryBackfills(ref, killed, log));
+
+  // Serveurs laissés par un arrêt brutal : seulement ceux notés par cette
+  // app dont le PID a encore la même identité. Ne lève jamais.
+  await ref.read(ownedProcessRegistryProvider).cleanUpLeftovers();
 
   // Le serveur ML est demarre par LiveTranscriptionService au moment du recording
   // Ollama est initialise par OllamaSetupViewModel au demarrage
@@ -74,28 +80,28 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
   }
 }
 
-/// Au lancement, en tâche de fond : les sessions closes qui gardent des
-/// repères de perte sont retranscrites depuis leurs WAV. Le serveur ML ne
-/// tourne pas encore au lancement : la tentative échoue alors, les repères
-/// restent, et la fin de la prochaine session réessaie (pour celle-ci).
-Future<void> _backfillMarkedSessions(Ref ref, Log log) async {
+Future<List<String>> _activeSessionIds(Ref ref, Log log) async {
   try {
-    final SessionRepository sessions = ref.read(sessionRepositoryProvider);
-    final TranscriptionService transcription = ref.read(
-      transcriptionServiceProvider,
-    );
-    final GapBackfillService backfill = GapBackfillService(
-      transcriber: WebSocketPcmTranscriber(),
-      transcripts: ref.read(transcriptRepositoryProvider),
-      isRecording: () => transcription.isTranscribingStream.value,
-    );
-    for (final SessionEntity session in await sessions.getAll()) {
-      await backfill.backfill(
-        session.id,
-        recordingsDirectory: LiveTranscriptionService.recordingsDir,
-      );
-    }
+    return <String>[
+      for (final SessionEntity s
+          in await ref.read(sessionRepositoryProvider).getAll())
+        if (s.status == SessionStatus.active) s.id,
+    ];
   } catch (e) {
-    log.warning('Rattrapage des repères au lancement échoué: $e');
+    log.warning('Lecture des sessions au lancement échouée: $e');
+    return const <String>[];
+  }
+}
+
+/// Rattrapages en attente (reprises bornées), plus les sessions tuées net.
+Future<void> _retryBackfills(Ref ref, List<String> killed, Log log) async {
+  try {
+    final GapBackfillRetry retry = ref.read(gapBackfillRetryProvider);
+    for (final String id in killed) {
+      await retry.enqueue(id);
+    }
+    await retry.retryPending();
+  } catch (e) {
+    log.warning('Rattrapage au lancement échoué: $e');
   }
 }

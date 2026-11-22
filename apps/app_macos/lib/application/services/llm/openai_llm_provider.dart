@@ -7,15 +7,19 @@ import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 /// OpenAI via Chat Completions, en streaming SSE.
 class OpenAiLlmProvider implements LlmProvider {
   /// Cree un [OpenAiLlmProvider].
-  OpenAiLlmProvider({required Dio dio, required String apiKey})
+  OpenAiLlmProvider({required Dio dio, required String apiKey, String? model})
     : _dio = dio,
-      _apiKey = apiKey;
+      _apiKey = apiKey,
+      _model = model ?? defaultModel;
 
   /// Modele rapide par defaut.
   static const String defaultModel = 'gpt-6-luna';
 
   final Dio _dio;
   final String _apiKey;
+
+  /// Modele utilise quand la requete n'en demande pas.
+  final String _model;
 
   @override
   Stream<String> streamChat(LlmChatRequest request) {
@@ -25,7 +29,7 @@ class OpenAiLlmProvider implements LlmProvider {
       url: 'https://api.openai.com/v1/chat/completions',
       headers: <String, String>{'Authorization': 'Bearer $_apiKey'},
       body: <String, Object?>{
-        'model': request.model ?? defaultModel,
+        'model': request.model ?? _model,
         'max_completion_tokens': request.maxTokens,
         'stream': true,
         'messages': <Map<String, String>>[

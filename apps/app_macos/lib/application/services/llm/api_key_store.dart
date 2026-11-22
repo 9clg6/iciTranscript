@@ -71,8 +71,13 @@ class LlmProviderSelection {
   }
 
   /// [preferred] s'il est configure, sinon le premier fournisseur cloud
-  /// configure, sinon Ollama.
-  Future<LlmProviderId> activeProvider({LlmProviderId? preferred}) async {
+  /// configure, sinon Ollama. Sans [cloudAllowed], toujours Ollama : aucun
+  /// fournisseur en ligne n'est appele, meme avec une cle.
+  Future<LlmProviderId> activeProvider({
+    LlmProviderId? preferred,
+    bool cloudAllowed = true,
+  }) async {
+    if (!cloudAllowed) return LlmProviderId.ollama;
     if (preferred != null && await isConfigured(preferred)) return preferred;
     for (final LlmProviderId provider in _cloudOrder) {
       if (await isConfigured(provider)) return provider;

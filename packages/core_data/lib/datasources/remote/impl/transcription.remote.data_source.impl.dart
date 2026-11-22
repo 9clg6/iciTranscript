@@ -411,6 +411,11 @@ final class TranscriptionRemoteDataSourceImpl
     }
   }
 
+  /// Intervalle (horodatages de capture) de l'audio de [source] encore sans
+  /// `done`, en attente ou en vol, ou null s'il n'y en a pas.
+  ({int startMs, int endMs})? pendingRange(AudioSource source) =>
+      _unacked[source]!.pendingRange;
+
   /// Audio de [source] encore sans `done` (en attente ou en vol) : ce qui
   /// reste à transcrire, par exemple pendant l'attente d'un arrêt.
   Duration unacknowledgedAudio(AudioSource source) =>
@@ -627,6 +632,25 @@ class _Unacked {
   int get unsentAudioMs => queue
       .skip(_sentCount)
       .fold<int>(0, (int sum, _Outgoing o) => sum + o.audioMs);
+
+  ({int startMs, int endMs})? get pendingRange {
+    int? start;
+    int? end;
+    void cover(int? from, int? to) {
+      if (from == null || to == null) return;
+      start = start == null ? from : math.min(start!, from);
+      end = end == null ? to : math.max(end!, to);
+    }
+
+    for (final _Range r in _sentEvicted) {
+      cover(r.startMs, r.endMs);
+    }
+    for (final _Outgoing o in queue) {
+      final int? at = o.timestampMs;
+      if (at != null) cover(at, at + o.audioMs);
+    }
+    return start == null ? null : (startMs: start!, endMs: end!);
+  }
 
   bool get hasUnsentFinalCommit =>
       queue.skip(_sentCount).any((_Outgoing o) => o.window != null);
