@@ -20,12 +20,16 @@ final class GapBackfillRetry {
     required Stream<ServerState> serverStates,
     required bool Function() isRecording,
     required String recordingsDirectory,
+    Stream<void>? resumeSignals,
   }) : _backfill = backfill,
        _isRecording = isRecording,
        _directory = recordingsDirectory {
     _states = serverStates.listen((ServerState state) {
       if (state == ServerState.ready) unawaited(_retryAll());
     });
+    // Comme un serveur redevenu prêt : le serveur est de nouveau libre
+    // (fin d'une dictée hors enregistrement).
+    _resumes = resumeSignals?.listen((_) => unawaited(_retryAll()));
   }
 
   /// Tentatives au plus par session, la première comprise.
@@ -35,6 +39,7 @@ final class GapBackfillRetry {
   final bool Function() _isRecording;
   final String _directory;
   late final StreamSubscription<ServerState> _states;
+  StreamSubscription<void>? _resumes;
   final Log _log = Log.named('GapBackfillRetry');
   Future<void> _tail = Future<void>.value();
 
@@ -50,6 +55,7 @@ final class GapBackfillRetry {
   /// Arrête d'écouter l'état du serveur.
   Future<void> dispose() async {
     await _states.cancel();
+    await _resumes?.cancel();
     await _tail;
   }
 

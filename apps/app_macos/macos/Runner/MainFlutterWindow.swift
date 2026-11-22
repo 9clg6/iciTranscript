@@ -17,6 +17,8 @@ class MainFlutterWindow: NSWindow {
     FilePickerPlugin.register(with: flutterViewController.registrar(forPlugin: "FilePickerPlugin"))
     CalendarPlugin.register(with: flutterViewController.registrar(forPlugin: "CalendarPlugin"))
     MeetingDetectionPlugin.register(with: flutterViewController.registrar(forPlugin: "MeetingDetectionPlugin"))
+    GlobalShortcutPlugin.register(with: flutterViewController.registrar(forPlugin: "GlobalShortcutPlugin"))
+    TextOutputPlugin.register(with: flutterViewController.registrar(forPlugin: "TextOutputPlugin"))
 
     super.awakeFromNib()
   }

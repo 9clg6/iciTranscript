@@ -50,7 +50,7 @@ final class SettingsViewModelProvider
   }
 }
 
-String _$settingsViewModelHash() => r'ebf7a0e436466cc9ad11d59d89498ea2b3f7689f';
+String _$settingsViewModelHash() => r'd64db66412f3ef3ed299fef6e90f92c19fcf29d8';
 
 /// ViewModel de l'ecran des reglages.
 ///
