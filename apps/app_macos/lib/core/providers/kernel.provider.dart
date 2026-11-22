@@ -1,6 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:core_data/database/app_database.dart';
+import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/repositories/session.repository.dart';
+import 'package:core_domain/domain/services/transcription.service.dart';
+import 'package:ici_transcript/application/services/gap_backfill.service.dart';
+import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
+import 'package:ici_transcript/core/providers/services/transcription.service.provider.dart';
 import 'package:core_domain/domain/usecases/repair_interrupted_sessions.use_case.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
@@ -30,6 +37,7 @@ Future<void> kernel(Ref ref) async {
   // Une fois au lancement, avant toute session : rien n'enregistre encore.
   // Les dossiers viennent de appDataDirectory() (temporaire sous test).
   await _repairAfterCrash(ref, log);
+  unawaited(_backfillMarkedSessions(ref, log));
 
   // Le serveur ML est demarre par LiveTranscriptionService au moment du recording
   // Ollama est initialise par OllamaSetupViewModel au demarrage
@@ -63,5 +71,31 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
     } catch (e) {
       log.warning('Réparation WAV échouée (${entry.path}): $e');
     }
+  }
+}
+
+/// Au lancement, en tâche de fond : les sessions closes qui gardent des
+/// repères de perte sont retranscrites depuis leurs WAV. Le serveur ML ne
+/// tourne pas encore au lancement : la tentative échoue alors, les repères
+/// restent, et la fin de la prochaine session réessaie (pour celle-ci).
+Future<void> _backfillMarkedSessions(Ref ref, Log log) async {
+  try {
+    final SessionRepository sessions = ref.read(sessionRepositoryProvider);
+    final TranscriptionService transcription = ref.read(
+      transcriptionServiceProvider,
+    );
+    final GapBackfillService backfill = GapBackfillService(
+      transcriber: WebSocketPcmTranscriber(),
+      transcripts: ref.read(transcriptRepositoryProvider),
+      isRecording: () => transcription.isTranscribingStream.value,
+    );
+    for (final SessionEntity session in await sessions.getAll()) {
+      await backfill.backfill(
+        session.id,
+        recordingsDirectory: LiveTranscriptionService.recordingsDir,
+      );
+    }
+  } catch (e) {
+    log.warning('Rattrapage des repères au lancement échoué: $e');
   }
 }

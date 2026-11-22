@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_data/model/audio_gap.dart';
 import 'package:core_data/model/remote/transcript_event.remote.model.dart';
-import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 import 'package:fake_async/fake_async.dart';

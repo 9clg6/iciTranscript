@@ -172,8 +172,8 @@ void main() {
       final Finder label = find.text(key.tr());
       expect(label.hitTestable(), findsOneWidget, reason: key);
       expect(
-        tester.getSemantics(label),
-        isSemantics(isButton: true),
+        tester.getSemantics(label).getSemanticsData().flagsCollection.isButton,
+        isTrue,
         reason: key,
       );
     }

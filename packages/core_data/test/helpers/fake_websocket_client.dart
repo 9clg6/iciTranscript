@@ -45,19 +45,45 @@ final class FakeWebSocketClient extends WebSocketClient {
   Duration? autoDoneAfter;
   String autoDoneText = 'phrase';
 
+  /// Faux : la poignée de main ne se termine jamais (connect sans fin).
+  bool hangConnect = false;
+
+  /// Appelé à chaque commit final reçu : numéros des chunks de la phrase et
+  /// génération de la connexion (voir [emitIfAlive]). Pour un serveur
+  /// factice piloté par le test (file séquentielle, blocages).
+  void Function(List<int> utteranceIds, int generation)? onFinalCommit;
+
   // Audio envoyé sans `done` sur la connexion courante : phrases commitées
-  // en attente (taille en chunks) et phrase en cours.
-  final List<int> _pendingUtterances = <int>[];
-  int _currentUtterance = 0;
+  // en attente (numéros des chunks) et phrase en cours.
+  final List<List<int>> _pendingUtterances = <List<int>>[];
+  List<int> _currentUtterance = <int>[];
   int _generation = 0;
+
+  /// Génération de la connexion courante (change à chaque connexion ou
+  /// fermeture).
+  int get generation => _generation;
+
+  /// Chunks transcrits : acquittés par un `done` sur la connexion qui les a
+  /// reçus, dans l'ordre d'acquittement.
+  final List<int> transcribedOrder = <int>[];
+  final Set<int> transcribedIds = <int>{};
+  final List<int> transcribedTwice = <int>[];
+
+  // Fermetures vues par le client (canal fini ou en erreur), sans appel à
+  // disconnect().
+  final StreamController<void> _closes = StreamController<void>.broadcast();
+
+  /// Le canal s'est fermé côté serveur.
+  @override
+  Stream<void> get onClosed => _closes.stream;
 
   /// Plus grand volume d'audio (en chunks de 100 ms) envoyé et pas encore
   /// acquitté par un `done`, sur une même connexion.
   int maxInFlightChunks = 0;
 
   int get inFlightChunks =>
-      _pendingUtterances.fold<int>(0, (int a, int b) => a + b) +
-      _currentUtterance;
+      _pendingUtterances.fold<int>(0, (int a, List<int> b) => a + b.length) +
+      _currentUtterance.length;
 
   final StreamController<String> _messages =
       StreamController<String>.broadcast();
@@ -73,21 +99,26 @@ final class FakeWebSocketClient extends WebSocketClient {
     connectCalls++;
     final Duration? at = now?.call();
     if (at != null) connectAttempts.add(at);
+    if (hangConnect) return Completer<void>().future;
     if (!accepting) {
       throw const SocketException('Connection refused');
     }
     _connected = true;
     _generation++;
     _pendingUtterances.clear();
-    _currentUtterance = 0;
+    _currentUtterance = <int>[];
     connections.add(<int>[]);
     connectionMessages.add(<String>[]);
   }
 
-  /// La socket se ferme côté serveur (crash, redémarrage).
-  void drop() {
+  /// La socket se ferme côté serveur (crash, redémarrage). Avec [notify],
+  /// le client le voit comme le vrai (fin du canal, [onClosed]) ; sans, la
+  /// fermeture passe inaperçue jusqu'au prochain envoi.
+  void drop({bool notify = true}) {
+    if (!_connected) return;
     _connected = false;
     _generation++;
+    if (notify) _closes.add(null);
   }
 
   @override
@@ -101,14 +132,16 @@ final class FakeWebSocketClient extends WebSocketClient {
       final int id = chunkIdOf(json['audio'] as String);
       appendedChunkIds.add(id);
       connections.last.add(id);
-      _currentUtterance++;
+      _currentUtterance.add(id);
       if (inFlightChunks > maxInFlightChunks) {
         maxInFlightChunks = inFlightChunks;
       }
     } else if (json['type'] == 'input_audio_buffer.commit' &&
         json['final'] == true) {
-      _pendingUtterances.add(_currentUtterance);
-      _currentUtterance = 0;
+      final List<int> utterance = _currentUtterance;
+      _pendingUtterances.add(utterance);
+      _currentUtterance = <int>[];
+      onFinalCommit?.call(List<int>.of(utterance), _generation);
       final Duration? delay = autoDoneAfter;
       if (delay == null) return;
       final int generation = _generation;
@@ -127,9 +160,17 @@ final class FakeWebSocketClient extends WebSocketClient {
   void emit(Map<String, Object> event) {
     if (event['type'] == 'response.audio_transcript.done' &&
         _pendingUtterances.isNotEmpty) {
-      _pendingUtterances.removeAt(0);
+      for (final int id in _pendingUtterances.removeAt(0)) {
+        transcribedOrder.add(id);
+        if (!transcribedIds.add(id)) transcribedTwice.add(id);
+      }
     }
     _messages.add(jsonEncode(event));
+  }
+
+  /// [emit] si la connexion de [generation] vit encore.
+  void emitIfAlive(int generation, Map<String, Object> event) {
+    if (_connected && generation == _generation) emit(event);
   }
 
   @override
@@ -142,6 +183,7 @@ final class FakeWebSocketClient extends WebSocketClient {
   Future<void> dispose() async {
     _connected = false;
     await _messages.close();
+    await _closes.close();
   }
 }
 

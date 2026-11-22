@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -52,8 +54,9 @@ void main() {
 
   void expectSelected(WidgetTester tester, String key, bool selected) {
     expect(
-      tester.getSemantics(navItem(key)),
-      isSemantics(isSelected: selected),
+      tester.getSemantics(navItem(key)).getSemanticsData().flagsCollection
+          .isSelected,
+      selected ? Tristate.isTrue : Tristate.isFalse,
       reason: '$key sélectionné = $selected',
     );
   }
