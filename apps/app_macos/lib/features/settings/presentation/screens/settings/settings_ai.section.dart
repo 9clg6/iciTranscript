@@ -119,6 +119,10 @@ class _LlmProviderBlock extends ConsumerStatefulWidget {
 class _LlmProviderBlockState extends ConsumerState<_LlmProviderBlock> {
   final TextEditingController _key = TextEditingController();
   final TextEditingController _model = TextEditingController();
+  late final FocusNode _modelFocus = FocusNode()
+    ..addListener(() {
+      if (!_modelFocus.hasFocus) _commitModel();
+    });
   String _shownModel = '';
   bool _replacing = false;
 
@@ -148,10 +152,20 @@ class _LlmProviderBlockState extends ConsumerState<_LlmProviderBlock> {
     _model.text = saved;
   }
 
+  /// Entrée ou sortie du champ : enregistre une valeur changée ; vide =
+  /// retour au modèle par défaut.
+  void _commitModel() {
+    final String model = _model.text.trim();
+    if (model == _shownModel) return;
+    _shownModel = model;
+    widget.vm.updateLlmModel(_id, model);
+  }
+
   @override
   void dispose() {
     _key.dispose();
     _model.dispose();
+    _modelFocus.dispose();
     super.dispose();
   }
 
@@ -199,16 +213,14 @@ class _LlmProviderBlockState extends ConsumerState<_LlmProviderBlock> {
           const SizedBox(height: OatsSpace.md),
           TextField(
             controller: _model,
+            focusNode: _modelFocus,
             style: o.ui,
             decoration: _decoration(
               o,
               label: LocaleKeys.settings_ai_model_label.tr(),
               hint: LlmSettings.defaultModel(_id),
             ),
-            onSubmitted: (String model) {
-              _shownModel = model.trim();
-              widget.vm.updateLlmModel(_id, model);
-            },
+            onSubmitted: (_) => _commitModel(),
           ),
         ],
       ),
