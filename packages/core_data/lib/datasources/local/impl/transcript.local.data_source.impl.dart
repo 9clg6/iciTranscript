@@ -66,6 +66,11 @@ final class TranscriptLocalDataSourceImpl implements TranscriptLocalDataSource {
   }
 
   @override
+  Future<void> deleteById(String id) {
+    return _transcriptSegmentDao.deleteById(id);
+  }
+
+  @override
   Future<void> deleteBySessionId(String sessionId) {
     return _transcriptSegmentDao.deleteBySessionId(sessionId);
   }

@@ -69,6 +69,15 @@ class MockTranscriptLocalDataSource extends _i1.Mock
           as _i3.Future<void>);
 
   @override
+  _i3.Future<void> deleteById(String? id) =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteById, [id]),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
   _i3.Future<void> deleteBySessionId(String? sessionId) =>
       (super.noSuchMethod(
             Invocation.method(#deleteBySessionId, [sessionId]),

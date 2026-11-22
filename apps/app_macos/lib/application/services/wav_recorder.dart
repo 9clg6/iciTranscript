@@ -4,7 +4,9 @@ import 'dart:typed_data';
 /// Enregistre un flux PCM 16 bits mono dans un fichier WAV en streaming.
 ///
 /// L'en-tête est écrit avec des tailles à zéro à l'ouverture, le PCM est
-/// ajouté au fil de l'eau, puis les tailles sont corrigées à la fermeture.
+/// ajouté au fil de l'eau et les tailles suivent chaque seconde d'audio, puis
+/// sont corrigées à la fermeture. Après un crash, le fichier reste lisible
+/// (au plus 1 s hors en-tête) et [repair] le recale sur sa taille.
 /// Évite de garder tout l'audio en mémoire (réunions longues).
 class WavRecorder {
   WavRecorder({this.sampleRate = 16000});
@@ -14,6 +16,7 @@ class WavRecorder {
 
   RandomAccessFile? _raf;
   int _dataBytes = 0;
+  int _headerDataBytes = 0;
   Future<void> _pendingWrites = Future<void>.value();
   Object? _writeError;
   StackTrace? _writeErrorStackTrace;
@@ -31,6 +34,7 @@ class WavRecorder {
     await file.parent.create(recursive: true);
     _raf = await file.open(mode: FileMode.write);
     _dataBytes = 0;
+    _headerDataBytes = 0;
     _pendingWrites = Future<void>.value();
     _writeError = null;
     _writeErrorStackTrace = null;
@@ -56,6 +60,12 @@ class WavRecorder {
       try {
         await raf.writeFrom(pendingPcm);
         _dataBytes += pendingPcm.length;
+        if (_dataBytes - _headerDataBytes >= _bytesPerSecond) {
+          await raf.setPosition(0);
+          await raf.writeFrom(_header(_dataBytes));
+          await raf.setPosition(_headerBytes + _dataBytes);
+          _headerDataBytes = _dataBytes;
+        }
       } catch (error, stackTrace) {
         _writeError ??= error;
         _writeErrorStackTrace ??= stackTrace;
@@ -100,6 +110,42 @@ class WavRecorder {
         closeError,
         closeErrorStackTrace ?? StackTrace.current,
       );
+    }
+  }
+
+  static const int _headerBytes = 44;
+
+  int get _bytesPerSecond => sampleRate * 2;
+
+  /// Recale les tailles d'un WAV dont l'en-tête n'a pas été finalisé (app
+  /// arrêtée en pleine session) sur la taille réelle du fichier.
+  ///
+  /// Sans effet sur un WAV déjà juste, un fichier trop court ou qui n'est
+  /// pas un WAV écrit par cette classe. Un demi-échantillon final est ignoré.
+  static Future<void> repair(String path) async {
+    final RandomAccessFile raf = await File(path).open(mode: FileMode.append);
+    try {
+      final int length = await raf.length();
+      if (length < _headerBytes) return;
+      await raf.setPosition(0);
+      final Uint8List head = await raf.read(_headerBytes);
+      final ByteData h = ByteData.sublistView(head);
+      if (String.fromCharCodes(head, 0, 4) != 'RIFF' ||
+          String.fromCharCodes(head, 8, 12) != 'WAVE' ||
+          String.fromCharCodes(head, 36, 40) != 'data') {
+        return;
+      }
+      final int dataBytes = (length - _headerBytes) & ~1;
+      if (h.getUint32(40, Endian.little) == dataBytes &&
+          h.getUint32(4, Endian.little) == 36 + dataBytes) {
+        return;
+      }
+      h.setUint32(4, 36 + dataBytes, Endian.little);
+      h.setUint32(40, dataBytes, Endian.little);
+      await raf.setPosition(0);
+      await raf.writeFrom(head);
+    } finally {
+      await raf.close();
     }
   }
 

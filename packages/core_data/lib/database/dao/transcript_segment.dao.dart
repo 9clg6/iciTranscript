@@ -21,9 +21,16 @@ class TranscriptSegmentDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
-  /// Insere un nouveau segment.
+  /// Insere un segment, ou remplace celui de meme id (phrase provisoire).
   Future<void> insertSegment(TranscriptSegmentsCompanion segment) {
-    return into(transcriptSegments).insert(segment);
+    return into(transcriptSegments).insertOnConflictUpdate(segment);
+  }
+
+  /// Supprime un segment par son identifiant.
+  Future<void> deleteById(String id) {
+    return (delete(
+      transcriptSegments,
+    )..where(($TranscriptSegmentsTable t) => t.id.equals(id))).go();
   }
 
   /// Insere un lot de segments.
