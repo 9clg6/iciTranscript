@@ -3,14 +3,29 @@ import 'dart:io';
 
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/core/platform/owned_processes.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
+import 'package:ici_transcript/core/platform/system_process_host.dart';
 
 /// Gestionnaire du processus voxmlx-serve.
 ///
-/// Lance, surveille et arrete le serveur ML directement via [dart:io Process].
-/// Pas besoin de platform channel Swift — Dart gere les processus natifs.
+/// Lance, surveille et arrete le serveur ML via [OwnedProcessRegistry] :
+/// l'app n'arrete que le serveur qu'elle a lance, sur le port du lancement.
 class ProcessManagerChannel {
   /// Cree une instance de [ProcessManagerChannel].
-  ProcessManagerChannel();
+  ProcessManagerChannel({OwnedProcessRegistry? processes, ServerPorts? ports})
+    : _processes =
+          processes ??
+          OwnedProcessRegistry(
+            host: const SystemProcessHost(),
+            stateFile: ownedProcessesFile(),
+          ),
+      _ports = ports ?? serverPorts();
+
+  static const String _role = 'transcription';
+
+  final OwnedProcessRegistry _processes;
+  final ServerPorts _ports;
 
   final Log _log = Log.named('ProcessManagerChannel');
 
@@ -28,14 +43,14 @@ class ProcessManagerChannel {
   /// Stream des logs du serveur (stdout + stderr).
   Stream<String> get logsStream => _logsController.stream;
 
-  /// Demarre le serveur ML.
+  /// Demarre le serveur ML sur le port du lancement ([ServerPorts]).
   ///
   /// [command] — commande a lancer (ex: 'uvx').
-  /// [args] — arguments de la commande.
+  /// [args] — arguments de la commande (`--port` est ajoute ici).
   /// [readyPattern] — pattern dans stdout qui indique que le serveur est pret.
-  /// Port sur lequel le serveur ML ecoute (par defaut 8000).
-  static const int _serverPort = 8000;
-
+  ///
+  /// Leve [PortInUseException] si un autre programme tient le port : il
+  /// n'est jamais tue.
   Future<void> startServer({
     required String command,
     List<String> args = const <String>[],
@@ -48,36 +63,26 @@ class ProcessManagerChannel {
 
     _setState(ServerState.starting);
 
-    // Nettoyer le port au cas ou un ancien processus traine
-    await _killProcessOnPort(_serverPort);
-
     // Resoudre le chemin complet de la commande
     final String resolvedCommand = await _resolveCommand(command);
-    _log.info('Lancement: $resolvedCommand ${args.join(' ')}');
+    final List<String> fullArgs = <String>[
+      ...args,
+      '--port',
+      '${_ports.transcription}',
+    ];
+    _log.info('Lancement: $resolvedCommand ${fullArgs.join(' ')}');
 
     try {
-      // Lancer via /bin/sh pour heriter d'un environnement shell complet
-      // et eviter les crashes Process.start sur macOS Flutter
-      final String fullCommand = <String>[resolvedCommand, ...args]
-          .map((String a) {
-            // Echapper les arguments contenant des caracteres speciaux
-            if (a.contains(' ') || a.contains('[') || a.contains(']')) {
-              return "'$a'";
-            }
-            return a;
-          })
-          .join(' ');
-      _log.info('Commande shell: $fullCommand');
-
-      final Process serverProcess = await Process.start(
-        '/bin/sh',
-        <String>['-c', fullCommand],
+      final Process serverProcess = await _processes.start(
+        _role,
+        resolvedCommand,
+        fullArgs,
+        port: _ports.transcription,
         environment: <String, String>{
           'HOME': Platform.environment['HOME'] ?? '/Users/unknown',
           'PATH': _extendedPath(),
           'LANG': Platform.environment['LANG'] ?? 'en_US.UTF-8',
         },
-        mode: ProcessStartMode.normal,
       );
       _serverProcess = serverProcess;
 
@@ -167,9 +172,7 @@ class ProcessManagerChannel {
     }
   }
 
-  /// Arrete le serveur ML.
-  ///
-  /// Envoie SIGTERM, attend 5s, puis SIGKILL si necessaire.
+  /// Arrete le serveur ML lance par l'app (et lui seul).
   Future<void> stopServer() async {
     final Process? process = _serverProcess;
     if (process == null) {
@@ -177,26 +180,10 @@ class ProcessManagerChannel {
       return;
     }
 
-    final int pid = process.pid;
-    _log.info('Envoi SIGTERM au serveur (pid $pid)');
-    process.kill(ProcessSignal.sigterm);
-
-    // Attendre 5s pour un arret propre
-    final bool exited = await process.exitCode
-        .timeout(const Duration(seconds: 5), onTimeout: () => -1)
-        .then((int code) => code != -1)
-        .catchError((_) => false);
-
-    if (!exited) {
-      _log.warning('SIGTERM ignore, envoi SIGKILL');
-      process.kill(ProcessSignal.sigkill);
-    }
-
-    // On a lance `/bin/sh -c "uvx ..."`. Tuer le sh ne tue PAS les enfants
-    // uvx/python (reparentes a launchd → orphelins qui gardent le port 8000
-    // et bloquent le prochain demarrage). On nettoie donc tout voxmlx par
-    // pattern. (Pas de kill par PGID : l'enfant partage le PGID de l'app.)
-    await Process.run('/usr/bin/pkill', <String>['-9', '-f', 'voxmlx']);
+    // SIGTERM au groupe lance, SIGKILL apres un delai : jamais par nom.
+    _log.info('Arret du serveur (pid ${process.pid})');
+    _serverProcess = null;
+    await _processes.stop(_role);
 
     _serverProcess = null;
     _setState(ServerState.stopped);
@@ -273,68 +260,15 @@ class ProcessManagerChannel {
     _stateController.add(newState);
   }
 
-  /// Tue tout processus ecoutant sur le port [port].
-  ///
-  /// Utilise `lsof` pour trouver le PID puis envoie SIGKILL.
-  /// Silencieux si aucun processus n'occupe le port.
-  Future<void> _killProcessOnPort(int port) async {
-    try {
-      final ProcessResult result = await Process.run('/bin/sh', <String>[
-        '-c',
-        'lsof -ti :$port',
-      ]);
-      final String output = (result.stdout as String).trim();
-
-      // Tuer le PID qui ecoute le port (l'enfant python qui detient le socket).
-      if (output.isNotEmpty) {
-        for (final String pid in output.split('\n')) {
-          final String trimmedPid = pid.trim();
-          if (trimmedPid.isEmpty) continue;
-          _log.warning('Port $port occupe par PID $trimmedPid, SIGKILL');
-          await Process.run('/bin/kill', <String>['-9', trimmedPid]);
-        }
-      }
-
-      // `uvx` (`uv tool uvx`) est un superviseur : tuer seulement l'enfant
-      // python ne suffit pas, le parent relance le serveur et reprend le port.
-      // On tue donc tout processus voxmlx par pattern. NB : on ne peut PAS
-      // tuer par groupe de processus (kill -9 -PGID) car l'enfant partage le
-      // PGID de l'app Flutter → cela tuerait l'app elle-meme. Le pattern
-      // "voxmlx" ne matche jamais le binaire de l'app.
-      await Process.run('/usr/bin/pkill', <String>['-9', '-f', 'voxmlx']);
-
-      // Laisser le temps au port de se liberer
-      await Future<void>.delayed(const Duration(milliseconds: 800));
-    } on Exception catch (e) {
-      _log.warning('Impossible de nettoyer le port $port: $e');
-    }
-  }
-
   Future<bool> _waitForServerHealth(Process expectedProcess) async {
-    final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 1);
     final Stopwatch timeout = Stopwatch()..start();
-    try {
-      while (timeout.elapsed < const Duration(seconds: 600)) {
-        if (!identical(_serverProcess, expectedProcess)) return false;
-        try {
-          final HttpClientRequest request = await client
-              .getUrl(Uri.parse('http://127.0.0.1:$_serverPort/health'))
-              .timeout(const Duration(seconds: 1));
-          final HttpClientResponse response = await request.close().timeout(
-            const Duration(seconds: 1),
-          );
-          await response.drain<void>();
-          if (response.statusCode == HttpStatus.ok) return true;
-        } on Object {
-          // Le modèle charge ou la socket n'est pas encore liée.
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-      }
-      return false;
-    } finally {
-      client.close(force: true);
+    while (timeout.elapsed < const Duration(seconds: 600)) {
+      if (!identical(_serverProcess, expectedProcess)) return false;
+      // Le modèle charge ou la socket n'est pas encore liée.
+      if (await _processes.isHealthy(_ports.transcriptionHealth)) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
     }
+    return false;
   }
 
   /// Construit un PATH etendu incluant les emplacements courants de uvx.

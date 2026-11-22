@@ -6,6 +6,9 @@ import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:dio/dio.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
+import 'package:ici_transcript/core/platform/owned_processes.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
+import 'package:ici_transcript/core/platform/system_process_host.dart';
 
 enum OllamaSetupStage {
   /// Tout est prêt.
@@ -33,12 +36,17 @@ enum OllamaSetupStage {
 /// 1. Télécharge le binaire `ollama` si absent (~50 MB)
 /// 2. Démarre `ollama serve`
 /// 3. Tire le modèle Mistral via l'API REST si absent (~4 GB)
+///
+/// Un seul démon, partagé entre dev et release : s'il répond déjà, on s'en
+/// sert ; l'app n'arrête que celui qu'elle a lancé ([dispose]).
 class OllamaService {
-  OllamaService();
+  OllamaService({ProcessHost host = const SystemProcessHost()}) : _host = host;
+
+  final ProcessHost _host;
 
   final Log _log = Log.named('OllamaService');
 
-  static const String _baseUrl = 'http://localhost:11434';
+  static final String _baseUrl = '$ollamaBaseUrl';
   // Mistral 7B : ~3-5x plus rapide que mistral-small (24B) sur Mac, qualite
   // suffisante pour le coaching et le resume.
   static const String _model = 'mistral';
@@ -367,7 +375,7 @@ class OllamaService {
     final String bin = await _effectiveBinPath();
     _log.info('Démarrage de "$bin serve"');
 
-    _ollamaProcess = await Process.start(
+    _ollamaProcess = await _host.start(
       bin,
       <String>['serve'],
       environment: <String, String>{
@@ -434,10 +442,8 @@ class OllamaService {
     _log.info('Téléchargement du modèle $_model via Ollama API...');
 
     final HttpClient client = HttpClient();
-    final HttpClientRequest request = await client.post(
-      'localhost',
-      11434,
-      '/api/pull',
+    final HttpClientRequest request = await client.postUrl(
+      ollamaBaseUrl.resolve('/api/pull'),
     );
     request.headers.contentType = ContentType.json;
     request.write(
