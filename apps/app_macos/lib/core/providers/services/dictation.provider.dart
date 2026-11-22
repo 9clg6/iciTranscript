@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
@@ -35,6 +37,25 @@ class DictationSettingsApplied extends _$DictationSettingsApplied {
   void set(DictationSettings settings) => state = settings;
 }
 
+/// Une dictée est en cours ([isDictating]) : les suggestions de réunion se
+/// taisent et le micro pris par Oats pour dicter ne compte jamais comme un
+/// appel. Tenu à jour par [dictationController] ; lisible sans construire
+/// le contrôleur (faux dans les tests : `overrideWith` ou `set`).
+@Riverpod(keepAlive: true)
+class DictationActive extends _$DictationActive {
+  @override
+  bool build() => false;
+
+  /// Fixe l'état.
+  void set(bool active) => state = active;
+}
+
+/// Démarrage, écoute ou transcription d'une dictée.
+bool isDictating(DictationState s) =>
+    s is DictationStarting ||
+    s is DictationListening ||
+    s is DictationTranscribing;
+
 /// La dictée : raccourci global, flux propre hors réunion (micro seul, sur
 /// le serveur partagé), micro de la réunion pendant un enregistrement.
 @Riverpod(keepAlive: true)
@@ -67,7 +88,12 @@ DictationController dictationController(Ref ref) {
       Log.named('Dictation').warning('Réglages de dictée non appliqués: $e');
     });
   }, fireImmediately: true);
+  final StreamSubscription<bool> dictating = controller.stateStream
+      .map(isDictating)
+      .distinct()
+      .listen(ref.read(dictationActiveProvider.notifier).set);
   ref.onDispose(() async {
+    await dictating.cancel();
     await controller.dispose();
     await remote.dispose();
   });

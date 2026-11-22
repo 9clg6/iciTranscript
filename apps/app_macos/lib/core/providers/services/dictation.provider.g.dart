@@ -178,6 +178,77 @@ abstract class _$DictationSettingsApplied
   }
 }
 
+/// Une dictée est en cours ([isDictating]) : les suggestions de réunion se
+/// taisent et le micro pris par Oats pour dicter ne compte jamais comme un
+/// appel. Tenu à jour par [dictationController] ; lisible sans construire
+/// le contrôleur (faux dans les tests : `overrideWith` ou `set`).
+
+@ProviderFor(DictationActive)
+const dictationActiveProvider = DictationActiveProvider._();
+
+/// Une dictée est en cours ([isDictating]) : les suggestions de réunion se
+/// taisent et le micro pris par Oats pour dicter ne compte jamais comme un
+/// appel. Tenu à jour par [dictationController] ; lisible sans construire
+/// le contrôleur (faux dans les tests : `overrideWith` ou `set`).
+final class DictationActiveProvider
+    extends $NotifierProvider<DictationActive, bool> {
+  /// Une dictée est en cours ([isDictating]) : les suggestions de réunion se
+  /// taisent et le micro pris par Oats pour dicter ne compte jamais comme un
+  /// appel. Tenu à jour par [dictationController] ; lisible sans construire
+  /// le contrôleur (faux dans les tests : `overrideWith` ou `set`).
+  const DictationActiveProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'dictationActiveProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$dictationActiveHash();
+
+  @$internal
+  @override
+  DictationActive create() => DictationActive();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(bool value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<bool>(value),
+    );
+  }
+}
+
+String _$dictationActiveHash() => r'7df7ffd7823d18f4971d07b230e044742736b87f';
+
+/// Une dictée est en cours ([isDictating]) : les suggestions de réunion se
+/// taisent et le micro pris par Oats pour dicter ne compte jamais comme un
+/// appel. Tenu à jour par [dictationController] ; lisible sans construire
+/// le contrôleur (faux dans les tests : `overrideWith` ou `set`).
+
+abstract class _$DictationActive extends $Notifier<bool> {
+  bool build();
+  @$mustCallSuper
+  @override
+  void runBuild() {
+    final created = build();
+    final ref = this.ref as $Ref<bool, bool>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<bool, bool>,
+              bool,
+              Object?,
+              Object?
+            >;
+    element.handleValue(ref, created);
+  }
+}
+
 /// La dictée : raccourci global, flux propre hors réunion (micro seul, sur
 /// le serveur partagé), micro de la réunion pendant un enregistrement.
 
@@ -232,7 +303,7 @@ final class DictationControllerProvider
 }
 
 String _$dictationControllerHash() =>
-    r'ee732ca23a2eacd6497ac5e74b39561e231be838';
+    r'3e550e41fda1e9af0d1a8a5561594785217114c6';
 
 /// État du raccourci global (Réglages : raccourci déjà pris).
 

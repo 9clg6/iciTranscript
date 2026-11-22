@@ -6,6 +6,7 @@ import 'package:ici_transcript/application/services/calendar/calendar_event.dart
 import 'package:ici_transcript/application/services/meeting/meeting_rules.dart';
 import 'package:ici_transcript/core/providers/platform/meeting_detection_channel.provider.dart';
 import 'package:ici_transcript/core/providers/platform/now.provider.dart';
+import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
 import 'package:ici_transcript/features/calendar/calendar_prefs.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
@@ -95,7 +96,9 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
     final LiveTranscriptionState live = ref.read(
       liveTranscriptionViewModelProvider,
     );
-    final bool ownCapture = live.isRecording || live.isPaused;
+    // Oats enregistre ou dicte : son propre micro n'est jamais un appel.
+    final bool ownCapture =
+        live.isRecording || live.isPaused || ref.read(dictationActiveProvider);
 
     final MeetingSuggestion? current = state;
     if (current != null) {
