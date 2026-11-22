@@ -477,20 +477,47 @@ final class LiveTranscriptionService {
     final String? closedSessionId = currentSessionStream.valueOrNull?.id;
     await _transcriptionService.stopSession();
 
-    // Session close : ses repères de perte sont retranscrits depuis les WAV,
-    // en tâche de fond (le service s'interrompt si un enregistrement repart).
-    // ponytail: la passe post-session du coach peut supprimer les WAV avant ;
-    // le repère reste alors, sans perte de plus.
-    final GapBackfillService? backfill = _gapBackfill;
-    if (backfill != null && closedSessionId != null) {
-      unawaited(
-        backfill
-            .backfill(closedSessionId, recordingsDirectory: recordingsDir)
-            .catchError((Object e) => _log.warning('Rattrapage: $e')),
-      );
-    }
+    // Session close (l'écran le voit déjà) : ses repères de perte sont
+    // retranscrits depuis les WAV AVANT de rendre la main, car la passe
+    // post-session qui suit supprime ces WAV. Sans repère, rien n'attend.
+    if (closedSessionId != null) await _backfillGaps(closedSessionId);
 
     _log.info('Transcription en direct arretee');
+  }
+
+  // Borne du rattrapage à l'arrêt ; au-delà, les repères restent (journal).
+  static const Duration _backfillLimit = Duration(minutes: 5);
+
+  Future<void> _backfillGaps(String sessionId) async {
+    final GapBackfillService? backfill = _gapBackfill;
+    if (backfill == null) return;
+    final List<({String markerId, AudioSource source, int startMs, int endMs})>
+    plan = GapBackfillService.plan(
+      segmentsStream.value
+          .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
+          .toList(),
+    );
+    if (plan.isEmpty) return;
+    // Même flux que l'attente du rattrapage : « transcription en cours
+    // d'achèvement », puis zéro.
+    _finalisingRemaining.add(
+      plan.fold<Duration>(
+        Duration.zero,
+        (
+          Duration sum,
+          ({String markerId, AudioSource source, int startMs, int endMs}) g,
+        ) => sum + Duration(milliseconds: g.endMs - g.startMs),
+      ),
+    );
+    try {
+      await backfill
+          .backfill(sessionId, recordingsDirectory: recordingsDir)
+          .timeout(_backfillLimit);
+    } catch (e) {
+      _log.warning('Rattrapage des repères interrompu, repères gardés: $e');
+    } finally {
+      _finalisingRemaining.add(Duration.zero);
+    }
   }
 
   /// Libere les ressources du service.
