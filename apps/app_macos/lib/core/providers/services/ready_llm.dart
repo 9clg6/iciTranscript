@@ -11,8 +11,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 /// Attente maximale du démarrage du démon local avant « injoignable ».
 const Duration kLlmLocalStartTimeout = Duration(seconds: 60);
 
-/// Fournisseur prêt à répondre et modèle qu'il utilise.
-typedef ReadyLlm = ({LlmProvider llm, String model});
+/// Fournisseur prêt à répondre, modèle qu'il utilise et son id.
+typedef ReadyLlm = ({LlmProvider llm, String model, LlmProviderId id});
 
 /// Où partira une requête IA : fournisseur en ligne s'il est configuré,
 /// autorisé et choisi, sinon le modèle local s'il est installé. Null :
@@ -47,5 +47,6 @@ Future<ReadyLlm?> readyLlm(Ref ref, {bool start = true}) async {
   return (
     llm: await ref.read(activeLlmProviderProvider.future),
     model: model,
+    id: id,
   );
 }

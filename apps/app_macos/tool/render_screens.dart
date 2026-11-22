@@ -52,7 +52,12 @@ import 'package:ici_transcript/application/services/dictation/dictation_preferen
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/presentation/app.dart';
 
+import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
+import 'package:ici_transcript/application/services/live_answers/live_question.dart';
+import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
+
 import '../test/helpers/document_fakes.dart';
+import '../test/helpers/live_answers_fakes.dart';
 import '../test/helpers/fake_data.dart';
 import '../test/helpers/fake_view_models.dart';
 import '../test/helpers/local_model_fakes.dart';
@@ -228,6 +233,151 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
   Future<void> recheckPermissions() async {}
 }
 
+// Questions en direct (contenu inventé) : service réel sur LLM et
+// recherche factices, joué à chaque état.
+const String _qMigration =
+    'Quand est-ce que la migration du lot 2 sera terminée ?';
+const String _qPrice =
+    'Combien coûte la licence pour une équipe de quarante personnes ?';
+const String _qHosting =
+    'Où sont hébergées les données des clients européens ?';
+
+const List<DocumentExcerpt> _excerpts = <DocumentExcerpt>[
+  DocumentExcerpt(
+    documentId: 'd1',
+    documentTitle: 'Plan de migration v3',
+    text: 'Lot 2 : bascule le 14 mars, recette du 3 au 12 mars.',
+  ),
+  DocumentExcerpt(
+    documentId: 'd2',
+    documentTitle: 'Grille tarifaire 2026',
+    text: 'Licence équipe : 38 € par personne et par mois.',
+  ),
+];
+
+final Map<String, LiveAnswersHarness Function()> _answerStates =
+    <String, LiveAnswersHarness Function()>{
+      'empty': LiveAnswersHarness.new,
+      'detected': LiveAnswersHarness.new,
+      'answering': LiveAnswersHarness.new,
+      'answered': () => LiveAnswersHarness()..search.results = _excerpts,
+      'declined': LiveAnswersHarness.new,
+      'failed': LiveAnswersHarness.new,
+      'needs-model': () => LiveAnswersHarness(modelReady: false),
+      'local-manual': () =>
+          LiveAnswersHarness(isLocal: true, modelId: 'mistral'),
+    };
+
+/// Joue un état ; [settle] laisse partir les requêtes avant la réponse.
+typedef _Play =
+    Future<void> Function(LiveAnswersHarness h, Future<void> Function() settle);
+
+final Map<String, _Play> _play = <String, _Play>{
+  'detected': (LiveAnswersHarness h, Future<void> Function() settle) async {
+    h
+      ..hear(_qMigration, atMs: 812000)
+      ..hear(_qPrice, atMs: 840000, speaker: 0)
+      ..hear(_qHosting, atMs: 851000);
+    await settle();
+    h.llm.streams.first.reply('La bascule du lot 2 est prévue le 14 mars.');
+  },
+  'answering': (LiveAnswersHarness h, Future<void> Function() settle) async {
+    h.hear(_qMigration, atMs: 812000);
+    await settle();
+    h.llm.last.delta('La bascule du lot 2 est prévue le 14 mars, après une');
+  },
+  'answered': (LiveAnswersHarness h, Future<void> Function() settle) async {
+    h.hear(_qMigration, atMs: 812000);
+    await settle();
+    h.llm.last.reply(
+      'La bascule du lot 2 est prévue le 14 mars [S1].\n'
+      '- La recette se déroule du 3 au 12 mars [S1].\n'
+      '- Les équipes support sont prévenues une semaine avant.\n'
+      '- Le tarif équipe reste à 38 € par personne [S2].',
+    );
+  },
+  'declined': (LiveAnswersHarness h, Future<void> Function() settle) async {
+    h.hear('Vous avez vu le match hier soir ?', atMs: 812000);
+    await settle();
+    h.llm.last.reply('NO_ANSWER');
+  },
+  'failed': (LiveAnswersHarness h, Future<void> Function() settle) async {
+    h.hear(_qPrice, atMs: 840000, speaker: 0);
+    await settle();
+    h.llm.last.fail(const LlmUnreachableException('Exemple'));
+  },
+  'needs-model': (LiveAnswersHarness h, Future<void> Function() _) async =>
+      h.hear(_qHosting, atMs: 851000),
+  'local-manual': (LiveAnswersHarness h, Future<void> Function() _) async {
+    h
+      ..hear(_qMigration, atMs: 812000)
+      ..hear(_qHosting, atMs: 851000);
+  },
+};
+
+/// Questions gardées avec une note : répondue avec sources, coupée,
+/// refusée, en échec, sans réponse.
+const List<LiveQuestion> _savedQuestions = <LiveQuestion>[
+  LiveQuestion(
+    id: 'q1',
+    sessionId: 'x',
+    text: _qMigration,
+    speaker: 1,
+    timestampMs: 812000,
+    status: LiveQuestionStatus.answered,
+    answer:
+        'La bascule du lot 2 est prévue le 14 mars [S1].\n'
+        '- La recette se déroule du 3 au 12 mars [S1].\n'
+        '- Le tarif équipe reste à 38 € par personne [S2].',
+    model: 'modele-exemple',
+    sources: <AnswerSource>[
+      AnswerSource(
+        documentId: 'd1',
+        title: 'Plan de migration v3',
+        excerpt: 'Lot 2 : bascule le 14 mars, recette du 3 au 12 mars.',
+      ),
+      AnswerSource(
+        documentId: 'd2',
+        title: 'Grille tarifaire 2026',
+        excerpt: 'Licence équipe : 38 € par personne et par mois.',
+      ),
+    ],
+  ),
+  LiveQuestion(
+    id: 'q2',
+    sessionId: 'x',
+    text: _qPrice,
+    speaker: 0,
+    timestampMs: 840000,
+    status: LiveQuestionStatus.answered,
+    answer: 'La licence équipe coûte 38 € par personne et par mois, soit',
+    truncated: true,
+  ),
+  LiveQuestion(
+    id: 'q3',
+    sessionId: 'x',
+    text: 'Vous avez vu le match hier soir ?',
+    speaker: 1,
+    timestampMs: 846000,
+    status: LiveQuestionStatus.declined,
+  ),
+  LiveQuestion(
+    id: 'q4',
+    sessionId: 'x',
+    text: _qHosting,
+    speaker: 1,
+    timestampMs: 851000,
+    status: LiveQuestionStatus.failed,
+  ),
+  LiveQuestion(
+    id: 'q5',
+    sessionId: 'x',
+    text: 'Je me demande si on peut avancer la recette d’une semaine.',
+    source: AudioSource.input,
+    timestampMs: 905000,
+  ),
+];
+
 class _DictationViewModel extends DictationSettingsViewModel {
   _DictationViewModel(this._state);
 
@@ -319,7 +469,9 @@ List<Override> _overrides(
   SettingsState? settings,
   _Dictation dictation = _dictationOn,
   SessionDetailState Function(SessionDetailState)? detail,
+  LiveAnswersService? answers,
 }) => <Override>[
+  if (answers != null) liveAnswersServiceProvider.overrideWithValue(answers),
   dictationSettingsViewModelProvider.overrideWith(
     () => _DictationViewModel(dictation.state),
   ),
@@ -435,6 +587,7 @@ void main() {
         SessionDetailState Function(SessionDetailState)? detail,
         AppDatabase? db,
         FakeFilePicker? picker,
+        LiveAnswersService? answers,
       }) async {
         final AppDatabase base = db ?? memoryDatabase();
         addTearDown(base.close);
@@ -458,6 +611,7 @@ void main() {
                 settings: settings,
                 dictation: dictation,
                 detail: detail,
+                answers: answers,
               ),
               child: EasyLocalization(
                 supportedLocales: const <Locale>[Locale('fr')],
@@ -717,6 +871,42 @@ void main() {
         await tester.tap(find.text('Nouvelle note'));
         await _pump(tester, 10);
         await _shot(tester, key, 'live-$suffix');
+      });
+
+      for (final MapEntry<String, LiveAnswersHarness Function()> a
+          in _answerStates.entries) {
+        shoot('live-questions-${a.key}', (WidgetTester tester) async {
+          final LiveAnswersHarness h = a.value();
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            answers: h.service,
+          );
+          await tester.tap(find.text('Nouvelle note'));
+          await _pump(tester, 5);
+          await _play[a.key]?.call(h, () => _pump(tester, 3));
+          await _pump(tester, 10);
+          await _shot(tester, key, 'live-questions-${a.key}-$suffix');
+        });
+      }
+
+      shoot('detail-questions', (WidgetTester tester) async {
+        final GlobalKey key = await pumpApp(
+          tester,
+          _sessions,
+          ollama: kOllamaReady,
+          detail: (SessionDetailState s) =>
+              s.copyWith(questions: _savedQuestions),
+        );
+        await tester.tap(find.text('Revue de sprint 14'));
+        await _pump(tester, 10);
+        await _shot(tester, key, 'detail-questions-$suffix');
+        await tester.drag(
+          find.text('Revue de sprint 14'),
+          const Offset(0, -450),
+        );
+        await _pump(tester, 10);
+        await _shot(tester, key, 'detail-questions-scrolled-$suffix');
       });
 
       shoot('live-finalising', (WidgetTester tester) async {
