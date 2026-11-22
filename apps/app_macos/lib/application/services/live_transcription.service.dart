@@ -1026,6 +1026,8 @@ final class LiveTranscriptionService {
       text: text,
       timestampMs: _phraseStart[source]!,
       createdAt: clock.now(),
+      // Début perdu : le rattrapage la remplacera par la phrase entière.
+      isPartial: true,
     );
     late final Future<void> task;
     task = (provisionalWrite ?? Future<void>.value())
@@ -1057,6 +1059,7 @@ final class LiveTranscriptionService {
       text: text,
       timestampMs: _phraseStart[source]!,
       createdAt: clock.now(),
+      isPartial: true,
     );
     // Écritures chaînées : un provisoire tardif n'écrase jamais la finale.
     _provisionalWrites[source] =
@@ -1098,9 +1101,17 @@ final class LiveTranscriptionService {
     _transcriptionService.segmentsStream.add(segs);
 
     String? text;
-    if (TranscriptTextNormalizer.isForeignScript(normalized)) {
+    // Écriture non latine ou langue non attendue : avec de la parole, ce
+    // n'est pas du bruit mais une phrase mal transcrite (sonde 4, hindi et
+    // espagnol) ; elle devient un repère, rattrapé depuis le WAV.
+    final bool wrongOutput =
+        TranscriptTextNormalizer.isForeignScript(normalized) ||
+        TranscriptTextNormalizer.isUnexpectedLanguage(normalized);
+    final bool markInstead = wrongOutput && window?.hadSpeech == true;
+    if (wrongOutput) {
       _log.info(
-        'Phrase écartée (alphabet non latin, bruit probable): $normalized',
+        'Phrase mal transcrite (écriture ou langue): $normalized'
+        '${markInstead ? ', repère' : ', écartée'}',
       );
     } else {
       text = TranscriptTextNormalizer.filterFinalText(
@@ -1116,7 +1127,19 @@ final class LiveTranscriptionService {
     }
 
     await provisionalWrite;
-    if (text == null) {
+    if (markInstead) {
+      final int start = _offsetOf(session, window!.startMs);
+      await _transcriptionService.saveSegment(
+        TranscriptSegmentEntity(
+          id: provisionalId ?? _newSegmentId(session, source),
+          sessionId: session.id,
+          source: source,
+          text: gapMarkerText(start, _offsetOf(session, window.endMs)),
+          timestampMs: start,
+          createdAt: clock.now(),
+        ),
+      );
+    } else if (text == null) {
       if (provisionalWrite != null && provisionalId != null) {
         await _transcriptionService.discardProvisional(provisionalId);
       }
