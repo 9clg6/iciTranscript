@@ -156,10 +156,15 @@ void main() {
     },
   );
 
+  // Tour 4 (renvoi étalé) : le serveur factice répond à chaque commit final
+  // en 1 s, et l'arriéré part phrase par phrase. Au plus une phrase de 30 s
+  // (borne de phrase, plus le chunk qui la déclenche) est en vol sans done.
   test('garde au moins 120 s d audio, jette le plus ancien au-delà et signale '
       'la perte avec sa durée', () {
     fakeAsync((FakeAsync async) {
       setUpIn(async);
+      mic.autoDoneAfter = const Duration(seconds: 1);
+      dataSource.transcriptionStream.listen((_) {});
       mic.drop();
       mic.accepting = false;
       feed(AudioSource.input, 0, 1500); // 150 s de parole pendant la coupure
@@ -168,6 +173,7 @@ void main() {
       mic.accepting = true;
       async.elapse(const Duration(seconds: 15));
       feed(AudioSource.input, 1500, 150);
+      async.elapse(const Duration(seconds: 60)); // fin du renvoi étalé
 
       final List<int> delivered = mic.appendedChunkIds;
       expect(delivered.last, 1649);
@@ -197,20 +203,32 @@ void main() {
         lessThanOrEqualTo(t0 + firstKept * 100),
         reason: 'la perte ne couvre aucun chunk envoyé',
       );
+
+      expect(
+        mic.maxInFlightChunks,
+        lessThanOrEqualTo(320),
+        reason: 'renvoi étalé : au plus ~30 s envoyées sans done',
+      );
     });
   });
 
+  // Tour 4 (renvoi étalé) : 75 s sans done dépasseraient la fenêtre de
+  // 30 s ; le serveur factice répond donc à chaque commit, en 1 s.
   test('une coupure qui tient dans le tampon ne signale aucune perte', () {
     fakeAsync((FakeAsync async) {
       setUpIn(async);
+      mic.autoDoneAfter = const Duration(seconds: 1);
+      dataSource.transcriptionStream.listen((_) {});
       mic.drop();
       mic.accepting = false;
       feed(AudioSource.input, 0, 600); // 60 s
       mic.accepting = true;
       feed(AudioSource.input, 600, 150);
+      async.elapse(const Duration(seconds: 60));
 
       expect(gaps, isEmpty);
       expect(mic.appendedChunkIds, range(0, 750));
+      expect(mic.maxInFlightChunks, lessThanOrEqualTo(320));
     });
   });
 
