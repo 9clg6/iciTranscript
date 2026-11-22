@@ -88,7 +88,6 @@ class LiveAnswersService {
   final List<LiveQuestion> _questions = <LiveQuestion>[];
   final List<_Line> _context = <_Line>[];
   final Set<String> _seenSegments = <String>{};
-  final Map<int, int?> _dictation = <int, int?>{};
 
   String? _sessionId;
   bool _paused = false;
@@ -116,7 +115,6 @@ class LiveAnswersService {
     _questions.clear();
     _context.clear();
     _seenSegments.clear();
-    _dictation.clear();
     _sessionId = sessionId;
     _paused = false;
     _emit();
@@ -149,11 +147,6 @@ class LiveAnswersService {
     await stop();
     await _subject.close();
   }
-
-  /// Plage de dictée (raccourci tenu de [startMs] à [endMs], ouverte si
-  /// null) : la parole du micro qui y tombe n'est ni contexte ni question.
-  void markDictation({required int startMs, int? endMs}) =>
-      _dictation[startMs] = endMs;
 
   /// Segment final d'une des deux sources : contexte, puis porte.
   void onSegmentFinalized(TranscriptSegmentEntity segment, {int? speaker}) {
@@ -222,15 +215,7 @@ class LiveAnswersService {
   bool _accepts(TranscriptSegmentEntity s) =>
       _sessionId != null &&
       !_paused &&
-      !s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix) &&
-      !_dictated(s);
-
-  bool _dictated(TranscriptSegmentEntity s) =>
-      s.source == AudioSource.input &&
-      _dictation.entries.any(
-        (MapEntry<int, int?> r) =>
-            s.timestampMs >= r.key && s.timestampMs <= (r.value ?? 1 << 62),
-      );
+      !s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix);
 
   static String _normalized(String text) => fold(text)
       .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
