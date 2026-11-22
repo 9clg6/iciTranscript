@@ -11,4 +11,8 @@ enum SessionStatus {
 
   /// Session terminee en erreur.
   error,
+
+  /// Session restee active apres un arret brutal de l'app, close au
+  /// lancement suivant (duree tiree de son dernier segment).
+  interrupted,
 }

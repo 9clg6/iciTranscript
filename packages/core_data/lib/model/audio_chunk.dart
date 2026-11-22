@@ -19,6 +19,6 @@ class AudioChunk {
   /// Donnees audio brutes (PCM Int16 little-endian, 16 kHz mono).
   final Uint8List data;
 
-  /// Timestamp en millisecondes depuis le debut de la session.
+  /// Horodatage de capture en millisecondes epoch (plugin Swift).
   final int timestampMs;
 }

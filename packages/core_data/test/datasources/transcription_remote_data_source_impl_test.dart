@@ -173,7 +173,8 @@ List<String> _messageTypes(List<String> messages) => messages
     )
     .toList();
 
-final class _FakeWebSocketClient implements WebSocketClient {
+// `extends` : reste compilable si le vrai client gagne des membres.
+final class _FakeWebSocketClient extends WebSocketClient {
   final StreamController<String> _messages =
       StreamController<String>.broadcast();
   final List<String> sent = <String>[];

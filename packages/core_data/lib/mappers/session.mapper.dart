@@ -12,7 +12,9 @@ extension SessionLocalModelX on SessionLocalModel {
     createdAt: DateTime.parse(createdAt),
     updatedAt: DateTime.parse(updatedAt),
     durationSeconds: durationSeconds,
-    status: SessionStatus.values.byName(status),
+    // Un statut écrit par une version plus récente de l'app (base partagée)
+    // ne doit pas casser la lecture : il est lu comme une session close.
+    status: SessionStatus.values.asNameMap()[status] ?? SessionStatus.completed,
   );
 }
 
