@@ -635,5 +635,90 @@ void main() {
       );
       expect(field.controller.text, 'claude-opus-test');
     });
+    // Quitter le champ = cliquer dans un autre champ (ici la clé OpenAI).
+    Future<void> leaveField(WidgetTester tester) async {
+      await tester.ensureVisible(keyField(LlmProviderId.openai));
+      await tester.tap(keyField(LlmProviderId.openai));
+      await tester.pump();
+      await io(tester);
+    }
+
+    String modelText(WidgetTester tester, LlmProviderId id) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: modelField(id),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .controller
+        .text;
+
+    testWidgets('modèle saisi puis champ quitté (sans Entrée) : enregistré, '
+        'gardé à la réouverture', (WidgetTester tester) async {
+      await open(tester);
+
+      await tester.enterText(
+        modelField(LlmProviderId.anthropic),
+        'claude-opus-test',
+      );
+      await leaveField(tester);
+      expect(prefsFile.readAsStringSync(), contains('claude-opus-test'));
+
+      await open(tester);
+
+      expect(modelText(tester, LlmProviderId.anthropic), 'claude-opus-test');
+    });
+
+    testWidgets('modèle inchangé (champ quitté ou Entrée) : rien n\'est écrit',
+        (WidgetTester tester) async {
+      await open(tester);
+      await tester.enterText(
+        modelField(LlmProviderId.anthropic),
+        'claude-opus-test',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await io(tester);
+      expect(prefsFile.readAsStringSync(), contains('claude-opus-test'));
+      prefsFile.deleteSync();
+
+      // Même valeur retapée, validée par Entrée puis champ quitté.
+      await tester.enterText(
+        modelField(LlmProviderId.anthropic),
+        'claude-opus-test',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await io(tester);
+      await tester.tap(modelField(LlmProviderId.anthropic));
+      await tester.pump();
+      await leaveField(tester);
+
+      expect(prefsFile.existsSync(), isFalse, reason: 'écriture inutile');
+    });
+
+    testWidgets('modèle vidé puis champ quitté : retour au modèle par défaut, '
+        'utilisé et gardé à la réouverture', (WidgetTester tester) async {
+      await open(tester);
+      await tester.enterText(modelField(LlmProviderId.ollama), 'llama-test');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await io(tester);
+      expect(prefsFile.readAsStringSync(), contains('llama-test'));
+
+      await tester.enterText(modelField(LlmProviderId.ollama), '');
+      await leaveField(tester);
+
+      expect(inBlock(LlmProviderId.ollama, find.text('mistral')), findsWidgets);
+      expect(prefsFile.readAsStringSync(), isNot(contains('llama-test')));
+      final LlmProvider provider = await tester.runAsync(
+        () => container(tester).read(activeLlmProviderProvider.future),
+      ) as LlmProvider;
+      await tester.runAsync(() => sendPing(provider));
+      expect(adapter.lastHost, kProviderHost[LlmProviderId.ollama]);
+      expect(adapter.bodies.last!['model'], 'mistral');
+
+      await open(tester);
+
+      expect(inBlock(LlmProviderId.ollama, find.text('mistral')), findsWidgets);
+      expect(modelText(tester, LlmProviderId.ollama), isNot('llama-test'));
+    });
   });
 }
