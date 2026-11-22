@@ -5,10 +5,13 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
+import 'package:ici_transcript/application/services/calendar/calendar_rules.dart';
 import 'package:ici_transcript/application/services/diarization.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
@@ -17,6 +20,7 @@ import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/core/platform/owned_processes.dart';
 import 'package:ici_transcript/core/platform/prefs_store.dart';
+import 'package:ici_transcript/core/providers/platform/now.provider.dart';
 import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
@@ -26,6 +30,7 @@ import 'package:ici_transcript/core/providers/services/ollama.service.provider.d
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/translation.service.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
@@ -201,6 +206,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     _startDurationTimer();
 
     try {
+      final SessionCalendarLink? calendarLink = await _calendarLink();
       final String? micId = ref.read(settingsViewModelProvider).selectedMicId;
       final bool systemAudio = ref
           .read(settingsViewModelProvider)
@@ -225,6 +231,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         outputEnabled: systemAudio,
         enablePostProcessing: state.isCoachEnabled,
         liveDiarization: state.isLiveSpeakersEnabled,
+        calendarLink: calendarLink,
       );
       _log.info('startTranscription OK');
     } catch (e) {
@@ -240,6 +247,31 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       }
       _durationTimer?.cancel();
       await _liveService?.stopTranscription();
+    }
+  }
+
+  /// Événement de l'agenda auquel lier la note qui démarre (règle
+  /// [eventToLink]) ; null si l'agenda n'est pas connecté, pas autorisé ou
+  /// illisible. Ni titre ni participants ne vont au journal.
+  Future<SessionCalendarLink?> _calendarLink() async {
+    try {
+      final CalendarFeed feed = await ref.read(
+        calendarFeedControllerProvider.future,
+      );
+      if (feed is! CalendarEvents) return null;
+      final CalendarEvent? event = eventToLink(
+        feed.events,
+        ref.read(nowProvider)(),
+      );
+      if (event == null) return null;
+      return SessionCalendarLink(
+        eventId: event.id,
+        eventTitle: event.title,
+        attendees: event.attendeeNames,
+      );
+    } on Object catch (e) {
+      _log.warning('Agenda illisible au démarrage (${e.runtimeType})');
+      return null;
     }
   }
 

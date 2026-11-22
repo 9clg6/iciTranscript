@@ -11,6 +11,7 @@ import 'package:core_data/model/audio_gap.dart';
 import 'package:core_data/model/remote/transcript_event.remote.model.dart';
 import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
@@ -221,6 +222,7 @@ final class LiveTranscriptionService {
     String? webSocketUrl,
     bool enablePostProcessing = false,
     bool liveDiarization = false,
+    SessionCalendarLink? calendarLink,
   }) {
     // Dès la demande : l'enregistrement a la priorité sur le serveur
     // (séquentiel). Le prédicat « enregistrement » lu par le rattrapage
@@ -237,6 +239,7 @@ final class LiveTranscriptionService {
         serverArgs: serverArgs,
         webSocketUrl: webSocketUrl ?? '${_ports.transcriptionWebSocket}',
         liveDiarization: liveDiarization,
+        calendarLink: calendarLink,
       ),
     ).whenComplete(() => _startRequested = false);
   }
@@ -248,6 +251,7 @@ final class LiveTranscriptionService {
     required List<String> serverArgs,
     required String webSocketUrl,
     required bool liveDiarization,
+    SessionCalendarLink? calendarLink,
   }) async {
     if (_running) {
       _log.warning('Une transcription est déjà en cours');
@@ -316,7 +320,7 @@ final class LiveTranscriptionService {
 
       // 4. Creer une nouvelle session
       _log.info('Creation session...');
-      await _transcriptionService.startSession();
+      await _transcriptionService.startSession(link: calendarLink);
       _log.info('Session creee OK');
 
       // 4b. Ouvrir les enregistreurs WAV par session (micro + système) :
