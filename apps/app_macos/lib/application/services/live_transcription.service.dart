@@ -581,8 +581,10 @@ final class LiveTranscriptionService {
     final List<DictatedInterval> dictated = DictatedIntervalsStore(
       recordingsDir,
     ).read(sessionId);
-    final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    plan = GapBackfillService.plan(segments, dictated: dictated);
+    final List<BackfillGap> plan = GapBackfillService.plan(
+      segments,
+      dictated: dictated,
+    );
     // Un repère tout entier dans une dictée part aussi par le rattrapage
     // (sans serveur).
     if (plan.isEmpty &&
@@ -605,10 +607,8 @@ final class LiveTranscriptionService {
     _finalisingRemaining.add(
       plan.fold<Duration>(
         Duration.zero,
-        (
-          Duration sum,
-          ({String markerId, AudioSource source, int startMs, int endMs}) g,
-        ) => sum + Duration(milliseconds: g.endMs - g.startMs),
+        (Duration sum, BackfillGap g) =>
+            sum + Duration(milliseconds: g.endMs - g.startMs),
       ),
     );
     // « Passer » rend la main tout de suite ; le rattrapage continue en
@@ -807,6 +807,29 @@ final class LiveTranscriptionService {
   static String gapMarkerText(int startMs, int endMs) =>
       '$gapMarkerPrefix : ${TranscriptFormatter.timestamp(startMs)} '
       '– ${TranscriptFormatter.timestamp(endMs)}';
+
+  static const String _untranscribedPrefix = 'Passage non transcrit';
+  static final RegExp _untranscribed = RegExp(
+    r'^Passage non transcrit \((\d+:\d{2}:\d{2}) – (\d+:\d{2}:\d{2})\)$',
+  );
+
+  /// Repère PERMANENT d'un passage dit que le modèle n'a pas su transcrire
+  /// (écriture ou langue inattendue, sonde 5 : le retranscrire ne le répare
+  /// pas). Jamais rattrapé ni remplacé ; affiché localisé
+  /// (`transcription.gap.untranscribed`).
+  static String untranscribedMarkerText(int startMs, int endMs) =>
+      '$_untranscribedPrefix (${TranscriptFormatter.timestamp(startMs)} '
+      '– ${TranscriptFormatter.timestamp(endMs)})';
+
+  /// Vrai pour un texte écrit par [untranscribedMarkerText].
+  static bool isUntranscribedMarker(String text) =>
+      _untranscribed.hasMatch(text);
+
+  /// Heures (hh:mm:ss) de début et de fin d'un passage non transcrit.
+  static (String, String)? untranscribedTimes(String text) {
+    final RegExpMatch? m = _untranscribed.firstMatch(text);
+    return m == null ? null : (m.group(1)!, m.group(2)!);
+  }
 
   void _onAudioGap(AudioGap gap) {
     final SessionEntity? session = currentSessionStream.valueOrNull;
@@ -1148,9 +1171,20 @@ final class LiveTranscriptionService {
     _transcriptionService.segmentsStream.add(segs);
 
     String? text;
-    if (TranscriptTextNormalizer.isForeignScript(normalized)) {
+    // Écriture non latine ou langue non attendue : avec de la parole, ce
+    // n'est pas du bruit mais une phrase que le modèle rate (sonde 5 : de
+    // façon déterministe, la retranscrire ne la répare pas). Elle devient un
+    // passage non transcrit, signalé et permanent. Sans parole, écartée.
+    // ponytail: le pseudo-espagnol de la sonde 5 n'est pas détecté par les
+    // listes de mots-outils ; limite connue.
+    final bool wrongOutput =
+        TranscriptTextNormalizer.isForeignScript(normalized) ||
+        TranscriptTextNormalizer.isUnexpectedLanguage(normalized);
+    final bool untranscribed = wrongOutput && window?.hadSpeech == true;
+    if (wrongOutput) {
       _log.info(
-        'Phrase écartée (alphabet non latin, bruit probable): $normalized',
+        'Phrase mal transcrite (écriture ou langue): $normalized'
+        '${untranscribed ? ', passage non transcrit' : ', écartée'}',
       );
     } else {
       text = TranscriptTextNormalizer.filterFinalText(
@@ -1166,7 +1200,22 @@ final class LiveTranscriptionService {
     }
 
     await provisionalWrite;
-    if (text == null) {
+    if (untranscribed) {
+      final int start = _offsetOf(session, window!.startMs);
+      await _transcriptionService.saveSegment(
+        TranscriptSegmentEntity(
+          id: provisionalId ?? _newSegmentId(session, source),
+          sessionId: session.id,
+          source: source,
+          text: untranscribedMarkerText(
+            start,
+            _offsetOf(session, window.endMs),
+          ),
+          timestampMs: start,
+          createdAt: clock.now(),
+        ),
+      );
+    } else if (text == null) {
       if (provisionalWrite != null && provisionalId != null) {
         await _transcriptionService.discardProvisional(provisionalId);
       }
