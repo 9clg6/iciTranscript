@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:core_data/database/app_database.dart';
@@ -9,11 +10,13 @@ import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_settings.dart';
+import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/core/platform/prefs_store.dart';
 import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
 import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 
+import 'local_model_fakes.dart';
 import 'settings_fakes.dart';
 
 /// Fournisseur LLM scripté : garde chaque requête et répond par [reply]
@@ -125,3 +128,54 @@ const Map<String, Object?> kFeedbackJson = <String, Object?>{
     },
   ],
 };
+
+/// Trousseau en mémoire qui compte les lectures par fournisseur (chaque
+/// lecture peut afficher une invite du trousseau sur un build ad hoc).
+class CountingApiKeyStore extends InMemoryApiKeyStore {
+  CountingApiKeyStore([super.keys]);
+
+  final List<LlmProviderId> reads = <LlmProviderId>[];
+
+  /// Lectures des fournisseurs en ligne.
+  List<LlmProviderId> get cloudReads =>
+      reads.where((LlmProviderId id) => id != LlmProviderId.ollama).toList();
+
+  @override
+  Future<String?> read(LlmProviderId provider) {
+    reads.add(provider);
+    return super.read(provider);
+  }
+}
+
+/// Modèle local installé mais démon arrêté : [ensureReady] le démarre
+/// (compte, garde le nombre de requêtes déjà parties à ce moment), échoue
+/// avec [startError], ou ne répond jamais si [hangOnStart].
+class StoppedDaemonOllamaService extends InstantOllamaService {
+  StoppedDaemonOllamaService({
+    required this.sentSoFar,
+    this.startError,
+    this.hangOnStart = false,
+  }) : super(installed: true);
+
+  /// Nombre de requêtes LLM déjà envoyées (lu au démarrage du démon).
+  final int Function() sentSoFar;
+  final Object? startError;
+  final bool hangOnStart;
+
+  bool running = false;
+  final List<int> sentAtStart = <int>[];
+
+  @override
+  Future<bool> isFullyReady() async => running;
+
+  @override
+  Future<void> ensureReady({
+    void Function(OllamaSetupStage stage, double progress)? onProgress,
+  }) async {
+    ensureReadyCalls++;
+    sentAtStart.add(sentSoFar());
+    if (hangOnStart) return Completer<void>().future;
+    if (startError case final Object e) throw e;
+    running = true;
+  }
+}
