@@ -8,6 +8,9 @@ import 'package:ici_transcript/core/providers/services/api_key_store.provider.da
 import 'package:ici_transcript/core/providers/services/ollama.service.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+/// Attente maximale du démarrage du démon local avant « injoignable ».
+const Duration kLlmLocalStartTimeout = Duration(seconds: 60);
+
 /// Fournisseur prêt à répondre et modèle qu'il utilise.
 typedef ReadyLlm = ({LlmProvider llm, String model});
 
@@ -30,7 +33,16 @@ Future<ReadyLlm?> readyLlm(Ref ref, {bool start = true}) async {
     // Le modèle choisi, pas seulement mistral ; présent, ensureReady ne
     // fait que démarrer le serveur.
     if (!await ollama.isInstalled(model: model)) return null;
-    if (start) await (ollama..model = model).ensureReady();
+    if (start) {
+      // Démarrage borné ; un démon qui ne démarre pas = injoignable.
+      try {
+        await (ollama..model = model).ensureReady().timeout(
+          kLlmLocalStartTimeout,
+        );
+      } on Object {
+        throw const LlmUnreachableException('Ollama');
+      }
+    }
   }
   return (
     llm: await ref.read(activeLlmProviderProvider.future),

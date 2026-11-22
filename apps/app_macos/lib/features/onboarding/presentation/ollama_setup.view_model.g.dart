@@ -57,7 +57,7 @@ final class OllamaSetupViewModelProvider
 }
 
 String _$ollamaSetupViewModelHash() =>
-    r'858d710c55bed90027d59cf922c33a8a5d46d34d';
+    r'fa912c0745ab165cfec3879dffa6fd0a6d9f0472';
 
 /// ViewModel du modèle local (moteur Ollama + modèle choisi dans Réglages,
 /// Mistral par défaut).

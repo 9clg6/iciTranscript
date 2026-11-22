@@ -8,17 +8,20 @@ part of 'ollama.service.provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Provider singleton pour [OllamaService].
+/// Provider singleton pour [OllamaService] : le démon passe par le registre
+/// des serveurs de l'app (seul celui qu'on a lancé est arrêté).
 
 @ProviderFor(ollamaService)
 const ollamaServiceProvider = OllamaServiceProvider._();
 
-/// Provider singleton pour [OllamaService].
+/// Provider singleton pour [OllamaService] : le démon passe par le registre
+/// des serveurs de l'app (seul celui qu'on a lancé est arrêté).
 
 final class OllamaServiceProvider
     extends $FunctionalProvider<OllamaService, OllamaService, OllamaService>
     with $Provider<OllamaService> {
-  /// Provider singleton pour [OllamaService].
+  /// Provider singleton pour [OllamaService] : le démon passe par le registre
+  /// des serveurs de l'app (seul celui qu'on a lancé est arrêté).
   const OllamaServiceProvider._()
     : super(
         from: null,
@@ -52,4 +55,4 @@ final class OllamaServiceProvider
   }
 }
 
-String _$ollamaServiceHash() => r'e72357b072d5ae69e1c60b64ef0645d6d3d4dd87';
+String _$ollamaServiceHash() => r'c3c0caf890ee94273ce5ef639b049534b2557929';

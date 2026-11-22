@@ -40,9 +40,24 @@ enum OllamaSetupStage {
 /// Un seul démon, partagé entre dev et release : s'il répond déjà, on s'en
 /// sert ; l'app n'arrête que celui qu'elle a lancé ([dispose]).
 class OllamaService {
-  OllamaService({ProcessHost host = const SystemProcessHost()}) : _host = host;
+  ///
+  /// [processes] lance et arrête le démon (seulement celui qu'on a lancé) et
+  /// sonde sa santé ; [dio] porte les appels au démon local (modèles,
+  /// téléchargement du modèle, déchargement). Défauts : registre et hôte
+  /// système, nouveau client.
+  OllamaService({OwnedProcessRegistry? processes, Dio? dio})
+    : _processes =
+          processes ??
+          OwnedProcessRegistry(
+            host: const SystemProcessHost(),
+            stateFile: ownedProcessesFile(),
+          ),
+      _dio = dio ?? Dio();
 
-  final ProcessHost _host;
+  static const String _role = 'ollama';
+
+  final OwnedProcessRegistry _processes;
+  final Dio _dio;
 
   final Log _log = Log.named('OllamaService');
 
@@ -66,8 +81,6 @@ class OllamaService {
   // Le binaire CLI se trouve à Ollama.app/Contents/Resources/ollama.
   static const String _ollamaZipUrl =
       'https://github.com/ollama/ollama/releases/latest/download/Ollama-darwin.zip';
-
-  Process? _ollamaProcess;
 
   // ---------------------------------------------------------------------------
   // Paths
@@ -185,15 +198,13 @@ class OllamaService {
   /// À appeler avant de lancer un autre modèle Metal lourd (Voxtral/Parakeet).
   Future<void> unloadModel() async {
     if (!await _isServerRunning()) return;
-    final Dio dio = Dio();
-    dio.options
-      ..connectTimeout = const Duration(seconds: 2)
-      ..receiveTimeout = const Duration(seconds: 15);
-    await dio.post<void>(
+    await _dio.post<void>(
       '$_baseUrl/api/generate',
       data: <String, dynamic>{'model': model, 'keep_alive': 0},
       options: Options(
         headers: <String, String>{'content-type': 'application/json'},
+        sendTimeout: const Duration(seconds: 2),
+        receiveTimeout: const Duration(seconds: 15),
       ),
     );
     _log.info('Modèle Ollama déchargé');
@@ -205,7 +216,6 @@ class OllamaService {
     required String user,
     bool json = false,
   }) async {
-    final Dio dio = Dio()..options.receiveTimeout = const Duration(minutes: 5);
     final Map<String, dynamic> payload = <String, dynamic>{
       'model': model,
       'stream': false,
@@ -221,12 +231,13 @@ class OllamaService {
     };
     if (json) payload['format'] = 'json';
 
-    final Response<Map<String, dynamic>> response = await dio
+    final Response<Map<String, dynamic>> response = await _dio
         .post<Map<String, dynamic>>(
           '$_baseUrl/api/chat',
           data: payload,
           options: Options(
             headers: <String, String>{'content-type': 'application/json'},
+            receiveTimeout: const Duration(minutes: 5),
           ),
         );
     final Map<String, dynamic> message =
@@ -254,11 +265,8 @@ class OllamaService {
     );
   }
 
-  /// Arrête le daemon démarré par ce service.
-  Future<void> dispose() async {
-    _ollamaProcess?.kill(ProcessSignal.sigterm);
-    _ollamaProcess = null;
-  }
+  /// Arrête le daemon démarré par ce service (jamais celui d'un autre).
+  Future<void> dispose() => _processes.stop(_role);
 
   // ---------------------------------------------------------------------------
   // Binary
@@ -367,39 +375,30 @@ class OllamaService {
   // ---------------------------------------------------------------------------
 
   Future<bool> _isServerRunning() async {
-    try {
-      final Dio dio = Dio()
-        ..options.connectTimeout = const Duration(seconds: 2)
-        ..options.receiveTimeout = const Duration(seconds: 2);
-      final Response<dynamic> res = await dio.get<dynamic>(
-        '$_baseUrl/api/tags',
-      );
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
+    return _processes.isHealthy(ollamaBaseUrl.resolve('/api/tags'));
   }
 
   Future<void> _startServer() async {
     final String bin = await _effectiveBinPath();
     _log.info('Démarrage de "$bin serve"');
 
-    _ollamaProcess = await _host.start(
+    final Process process = await _processes.start(
+      _role,
       bin,
       <String>['serve'],
+      port: ollamaPort,
       environment: <String, String>{
         'HOME': Platform.environment['HOME'] ?? '/tmp',
         'PATH': _extendedPath(),
         // Stocker les modèles dans le répertoire de l'app
         'OLLAMA_MODELS': '$_toolsDir/models',
       },
-      mode: ProcessStartMode.detachedWithStdio,
     );
 
-    _ollamaProcess!.stdout
+    process.stdout
         .transform(const SystemEncoding().decoder)
         .listen((String l) => _log.debug('[ollama] $l'));
-    _ollamaProcess!.stderr
+    process.stderr
         .transform(const SystemEncoding().decoder)
         .listen((String l) => _log.debug('[ollama-err] $l'));
 
@@ -432,8 +431,7 @@ class OllamaService {
   Future<bool> _isModelAvailable([String? name]) async {
     final String wanted = name ?? model;
     try {
-      final Dio dio = Dio();
-      final Response<Map<String, dynamic>> res = await dio
+      final Response<Map<String, dynamic>> res = await _dio
           .get<Map<String, dynamic>>('$_baseUrl/api/tags');
       final List<dynamic> models =
           res.data?['models'] as List<dynamic>? ?? <dynamic>[];
@@ -451,20 +449,15 @@ class OllamaService {
   Future<void> _pullModel({void Function(double progress)? onProgress}) async {
     _log.info('Téléchargement du modèle $model via Ollama API...');
 
-    final HttpClient client = HttpClient();
-    final HttpClientRequest request = await client.postUrl(
-      ollamaBaseUrl.resolve('/api/pull'),
-    );
-    request.headers.contentType = ContentType.json;
-    request.write(
-      jsonEncode(<String, dynamic>{'name': model, 'stream': true}),
+    final Response<ResponseBody> response = await _dio.post<ResponseBody>(
+      '$_baseUrl/api/pull',
+      data: <String, dynamic>{'name': model, 'stream': true},
+      options: Options(responseType: ResponseType.stream),
     );
 
-    final HttpClientResponse response = await request.close();
-
-    await for (final String chunk in response.transform(
-      const SystemEncoding().decoder,
-    )) {
+    await for (final String chunk in response.data!.stream
+        .cast<List<int>>()
+        .transform(utf8.decoder)) {
       // Plusieurs JSON peuvent arriver dans un même chunk
       for (final String line in chunk.split('\n')) {
         final String trimmed = line.trim();
@@ -487,7 +480,5 @@ class OllamaService {
         }
       }
     }
-
-    client.close();
   }
 }
