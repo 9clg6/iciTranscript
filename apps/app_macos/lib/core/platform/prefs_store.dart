@@ -10,12 +10,14 @@ import 'package:ici_transcript/core/platform/app_data_directory.dart';
 /// direct, dictée…) range les siennes sans connaître les autres. Les clés
 /// inconnues sont gardées ; un fichier abîmé se lit comme vide.
 ///
-/// Chaque opération passe dans une file par fichier, dans l'ordre d'appel :
-/// deux écritures rapprochées ne s'écrasent pas, et une lecture voit les
-/// écritures demandées avant elle. Écriture atomique (fichier temporaire puis
-/// renommage) : un lecteur ne voit jamais un fichier à moitié écrit.
-// ponytail: verrou dans le processus seulement ; un 2e processus qui écrit
-// prefs.json (aucun aujourd'hui) demanderait un verrou de fichier.
+/// Chaque opération lit, fusionne et écrit d'un seul bloc synchrone : dans
+/// l'isolat, rien ne peut s'intercaler (c'est le verrou), et les appels non
+/// attendus s'appliquent dans l'ordre d'appel. Écriture atomique (fichier
+/// temporaire puis renommage) : un lecteur ne voit jamais un fichier à
+/// moitié écrit.
+// ponytail: E/S synchrones sur un fichier de quelques Ko ; un autre isolat ou
+// processus qui écrirait prefs.json (aucun aujourd'hui) demanderait un verrou
+// de fichier.
 class PrefsStore {
   /// Crée le magasin sur [path] (défaut : prefs.json du dossier de données).
   PrefsStore([String? path])
@@ -24,23 +26,13 @@ class PrefsStore {
   /// Chemin du fichier.
   final String path;
 
-  static final Map<String, Future<void>> _queues = <String, Future<void>>{};
-
-  /// Lance [op] après toutes les opérations déjà demandées sur ce fichier.
-  Future<T> _locked<T>(T Function() op) {
-    final Future<T> result = (_queues[path] ?? Future<void>.value()).then(
-      (_) => op(),
-    );
-    _queues[path] = result.then<void>((_) {}, onError: (_) {});
-    return result;
-  }
-
   /// Toutes les valeurs ; vide si le fichier manque ou n'est pas un objet
   /// JSON valide.
-  Future<Map<String, Object?>> read() => _locked(_readSync);
+  Future<Map<String, Object?>> read() =>
+      Future<Map<String, Object?>>.sync(_readSync);
 
   /// Fusionne [values] dans le fichier ; une valeur null retire la clé.
-  Future<void> update(Map<String, Object?> values) => _locked(() {
+  Future<void> update(Map<String, Object?> values) => Future<void>.sync(() {
     final Map<String, Object?> json = _readSync();
     values.forEach((String key, Object? value) {
       if (value == null) {
@@ -56,7 +48,6 @@ class PrefsStore {
     tmp.renameSync(path);
   });
 
-  // Synchrone : le travail sur le fichier tient dans un seul tour de la file.
   Map<String, Object?> _readSync() {
     try {
       final Object? json = jsonDecode(File(path).readAsStringSync());
