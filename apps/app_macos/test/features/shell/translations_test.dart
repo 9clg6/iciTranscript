@@ -18,6 +18,8 @@ void main() {
       'common.action.back': 'Retour',
       'common.action.close': 'Fermer',
       'home.upcoming.title': 'À venir',
+      // L'app vouvoie : la source micro s'appelle « Vous ».
+      'history.detail.speaker_me': 'Vous',
     };
     exact.forEach((String key, String value) {
       test('$key = « $value »', () => expect(frValue(key), value));

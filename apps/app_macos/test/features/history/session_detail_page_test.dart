@@ -192,10 +192,10 @@ void main() {
     Finder inTranscript(Finder f) => find.descendant(of: transcript, matching: f);
 
     // Micro : 3 phrases en 2 tours (2 consécutives, puis 1 après l'autre
-    // voix) → 2 étiquettes « MOI », pas 3. L'étiquette de l'autre voix
+    // voix) → 2 étiquettes « Vous », pas 3. L'étiquette de l'autre voix
     // (source ou interlocuteur diarisé) n'est pas fixée ici.
     expect(
-      inTranscript(find.text('transcription.live.speaker_me'.tr())),
+      inTranscript(find.text('history.detail.speaker_me'.tr())),
       findsNWidgets(2),
     );
 

@@ -18,7 +18,7 @@ void main() {
       await $.pumpAndSettle();
 
       // Verifie que l'app est lancee
-      expect($('IciTranscript'), findsOneWidget);
+      expect($('Oats'), findsOneWidget);
     });
 
     patrolTest('la navigation vers les preferences est possible', ($) async {
@@ -28,7 +28,7 @@ void main() {
       // En mode MVP, l'ecran de preferences n'est pas encore implemente.
       // Ce test sera etoffe quand FR-006.4 sera en place.
       // Pour l'instant, on verifie juste que l'app ne crash pas.
-      expect($('IciTranscript'), findsOneWidget);
+      expect($('Oats'), findsOneWidget);
     });
   });
 }
