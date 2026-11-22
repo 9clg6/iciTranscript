@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:core_domain/domain/entities/audio_device.entity.dart';
 import 'package:dio/dio.dart';
