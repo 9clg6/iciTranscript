@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 
@@ -24,6 +25,7 @@ void main() {
 
   List<Override> overrides() => <Override>[
     audioCaptureChannelProvider.overrideWithValue(DevicesAudioChannel()),
+    apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
   ];
 
   /// Démarre l'app (un conteneur = un lancement) et attend la fin du

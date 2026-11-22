@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
@@ -32,6 +33,7 @@ void main() {
         ProcessManagerService(channel: FakeProcessManagerChannel()),
       ),
       audioCaptureChannelProvider.overrideWithValue(DevicesAudioChannel()),
+      apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
     ];
   }
 

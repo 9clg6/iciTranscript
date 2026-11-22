@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/llm/llm_http.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:ici_transcript/core/providers/services/active_llm_provider.provider.dart';
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
@@ -86,7 +87,7 @@ void main() {
   /// Laisse passer les vraies lectures/écritures de fichier (prefs.json),
   /// puis quelques images.
   Future<void> io(WidgetTester tester) async {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 6; i++) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 30)),
       );
@@ -105,6 +106,11 @@ void main() {
       size: const Size(1280, 4000),
       settle: false,
     );
+    // Réglages chargés = l'emplacement des données est affiché.
+    for (int i = 0; i < 40; i++) {
+      if (find.text(appDataDirectory()).evaluate().isNotEmpty) break;
+      await io(tester);
+    }
     await io(tester);
   }
 
@@ -141,6 +147,21 @@ void main() {
     final Finder target = textIn(id, key);
     await tester.ensureVisible(target);
     await tester.tap(target);
+    await tester.pump();
+    await io(tester);
+  }
+
+  /// Touche [key] dans le bloc s'il y est et actif ; un bouton masqué ou
+  /// désactivé satisfait aussi « ne fait rien ».
+  Future<void> tapIfPresent(
+    WidgetTester tester,
+    LlmProviderId id,
+    String key,
+  ) async {
+    final Finder target = textIn(id, key);
+    if (target.evaluate().isEmpty) return;
+    await tester.ensureVisible(target);
+    await tester.tap(target, warnIfMissed: false);
     await tester.pump();
     await io(tester);
   }
@@ -262,7 +283,9 @@ void main() {
       await open(tester);
 
       await tester.enterText(keyField(LlmProviderId.gemini), '   ');
-      await tapIn(tester, LlmProviderId.gemini, 'settings.ai.save');
+      await tapIfPresent(tester, LlmProviderId.gemini, 'settings.ai.save');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await io(tester);
 
       expect(store.writeCalls, 0);
       expect(store.deleteCalls, 0);
@@ -314,7 +337,9 @@ void main() {
 
       await tapIn(tester, LlmProviderId.anthropic, 'settings.ai.replace');
       await tester.enterText(keyField(LlmProviderId.anthropic), '');
-      await tapIn(tester, LlmProviderId.anthropic, 'settings.ai.save');
+      await tapIfPresent(tester, LlmProviderId.anthropic, 'settings.ai.save');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await io(tester);
 
       expect(store.keys[LlmProviderId.anthropic], _claudeKey);
       expect(store.writeCalls, 0);
@@ -472,13 +497,7 @@ void main() {
       adapter.reply = BodyReply(200, kOkStream[LlmProviderId.anthropic]!);
       await open(tester);
 
-      final Finder test = textIn(LlmProviderId.anthropic, 'settings.ai.test');
-      if (test.evaluate().isNotEmpty) {
-        await tester.ensureVisible(test);
-        await tester.tap(test, warnIfMissed: false);
-        await tester.pump();
-        await io(tester);
-      }
+      await tapIfPresent(tester, LlmProviderId.anthropic, 'settings.ai.test');
 
       expect(adapter.requests, isEmpty);
       expect(
@@ -493,13 +512,7 @@ void main() {
       await open(tester);
       await allowCloud(tester);
 
-      final Finder test = textIn(LlmProviderId.openai, 'settings.ai.test');
-      if (test.evaluate().isNotEmpty) {
-        await tester.ensureVisible(test);
-        await tester.tap(test, warnIfMissed: false);
-        await tester.pump();
-        await io(tester);
-      }
+      await tapIfPresent(tester, LlmProviderId.openai, 'settings.ai.test');
 
       expect(adapter.requests, isEmpty);
     });

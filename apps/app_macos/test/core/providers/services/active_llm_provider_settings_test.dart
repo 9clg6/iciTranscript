@@ -299,37 +299,6 @@ void main() {
       expect(raw, isNot(contains(_geminiKey)));
       expect(raw, isNot(contains('SECRET')));
     });
-
-    test('ni le journal ni la console ne contiennent la clé (enregistrement, '
-        'refus du fournisseur, suppression)', () async {
-      final Directory dir = Directory.systemTemp.createTempSync('log');
-      addTearDown(() => dir.deleteSync(recursive: true));
-      final File logFile = File('${dir.path}/oats.log');
-      Log.writeToFile(logFile.path);
-      final List<String> printed = <String>[];
-      adapter.reply = const BodyReply(401, '{"error": "invalid x-api-key"}');
-
-      await runZoned(
-        () async {
-          Log.named('Probe').info('temoin-journal');
-          final ProviderContainer c = await launch();
-          await vm(c).setCloudAllowed(true);
-          await vm(c).saveApiKey(LlmProviderId.anthropic, _claudeKey);
-          await nextHost(c);
-          await vm(c).removeApiKey(LlmProviderId.anthropic);
-        },
-        zoneSpecification: ZoneSpecification(
-          print: (Zone self, ZoneDelegate parent, Zone zone, String line) =>
-              printed.add(line),
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      final String log = logFile.readAsStringSync();
-      expect(log, contains('temoin-journal'));
-      expect(log, isNot(contains(_claudeKey)));
-      expect(printed.join('\n'), isNot(contains(_claudeKey)));
-    });
   });
 
   group('modèle par fournisseur', () {
@@ -406,6 +375,40 @@ void main() {
 
       expect(adapter.lastHost, local);
       expect(adapter.bodies.last!['model'], 'llama-test');
+    });
+  });
+
+  // En dernier : redirige le journal vers un dossier supprimé ensuite.
+  group('journal', () {
+    test('ni le journal ni la console ne contiennent la clé (enregistrement, '
+        'refus du fournisseur, suppression)', () async {
+      final Directory dir = Directory.systemTemp.createTempSync('log');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final File logFile = File('${dir.path}/oats.log');
+      Log.writeToFile(logFile.path);
+      final List<String> printed = <String>[];
+      adapter.reply = const BodyReply(401, '{"error": "invalid x-api-key"}');
+
+      await runZoned(
+        () async {
+          Log.named('Probe').info('temoin-journal');
+          final ProviderContainer c = await launch();
+          await vm(c).setCloudAllowed(true);
+          await vm(c).saveApiKey(LlmProviderId.anthropic, _claudeKey);
+          await nextHost(c);
+          await vm(c).removeApiKey(LlmProviderId.anthropic);
+        },
+        zoneSpecification: ZoneSpecification(
+          print: (Zone self, ZoneDelegate parent, Zone zone, String line) =>
+              printed.add(line),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      final String log = logFile.readAsStringSync();
+      expect(log, contains('temoin-journal'));
+      expect(log, isNot(contains(_claudeKey)));
+      expect(printed.join('\n'), isNot(contains(_claudeKey)));
     });
   });
 }
