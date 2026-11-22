@@ -225,6 +225,32 @@ void main() {
     });
   });
 
+  test('texte de la dictée arrivé après le délai de garde : toujours hors de '
+      'la note (presse-papiers), la note reprend ensuite', () {
+    fakeAsync((FakeAsync async) {
+      setUpIn(async);
+      mic.autoReply = false;
+      run(10);
+      d.press();
+      run(30, mic: true);
+      d.release();
+      run(5);
+      async.elapse(DictationController.finalTextTimeout);
+      expect(d.state, isA<DictationError>());
+
+      micSays('response.audio_transcript.done', 'text', 'Texte dicté.');
+      async.elapse(const Duration(seconds: 1));
+      run(20, mic: true);
+      run(20);
+      micSays('response.audio_transcript.done', 'text', 'Réunion après.');
+      async.elapse(const Duration(seconds: 1));
+
+      expect(note(AudioSource.input), <String>['Réunion après.']);
+      expect(onScreen(), isNot(anyElement(contains('dicté'))));
+      expect(d.output.copies, <String>['Texte dicté.']);
+    });
+  });
+
   test('démarrer un enregistrement pendant une dictée la termine d abord '
       '(texte produit), puis la réunion démarre sa capture', () {
     fakeAsync((FakeAsync async) {
