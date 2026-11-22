@@ -40,6 +40,11 @@ final class TranscriptionRemoteDataSourceImpl
   final WebSocketClient _mic;
   final WebSocketClient _sys;
   bool _systemConnected = false;
+  // Vrai entre connect() et disconnect() : une fermeture de socket n'ouvre
+  // une coupure que pendant une session.
+  bool _sessionOpen = false;
+  final List<StreamSubscription<void>> _closedSubscriptions =
+      <StreamSubscription<void>>[];
   String _url = 'ws://localhost:8000/v1/realtime';
 
   // Gate de silence (VAD simple) : chaque source possède son propre tour de
@@ -67,17 +72,19 @@ final class TranscriptionRemoteDataSourceImpl
   static const int _maxInFlightMs = 30000;
   static const Duration _firstRetryDelay = Duration(milliseconds: 500);
   static const Duration _maxRetryDelay = Duration(seconds: 10);
-  // Serveur muet. Le vrai serveur traite les sockets l'une après l'autre :
-  // pendant un rattrapage, un `done` a mis 38,8 s et deux `done` ont été
-  // séparés de 28,9 s, serveur vivant (sonde 2026-11-22). La vivacité se
-  // juge donc sur TOUT message du serveur, sur toutes ses sockets : seul un
-  // silence total de [_serverSilence] alors qu'un commit final attend fait
-  // recycler les sockets en attente et renvoyer leurs phrases ; après
-  // [_maxSilentRecycles] recyclages sans réponse, l'audio sans `done` est
-  // déclaré perdu.
+  // Serveur muet, jugé PAR source : sonde 2, les messages système
+  // masquaient un micro mort plus de 117 s. Une source dont un commit final
+  // attend et qui ne reçoit aucun message à elle pendant [_serverSilence]
+  // est recyclée et renvoie ses phrases ; après [_maxSilentRecycles]
+  // recyclages sans réponse, son audio sans `done` est déclaré perdu.
+  // 60 s laisse de la marge sur le pire mesuré, serveur vivant : 38,8 s
+  // entre un commit et son `done`, 28,9 s entre deux `done` d'une source.
   static const Duration _serverSilence = Duration(seconds: 60);
   static const int _maxSilentRecycles = 3;
-  Timer? _silenceTimer;
+  final Map<AudioSource, Timer?> _silenceTimers = <AudioSource, Timer?>{
+    AudioSource.input: null,
+    AudioSource.output: null,
+  };
   final Map<AudioSource, int> _silentRecycles = <AudioSource, int>{
     AudioSource.input: 0,
     AudioSource.output: 0,
@@ -138,11 +145,17 @@ final class TranscriptionRemoteDataSourceImpl
     _systemConnected = systemAudioEnabled;
     _clearOutages();
     _resetUtteranceState();
+    if (_closedSubscriptions.isEmpty) {
+      _closedSubscriptions
+        ..add(_mic.onClosed.listen((_) => _onSocketClosed(AudioSource.input)))
+        ..add(_sys.onClosed.listen((_) => _onSocketClosed(AudioSource.output)));
+    }
     try {
       await Future.wait(<Future<void>>[
         _mic.connect(url),
         if (systemAudioEnabled) _sys.connect(url) else _sys.disconnect(),
-      ]);
+      ]).timeout(WebSocketClient.connectTimeout);
+      _sessionOpen = true;
       _connectionStateSubject.add(domain.ConnectionState.connected);
     } catch (_) {
       await Future.wait(<Future<void>>[_mic.disconnect(), _sys.disconnect()]);
@@ -247,31 +260,37 @@ final class TranscriptionRemoteDataSourceImpl
   /// [window] part sur la socket vivante : son `done` est attendu.
   void _awaitDone(AudioSource source, UtteranceWindow window) {
     _pendingWindows[source]!.add(window);
-    _silenceTimer ??= Timer(_serverSilence, _onServerSilence);
+    _silenceTimers[source] ??= Timer(
+      _serverSilence,
+      () => _onSourceSilence(source),
+    );
   }
 
-  /// Un message du serveur, sur n'importe quelle socket : il est vivant.
-  void _onServerMessage() {
-    for (final AudioSource source in AudioSource.values) {
-      _silentRecycles[source] = 0;
-    }
-    _rearmSilence();
+  /// Un message du serveur sur la socket de [source] : elle est vivante.
+  void _onServerMessage(AudioSource source) {
+    _silentRecycles[source] = 0;
+    _rearmSilence(source);
   }
 
-  void _rearmSilence() {
-    _silenceTimer?.cancel();
-    _silenceTimer =
-        _pendingWindows.values.any((Queue<UtteranceWindow> q) => q.isNotEmpty)
-        ? Timer(_serverSilence, _onServerSilence)
+  void _rearmSilence(AudioSource source) {
+    _silenceTimers[source]?.cancel();
+    _silenceTimers[source] = _pendingWindows[source]!.isNotEmpty
+        ? Timer(_serverSilence, () => _onSourceSilence(source))
         : null;
   }
 
-  void _onServerSilence() {
-    _silenceTimer = null;
-    for (final AudioSource source in AudioSource.values) {
-      _onSilentServer(source);
-    }
-    _rearmSilence();
+  void _onSourceSilence(AudioSource source) {
+    _silenceTimers[source] = null;
+    _onSilentServer(source);
+    _rearmSilence(source);
+  }
+
+  /// Le canal de [source] s'est fermé côté serveur : coupure tout de suite,
+  /// sans attendre un envoi (sonde 2 : en rattrapage, rien n'est envoyé).
+  void _onSocketClosed(AudioSource source) {
+    if (!_sessionOpen || _outages[source] != null) return;
+    if (source == AudioSource.output && !_systemConnected) return;
+    _startOutage(source);
   }
 
   void _onSilentServer(AudioSource source) {
@@ -330,7 +349,9 @@ final class TranscriptionRemoteDataSourceImpl
     outage.attempts++;
     final WebSocketClient client = _client(source);
     try {
-      await client.connect(_url);
+      // Une poignée de main sans fin est abandonnée (le faux client, comme un
+      // canal qui ne répond pas, peut ne jamais rendre la main).
+      await client.connect(_url).timeout(WebSocketClient.connectTimeout);
     } catch (_) {
       if (identical(_outages[source], outage)) {
         _scheduleReconnect(source, outage);
@@ -351,7 +372,7 @@ final class TranscriptionRemoteDataSourceImpl
       _scheduleReconnect(source, outage);
       return;
     }
-    final bool lost = unacked.lostStartMs != null;
+    final bool lost = unacked.lost.isNotEmpty;
     _emitGap(source, unacked);
     if (lost || unacked.queue.isNotEmpty) {
       _control[source]!.add(
@@ -366,34 +387,27 @@ final class TranscriptionRemoteDataSourceImpl
   }
 
   void _emitGap(AudioSource source, _Unacked unacked) {
-    final int? start = unacked.lostStartMs;
-    if (start == null) return;
-    _gapSubject.add(
-      AudioGap(source: source, startMs: start, endMs: unacked.lostEndMs!),
-    );
-    unacked
-      ..lostStartMs = null
-      ..lostEndMs = null;
+    for (final _Range range in unacked.lost) {
+      _gapSubject.add(
+        AudioGap(source: source, startMs: range.startMs!, endMs: range.endMs!),
+      );
+    }
+    unacked.lost.clear();
   }
 
-  /// Ferme les coupures et vide le tampon. Seul l'audio d'une source coupée
-  /// est perdu (il reste dans le WAV) et signalé : sur une socket vivante,
-  /// le serveur l'a reçu, son texte est au moins dans les deltas.
+  /// Ferme les coupures et vide le tampon : tout ce qui n'a pas son `done`,
+  /// envoyé ou non, devient une perte signalée (une par source). Aucune voie
+  /// silencieuse (sonde 2 : 90 s puis 52,8 s jetées sans repère). L'audio
+  /// reste dans le WAV ; l'app attend le rattrapage avant d'en arriver là.
   void _clearOutages() {
-    _silenceTimer?.cancel();
-    _silenceTimer = null;
     for (final AudioSource source in AudioSource.values) {
+      _silenceTimers[source]?.cancel();
+      _silenceTimers[source] = null;
       _silentRecycles[source] = 0;
-      final _Outage? outage = _outages[source];
-      outage?.retry?.cancel();
+      _outages[source]?.retry?.cancel();
       _outages[source] = null;
-      final _Unacked unacked = _unacked[source]!;
-      if (outage != null) {
-        unacked.loseAll();
-        _emitGap(source, unacked);
-      } else {
-        unacked.clear();
-      }
+      final _Unacked unacked = _unacked[source]!..loseAll();
+      _emitGap(source, unacked);
     }
   }
 
@@ -513,7 +527,7 @@ final class TranscriptionRemoteDataSourceImpl
           // bloquée pendant que l'autre répond ne se distingue pas de la
           // file du serveur. Seuls la borne de 120 s et le repère de perte
           // couvrent ces cas.
-          _onServerMessage();
+          _onServerMessage(source);
           return event;
         });
   }
@@ -524,6 +538,7 @@ final class TranscriptionRemoteDataSourceImpl
 
   @override
   Future<void> disconnect() async {
+    _sessionOpen = false;
     _clearOutages();
     await Future.wait(<Future<void>>[_mic.disconnect(), _sys.disconnect()]);
     _systemConnected = false;
@@ -543,6 +558,10 @@ final class TranscriptionRemoteDataSourceImpl
 
   /// Libère les ressources (les deux connexions).
   Future<void> dispose() async {
+    _sessionOpen = false;
+    for (final StreamSubscription<void> sub in _closedSubscriptions) {
+      unawaited(sub.cancel());
+    }
     _clearOutages();
     await _gapSubject.close();
     for (final PublishSubject<TranscriptEventRemoteModel> c
@@ -585,9 +604,10 @@ class _Unacked {
   final Queue<_Outgoing> queue = Queue<_Outgoing>();
   int audioMs = 0;
 
-  /// Audio perdu pour la transcription, pas encore signalé.
-  int? lostStartMs;
-  int? lostEndMs;
+  /// Audio perdu pour la transcription, pas encore signalé : une plage par
+  /// perte. Une plage se ferme dès qu'un audio plus récent est écrit ou
+  /// acquitté, pour qu'une perte ne recouvre jamais de l'audio transcrit.
+  final List<_Range> lost = <_Range>[];
 
   /// Audio jeté après être parti sur la socket vivante : il sera transcrit
   /// si son `done` arrive, perdu si la socket tombe avant. Une plage par
@@ -633,7 +653,12 @@ class _Unacked {
     _sentCount++;
     _sentAudioMs += item.audioMs;
     if (item.window != null) _sentFinals++;
+    _closeLost();
     return item;
+  }
+
+  void _closeLost() {
+    if (lost.isNotEmpty) lost.last.closed = true;
   }
 
   /// Nouvelle socket : rien n'y est encore écrit.
@@ -663,6 +688,7 @@ class _Unacked {
   // ponytail: un `done` qui n'arrive qu'après une coupure ne peut plus
   // acquitter l'audio jeté avant elle : compté perdu (faux repère au pire).
   void acknowledge() {
+    _closeLost();
     if (_sentEvicted.isNotEmpty && _sentEvicted.first.closed) {
       final _Range acked = _sentEvicted.removeAt(0);
       _sentAudioMs -= acked.audioMs;
@@ -688,15 +714,6 @@ class _Unacked {
       if (range.startMs != null) _markLost(range.startMs!, range.endMs!);
     }
     _sentEvicted.clear();
-  }
-
-  void clear() {
-    queue.clear();
-    audioMs = 0;
-    resetSent();
-    _sentEvicted.clear();
-    lostStartMs = null;
-    lostEndMs = null;
   }
 
   void loseAll() {
@@ -726,10 +743,12 @@ class _Unacked {
   }
 
   void _markLost(int startMs, int endMs) {
-    lostStartMs = lostStartMs == null
+    if (lost.isEmpty || lost.last.closed) lost.add(_Range());
+    final _Range range = lost.last;
+    range.startMs = range.startMs == null
         ? startMs
-        : math.min(lostStartMs!, startMs);
-    lostEndMs = lostEndMs == null ? endMs : math.max(lostEndMs!, endMs);
+        : math.min(range.startMs!, startMs);
+    range.endMs = range.endMs == null ? endMs : math.max(range.endMs!, endMs);
   }
 }
 
