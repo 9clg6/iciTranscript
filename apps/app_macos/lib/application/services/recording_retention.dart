@@ -2,6 +2,10 @@ import 'dart:io';
 
 /// Durée de conservation des WAV de session, toujours enregistrés
 /// (~230 Mo par heure de réunion, micro + son du Mac).
+///
+/// Sans appelant pour l'instant : jamais lancée automatiquement (au premier
+/// lancement, elle effacerait des mois d'enregistrements). Une tranche
+/// ultérieure la déclenche depuis un geste explicite de l'utilisateur.
 abstract final class RecordingRetention {
   /// Seule constante de la durée de conservation.
   static const Duration maxAge = Duration(days: 14);
