@@ -317,10 +317,13 @@ class _LiveTranscriptionScreenState
             onStop: () async {
               final String? sessionId = await _vm.stopSession();
               if (sessionId != null) {
-                // Ouvrir la note dans le shell ; Retour ramène à l'accueil.
+                // Ouvrir la note dans le shell. Retour ramène à l'accueil,
+                // ou ici si le coach prépare son retour (panneau du bas).
                 ref
                     .read(shellViewControllerProvider.notifier)
-                    .show(ShellView.home);
+                    .show(
+                      state.isCoachEnabled ? ShellView.live : ShellView.home,
+                    );
                 ref
                     .read(sessionListViewModelProvider.notifier)
                     .selectSession(sessionId);

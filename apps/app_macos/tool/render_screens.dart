@@ -10,6 +10,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:core_domain/domain/entities/audio_device.entity.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -32,6 +33,7 @@ import 'package:ici_transcript/features/history/presentation/screens/list/sessio
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
+import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 import 'package:ici_transcript/presentation/app.dart';
 
@@ -120,6 +122,19 @@ class _FrLoader extends AssetLoader {
           as Map<String, dynamic>;
 }
 
+/// Réglages avec des micros et un long chemin de stockage.
+class _SettingsViewModel extends SettingsViewModel {
+  @override
+  SettingsState build() => SettingsState(
+    availableDevices: FakeData.createAudioDeviceList()
+        .where((AudioDeviceEntity d) => d.isInput)
+        .toList(),
+    storagePath:
+        '/Users/demo/Library/Application Support/Exemple/un/chemin/assez/long',
+    dbSizeMb: 182,
+  );
+}
+
 /// Live : enregistrement en cours, quelques phrases déjà transcrites.
 class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
   @override
@@ -152,7 +167,7 @@ List<Override> _overrides(List<SessionEntity> sessions) => <Override>[
     () => FakeSessionListViewModel(sessions),
   ),
   liveTranscriptionViewModelProvider.overrideWith(_RecordingLiveViewModel.new),
-  settingsViewModelProvider.overrideWith(FakeSettingsViewModel.new),
+  settingsViewModelProvider.overrideWith(_SettingsViewModel.new),
   sessionDetailViewModelProvider.overrideWith(
     () => FakeSessionDetailViewModel(
       (String id) async => SessionDetailState(
@@ -313,6 +328,32 @@ void main() {
         await tester.tap(find.text('Réglages'));
         await _pump(tester, 10);
         await _shot(tester, key, 'settings-$suffix');
+        await tester.drag(find.text('Audio'), const Offset(0, -700));
+        await _pump(tester, 10);
+        await _shot(tester, key, 'settings-scrolled-$suffix');
+      });
+
+      shoot('pages', (WidgetTester tester) async {
+        final GlobalKey key = await pumpApp(tester, _sessions);
+        await tester.enterText(find.byType(TextField), 'budget');
+        await _pump(tester, 5);
+        await _shot(tester, key, 'home-no-result-$suffix');
+        await tester.tap(find.text('Documents'));
+        await _pump(tester, 5);
+        await _shot(tester, key, 'documents-$suffix');
+        await tester.tap(find.text('Coach anglais'));
+        await _pump(tester, 5);
+        await _shot(tester, key, 'coach-$suffix');
+        await tester.tap(find.text('Accueil'));
+        await _pump(tester, 5);
+        await _shot(tester, key, 'home-search-kept-$suffix');
+        await tester.enterText(find.byType(TextField), '');
+        await _pump(tester, 5);
+        await tester.tap(find.text('Point produit hebdo'));
+        await _pump(tester, 10);
+        await tester.tap(find.text('Supprimer'));
+        await _pump(tester, 10);
+        await _shot(tester, key, 'delete-dialog-$suffix');
       });
 
       shoot('live', (WidgetTester tester) async {

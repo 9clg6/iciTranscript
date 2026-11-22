@@ -8,8 +8,9 @@ import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.vie
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
 /// Préparation du modèle local (moteur Ollama + modèle Mistral), affichée
-/// dans Réglages. Le téléchargement démarre seul au lancement ; ce bloc en
-/// montre l'avancement et permet de relancer après une erreur.
+/// dans Réglages. Le téléchargement démarre en arrière-plan au lancement
+/// (app.dart) ; ce bloc en montre l'avancement et permet de relancer après
+/// une erreur.
 class OllamaSetupScreen extends ConsumerWidget {
   /// Crée le bloc.
   const OllamaSetupScreen({super.key});
@@ -97,7 +98,7 @@ class OllamaSetupScreen extends ConsumerWidget {
         step(
           OllamaSetupStage.downloadingBinary,
           LocaleKeys.ollama_step_binary.tr(),
-          '~106 Mo',
+          LocaleKeys.ollama_size_binary.tr(),
         ),
         step(
           OllamaSetupStage.startingServer,
@@ -107,7 +108,7 @@ class OllamaSetupScreen extends ConsumerWidget {
         step(
           OllamaSetupStage.downloadingModel,
           LocaleKeys.ollama_step_model.tr(),
-          '~4 Go',
+          LocaleKeys.ollama_size_model.tr(),
         ),
         if (s.stage == OllamaSetupStage.error) ...<Widget>[
           const SizedBox(height: OatsSpace.xs),

@@ -133,6 +133,8 @@ abstract class  LocaleKeys {
   static const ollama_step_server = 'ollama.step_server';
   static const ollama_step_model = 'ollama.step_model';
   static const ollama_error = 'ollama.error';
+  static const ollama_size_binary = 'ollama.size_binary';
+  static const ollama_size_model = 'ollama.size_model';
   static const ollama = 'ollama';
   static const server_state_ready = 'server_state.ready';
   static const server_state_starting = 'server_state.starting';

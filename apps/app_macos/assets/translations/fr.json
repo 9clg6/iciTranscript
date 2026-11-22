@@ -155,7 +155,9 @@
     "step_binary": "Moteur Ollama",
     "step_server": "Démarrage du serveur",
     "step_model": "Modèle Mistral",
-    "error": "Erreur de configuration"
+    "error": "Erreur de configuration",
+    "size_binary": "~106 Mo",
+    "size_model": "~4 Go"
   },
   "server_state": {
     "ready": "Transcription prête",

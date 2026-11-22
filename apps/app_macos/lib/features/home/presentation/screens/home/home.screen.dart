@@ -7,6 +7,7 @@ import 'package:ici_transcript/features/history/presentation/screens/list/sessio
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:ici_transcript/features/home/presentation/agenda.dart';
 import 'package:ici_transcript/features/home/presentation/widgets/upcoming_events.widget.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/shell/presentation/shell_view.provider.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
@@ -15,17 +16,39 @@ import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 const double kContentMaxWidth = 760;
 
 /// Accueil « agenda » : à venir, puis l'historique groupé par jour.
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   /// Crée l'accueil.
   const HomeScreen({super.key});
 
-  Future<void> _newNote(WidgetRef ref) async {
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  // La requête vit dans le view model (gardé en vie par le shell) : le champ
+  // repart d'elle pour ne jamais afficher autre chose que le filtre appliqué.
+  late final TextEditingController _search = TextEditingController(
+    text: ref.read(sessionListViewModelProvider).searchQuery,
+  );
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  /// Démarre une note ; si une note est déjà en cours, y retourne.
+  Future<void> _newNote() async {
     ref.read(shellViewControllerProvider.notifier).show(ShellView.live);
+    final LiveTranscriptionState live = ref.read(
+      liveTranscriptionViewModelProvider,
+    );
+    if (live.isRecording || live.isPaused) return;
     await ref.read(liveTranscriptionViewModelProvider.notifier).startSession();
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final SessionListState state = ref.watch(sessionListViewModelProvider);
     final SessionListViewModel vm = ref.read(
       sessionListViewModelProvider.notifier,
@@ -51,6 +74,7 @@ class HomeScreen extends ConsumerWidget {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 320),
                     child: OatsSearchField(
+                      controller: _search,
                       hint: LocaleKeys.home_search.tr(),
                       onChanged: vm.search,
                     ),
@@ -61,7 +85,7 @@ class HomeScreen extends ConsumerWidget {
               OatsPrimaryButton(
                 icon: Icons.add,
                 label: LocaleKeys.home_new_note.tr(),
-                onPressed: () => _newNote(ref),
+                onPressed: _newNote,
               ),
             ],
           ),

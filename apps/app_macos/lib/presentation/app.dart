@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/kernel.provider.dart';
 import 'package:ici_transcript/core/providers/platform/uvx_available.provider.dart';
+import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/shared/presentation/screens/onboarding/uv_onboarding.screen.dart';
 import 'package:ici_transcript/foundation/routing/app_router.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
@@ -59,6 +60,9 @@ class _RootAppWidgetState extends ConsumerState<RootAppWidget> {
             ),
           );
         }
+        // Prépare le modèle local en arrière-plan dès le lancement, sans
+        // rien bloquer (keepAlive : un seul téléchargement).
+        ref.read(ollamaSetupViewModelProvider);
         return MaterialApp.router(
           debugShowCheckedModeBanner: false,
           title: LocaleKeys.app_name.tr(),
