@@ -140,6 +140,12 @@ class LiveAnswersService {
     _emit();
   }
 
+  /// Libère le service (fin de l'app).
+  Future<void> dispose() async {
+    await stop();
+    await _subject.close();
+  }
+
   /// Plage de dictée (raccourci tenu de [startMs] à [endMs], ouverte si
   /// null) : la parole du micro qui y tombe n'est ni contexte ni question.
   void markDictation({required int startMs, int? endMs}) =>

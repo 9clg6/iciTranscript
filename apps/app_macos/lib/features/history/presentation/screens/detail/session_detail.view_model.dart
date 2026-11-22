@@ -9,6 +9,8 @@ import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/application/services/summary.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
+import 'package:ici_transcript/application/services/live_answers/live_question.dart';
+import 'package:ici_transcript/core/providers/services/question_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/ready_llm.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
@@ -53,7 +55,18 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
       summary: analysis.summary,
       feedback: analysis.feedback,
       speakers: analysis.speakers,
+      questions: await _questions(sessionId),
     );
+  }
+
+  /// Questions gardées avec la note ; illisibles : aucune (la note s'ouvre).
+  Future<List<LiveQuestion>> _questions(String sessionId) async {
+    try {
+      return await ref.read(questionStoreProvider).forSession(sessionId);
+    } on Object catch (e) {
+      _log.warning('Questions de la note illisibles : $e');
+      return const <LiveQuestion>[];
+    }
   }
 
   /// Un fournisseur peut-il repondre ? Detection seule (rien ne demarre).
