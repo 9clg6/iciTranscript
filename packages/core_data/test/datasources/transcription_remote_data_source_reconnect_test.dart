@@ -41,8 +41,6 @@ void main() {
     states = <domain.ConnectionState>[];
     dataSource.audioGaps.listen(gaps.add);
     dataSource.connectionState.listen(states.add);
-    dataSource.transcriptionStream.listen((_) {});
-    dataSource.systemTranscriptionStream.listen((_) {});
     unawaited(dataSource.connect());
     async.flushMicrotasks();
   }
