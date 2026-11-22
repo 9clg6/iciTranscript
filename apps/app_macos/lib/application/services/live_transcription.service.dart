@@ -155,6 +155,17 @@ final class LiveTranscriptionService {
   // Session réellement démarrée (et pas encore arrêtée).
   bool _running = false;
 
+  final PublishSubject<TranscriptSegmentEntity> _finalized =
+      PublishSubject<TranscriptSegmentEntity>();
+
+  /// Chaque phrase FINALE du direct (deux sources), une fois sauvée. Jamais
+  /// un morceau provisoire, un repère de perte, une phrase écartée par les
+  /// filtres ni le texte retrouvé après la réunion.
+  // ponytail: une phrase scellée par une coupure de socket (`_sealPhrase`)
+  // n'est pas émise : son début seul ferait une question à moitié dite.
+  Stream<TranscriptSegmentEntity> get finalizedSegmentsStream =>
+      _finalized.stream;
+
   /// Audio restant à transcrire pendant l'attente de l'arrêt (décroissant),
   /// puis [Duration.zero] : de quoi afficher « finalisation… ».
   Stream<Duration> get finalisingRemainingStream => _finalisingRemaining.stream;
@@ -672,6 +683,7 @@ final class LiveTranscriptionService {
     await _systemTranscriptionSubscription?.cancel();
     await _health.close();
     await _finalisingRemaining.close();
+    await _finalized.close();
   }
 
   // ---------------------------------------------------------------------------
@@ -1130,6 +1142,7 @@ final class LiveTranscriptionService {
         createdAt: clock.now(),
       );
       await _transcriptionService.saveSegment(segment);
+      if (!_finalized.isClosed) _finalized.add(segment);
       if (source == AudioSource.output && _liveDiarizationEnabled) {
         _queueSpeakerLabel(
           segment.id,

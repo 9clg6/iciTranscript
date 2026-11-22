@@ -19,6 +19,8 @@ import 'package:ici_transcript/core/platform/owned_processes.dart';
 import 'package:ici_transcript/core/platform/prefs_store.dart';
 import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
+import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
+import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/ready_llm.dart';
@@ -135,6 +137,16 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       _translateNewSegments(segments);
     });
 
+    // Phrases finales : contexte et porte des questions en direct.
+    _liveService?.finalizedSegmentsStream.listen((
+      TranscriptSegmentEntity segment,
+    ) {
+      _answers.onSegmentFinalized(
+        segment,
+        speaker: _liveService?.speakerLabels[segment.id],
+      );
+    });
+
     // Après Arrêter : rattrapage restant, pour l'état « Finalisation… ».
     _liveService?.finalisingRemainingStream.listen((Duration remaining) {
       state = state.copyWith(
@@ -169,6 +181,8 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     if (text.isEmpty) return null;
     return text.length > 140 ? '${text.substring(0, 140)}…' : text;
   }
+
+  LiveAnswersService get _answers => ref.read(liveAnswersServiceProvider);
 
   /// Demarre une nouvelle session de transcription.
   Future<void> startSession() async {
@@ -227,6 +241,8 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         liveDiarization: state.isLiveSpeakersEnabled,
       );
       _log.info('startTranscription OK');
+      final String? sessionId = _liveService?.currentSessionStream.value?.id;
+      if (sessionId != null) _answers.start(sessionId);
     } catch (e) {
       _log.error('ERREUR startTranscription: $e');
       if (e is PlatformException && e.code == 'MIC_PERMISSION_DENIED') {
@@ -239,6 +255,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         );
       }
       _durationTimer?.cancel();
+      await _answers.stop();
       await _liveService?.stopTranscription();
     }
   }
@@ -261,6 +278,9 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     final String? sessionId = _liveService?.currentSessionStream.value?.id;
     final bool coachEnabled = state.isCoachEnabled;
 
+    // Avant le rattrapage de l'arrêt : plus rien ne part pendant
+    // « Finalisation… », la réponse en vol est abandonnée.
+    await _answers.stop();
     await _liveService?.stopTranscription();
 
     final List<TranscriptSegmentEntity> segments = state.segments;
@@ -601,6 +621,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// Met en pause.
   Future<void> pauseSession() async {
     try {
+      _answers.pause();
       await _liveService?.pauseTranscription();
       _durationTimer?.cancel();
       state = state.copyWith(isPaused: true);
@@ -613,6 +634,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   Future<void> resumeSession() async {
     try {
       await _liveService?.resumeTranscription();
+      _answers.resume();
       state = state.copyWith(isPaused: false);
       _startDurationTimer();
     } catch (e) {
