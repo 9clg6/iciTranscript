@@ -173,7 +173,7 @@ void main() {
       expect(label.hitTestable(), findsOneWidget, reason: key);
       expect(
         tester.getSemantics(label),
-        containsSemantics(isButton: true),
+        isSemantics(isButton: true),
         reason: key,
       );
     }
