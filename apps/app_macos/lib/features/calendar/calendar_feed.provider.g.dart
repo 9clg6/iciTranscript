@@ -40,7 +40,7 @@ final class CalendarFeedControllerProvider
 }
 
 String _$calendarFeedControllerHash() =>
-    r'e009efcdaa6ffba0175fb493d26944e4d3268821';
+    r'ab793f1150077522d5f887ad8812b88f7c4df228';
 
 /// Événements de l'agenda, relus quand l'agenda change, quand le jour change
 /// et quand les réglages de l'agenda changent.

@@ -37,7 +37,7 @@ final class CalendarPrefsControllerProvider
 }
 
 String _$calendarPrefsControllerHash() =>
-    r'57ec95168f36f27d65ea2d82e6e3c0ba47152806';
+    r'de89f72b1388b5699a5e2052ba3fc8b56ab3ca2e';
 
 /// Lit et range [CalendarPrefs].
 

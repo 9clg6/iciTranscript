@@ -33,11 +33,14 @@ const Map<String, String> kCallApps = <String, String>{
   'org.mozilla.firefox': 'Firefox',
   'com.microsoft.edgemac': 'Microsoft Edge',
   'com.brave.Browser': 'Brave',
-  // Processus auxiliaires qui capturent pour une app sans porter son id.
-  // Safari (et toute vue WebKit) capture le micro dans le processus GPU.
+  // Processus auxiliaires qui capturent pour une app sans porter son id
+  // (suppositions, à vérifier par un vrai appel ; les ids `<id>.helper…`
+  // passent par le préfixe ci-dessous) :
+  // - WebKit capture le micro dans son processus GPU sur macOS 14+ (commit
+  //   WebKit de mai 2024) ; Safari est le cas le plus probable, mais toute
+  //   app WebKit passe par là.
   'com.apple.WebKit.GPU': 'Safari',
-  // ponytail: id du processus enfant de Firefox supposé, à confirmer par un
-  // vrai appel Meet dans Firefox.
+  // - processus enfant de Firefox.
   'org.mozilla.plugincontainer': 'Firefox',
 };
 

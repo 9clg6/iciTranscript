@@ -75,8 +75,15 @@ class CalendarFeedController extends _$CalendarFeedController {
       unawaited(changes.cancel());
       dayCheck.cancel();
     });
-    if (await _channel.accessStatus() != CalendarAccess.granted) {
-      return const CalendarDenied();
+    switch (await _channel.accessStatus()) {
+      // Never asked on this Mac (TCC reset, new signature) : « Connecter »
+      // reposera la question au lieu d'envoyer vers Réglages Système.
+      case CalendarAccess.notDetermined:
+        return const CalendarNotConnected();
+      case CalendarAccess.denied:
+        return const CalendarDenied();
+      case CalendarAccess.granted:
+        break;
     }
     final List<CalendarEvent> events = await _channel.events(
       from: day,

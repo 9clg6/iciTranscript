@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
 import 'package:ici_transcript/application/services/meeting/meeting_rules.dart';
 import 'package:ici_transcript/core/providers/platform/meeting_detection_channel.provider.dart';
@@ -31,6 +32,7 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
   final Map<String, DateTime> _holders = <String, DateTime>{};
   final Set<String> _shown = <String>{};
   DateTime? _dismissedAt;
+  final Log _log = Log.named('MeetingSuggestion');
 
   @override
   MeetingSuggestion? build() {
@@ -65,6 +67,13 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
 
   void _onMicUsers(Set<String> bundleIds) {
     final DateTime now = ref.read(nowProvider)();
+    // Ids seulement (jamais de titre ni de nom) : sert à compléter kCallApps
+    // quand un vrai appel ne déclenche rien.
+    for (final String id in bundleIds) {
+      if (!_holders.containsKey(id) && callAppName(id) == null) {
+        _log.info('Micro tenu par une app non reconnue : $id');
+      }
+    }
     _holders.removeWhere((String id, _) => !bundleIds.contains(id));
     for (final String id in bundleIds) {
       _holders.putIfAbsent(id, () => now);

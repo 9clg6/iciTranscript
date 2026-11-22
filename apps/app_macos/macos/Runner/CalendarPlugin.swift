@@ -10,8 +10,10 @@ import Foundation
 //   (deprecated in macOS 14.0; used below 14 only)
 // - https://developer.apple.com/documentation/eventkit/ekauthorizationstatus
 //   (fullAccess / writeOnly are macOS 14+; `authorized` is the deprecated alias of fullAccess)
-// - https://developer.apple.com/documentation/eventkit/ekeventstorechangednotification
+// - https://developer.apple.com/documentation/foundation/nsnotification/name-swift.struct/ekeventstorechanged
+//   (macOS 10.8+; posted on the main actor; the page names no posting object)
 // - https://developer.apple.com/documentation/bundleresources/information-property-list/nscalendarsfullaccessusagedescription
+//   (required to read; macOS 14.0+; NSCalendarsUsageDescription kept for older systems)
 // Signatures checked against the SDK headers (EventKit.framework/Headers).
 
 /// Flutter plugin reading the user's calendars through EventKit.
@@ -36,7 +38,7 @@ class CalendarPlugin: NSObject, FlutterPlugin {
         super.init()
         observer = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged,
-            object: store,
+            object: nil,  // the page names no posting object
             queue: .main
         ) { [weak self] _ in
             self?.channel.invokeMethod("changed", arguments: nil)

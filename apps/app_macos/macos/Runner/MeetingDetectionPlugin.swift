@@ -11,7 +11,9 @@ import Foundation
 // semantics: the process list is "an array of AudioObjectIDs that represent the Process objects for
 // all client processes currently connected to the system", BundleID is a CFString the caller
 // releases, IsRunningInput is a UInt32 (1 = running IO with at least one active input stream).
-// The process objects shipped with macOS 14 (Sonoma); older systems get `start` -> false.
+// None of these pages gives a minimum OS version: the macOS 14 gate comes from the project's
+// spike notes, not from Apple; `start` also returns false when the system object does not
+// expose the process list (AudioObjectHasProperty).
 
 /// Flutter plugin telling Dart which other apps are capturing the microphone.
 ///
@@ -40,7 +42,9 @@ class MeetingDetectionPlugin: NSObject, FlutterPlugin {
     func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "start":
-            guard #available(macOS 14.0, *) else { return result(false) }
+            guard #available(macOS 14.0, *), MicUsersMonitor.isSupported() else {
+                return result(false)
+            }
             if monitor == nil {
                 let m = MicUsersMonitor { [weak self] ids in
                     self?.channel.invokeMethod("micUsers", arguments: ["bundleIds": ids])
@@ -73,6 +77,11 @@ private final class MicUsersMonitor {
 
     init(onChange: @escaping ([String]) -> Void) {
         self.onChange = onChange
+    }
+
+    static func isSupported() -> Bool {
+        var address = address(kAudioHardwarePropertyProcessObjectList)
+        return AudioObjectHasProperty(AudioObjectID(kAudioObjectSystemObject), &address)
     }
 
     func start() {
