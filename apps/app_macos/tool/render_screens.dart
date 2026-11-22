@@ -32,6 +32,7 @@ import 'package:ici_transcript/features/history/presentation/screens/detail/sess
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
+import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.state.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
@@ -157,11 +158,14 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
   Future<void> recheckPermissions() async {}
 }
 
-List<Override> _overrides(List<SessionEntity> sessions) => <Override>[
+List<Override> _overrides(
+  List<SessionEntity> sessions, {
+  OllamaSetupState ollama = const OllamaSetupState(),
+}) => <Override>[
   kernelProvider.overrideWith((Ref ref) async {}),
   uvxAvailableProvider.overrideWith((Ref ref) async => true),
   ollamaSetupViewModelProvider.overrideWith(
-    () => FakeOllamaSetupViewModel(kOllamaAbsent),
+    () => FakeOllamaSetupViewModel(ollama),
   ),
   sessionListViewModelProvider.overrideWith(
     () => FakeSessionListViewModel(sessions),
@@ -246,8 +250,9 @@ void main() {
 
       Future<GlobalKey> pumpApp(
         WidgetTester tester,
-        List<SessionEntity> sessions,
-      ) async {
+        List<SessionEntity> sessions, {
+        OllamaSetupState ollama = const OllamaSetupState(),
+      }) async {
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
         tester.platformDispatcher.platformBrightnessTestValue = brightness;
@@ -260,7 +265,7 @@ void main() {
           RepaintBoundary(
             key: key,
             child: ProviderScope(
-              overrides: _overrides(sessions),
+              overrides: _overrides(sessions, ollama: ollama),
               child: EasyLocalization(
                 supportedLocales: const <Locale>[Locale('fr')],
                 path: 'assets/translations',
@@ -332,6 +337,26 @@ void main() {
         await _pump(tester, 10);
         await _shot(tester, key, 'settings-scrolled-$suffix');
       });
+
+      // Modèle local : installé, puis en erreur d'installation.
+      for (final MapEntry<String, OllamaSetupState> m
+          in <String, OllamaSetupState>{
+            'ready': kOllamaReady,
+            'error': kOllamaAbsent,
+          }.entries) {
+        shoot('settings-${m.key}', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            ollama: m.value,
+          );
+          await tester.tap(find.text('Réglages'));
+          await _pump(tester, 10);
+          await tester.drag(find.text('Audio'), const Offset(0, -250));
+          await _pump(tester, 10);
+          await _shot(tester, key, 'settings-model-${m.key}-$suffix');
+        });
+      }
 
       shoot('pages', (WidgetTester tester) async {
         final GlobalKey key = await pumpApp(tester, _sessions);
