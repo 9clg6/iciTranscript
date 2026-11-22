@@ -25,6 +25,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -52,7 +53,9 @@ final class LiveTranscriptionService {
     LiveDiarizationService? liveDiarization,
     WavRecorder Function()? createWavRecorder,
     GapBackfillService? gapBackfill,
+    ServerPorts? ports,
   }) : _gapBackfill = gapBackfill,
+       _ports = ports ?? serverPorts(),
        _processManagerService = processManagerService,
        _audioCaptureChannel = audioCaptureChannel,
        _transcriptionRemoteDataSource = transcriptionRemoteDataSource,
@@ -60,6 +63,7 @@ final class LiveTranscriptionService {
        _liveDiarization = liveDiarization,
        _createWavRecorder = createWavRecorder ?? WavRecorder.new;
 
+  final ServerPorts _ports;
   final ProcessManagerService _processManagerService;
   final AudioCaptureChannel _audioCaptureChannel;
   final TranscriptionRemoteDataSource _transcriptionRemoteDataSource;
@@ -199,7 +203,7 @@ final class LiveTranscriptionService {
     bool outputEnabled = false,
     String serverCommand = 'voxmlx-serve',
     List<String> serverArgs = const <String>[],
-    String webSocketUrl = 'ws://localhost:8000/v1/realtime',
+    String? webSocketUrl,
     bool enablePostProcessing = false,
     bool liveDiarization = false,
   }) => _serializeLifecycle(
@@ -208,7 +212,7 @@ final class LiveTranscriptionService {
       outputEnabled: outputEnabled,
       serverCommand: serverCommand,
       serverArgs: serverArgs,
-      webSocketUrl: webSocketUrl,
+      webSocketUrl: webSocketUrl ?? '${_ports.transcriptionWebSocket}',
       liveDiarization: liveDiarization,
     ),
   );

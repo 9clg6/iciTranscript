@@ -6,6 +6,9 @@ import 'dart:typed_data';
 
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/diarization.service.dart';
+import 'package:ici_transcript/core/platform/owned_processes.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
+import 'package:ici_transcript/core/platform/system_process_host.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 /// Diarization en temps réel de l'audio système (interlocuteurs distants).
@@ -19,12 +22,21 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 /// Tout est best effort : si le serveur n'est pas (encore) prêt, la
 /// transcription continue sans étiquettes.
 class LiveDiarizationService {
-  LiveDiarizationService();
+  LiveDiarizationService({OwnedProcessRegistry? processes, ServerPorts? ports})
+    : _processes =
+          processes ??
+          OwnedProcessRegistry(
+            host: const SystemProcessHost(),
+            stateFile: ownedProcessesFile(),
+          ),
+      _ports = ports ?? serverPorts();
 
-  static const int port = 8001;
+  static const String _role = 'diarization';
   static const int _sampleRate = 16000;
 
   final Log _log = Log.named('LiveDiarizationService');
+  final OwnedProcessRegistry _processes;
+  final ServerPorts _ports;
 
   Process? _process;
   WebSocketChannel? _channel;
@@ -58,14 +70,11 @@ class LiveDiarizationService {
     final int generation = ++_generation;
     _reset();
 
-    // Un serveur orphelin d'une session précédente garderait le port.
-    await Process.run('/usr/bin/pkill', <String>[
-      '-f',
-      'nemotron_diar_mlx.server',
-    ]);
-
+    // Un reste d'un arrêt brutal est nettoyé au lancement (kernel) ; un
+    // port pris par un autre programme lève PortInUseException.
     _log.info('Démarrage du serveur de diarization en direct');
-    final Process process = await Process.start(
+    final Process process = await _processes.start(
+      _role,
       '$_home/.local/bin/uv',
       <String>[
         'run',
@@ -77,7 +86,7 @@ class LiveDiarizationService {
         '-m',
         'nemotron_diar_mlx.server',
         '--port',
-        '$port',
+        '${_ports.diarization}',
         '--preset',
         'low_latency',
         '--cache-dir',
@@ -85,6 +94,7 @@ class LiveDiarizationService {
         '--parent-pid',
         '$pid',
       ],
+      port: _ports.diarization,
       environment: <String, String>{
         'HOME': _home,
         'PATH': DiarizationService.extendedPath,
@@ -117,7 +127,7 @@ class LiveDiarizationService {
     }
 
     final WebSocketChannel channel = WebSocketChannel.connect(
-      Uri.parse('ws://127.0.0.1:$port/v1/diarize'),
+      _ports.diarizationWebSocket,
     );
     await channel.ready;
     if (generation != _generation) {
@@ -201,16 +211,8 @@ class LiveDiarizationService {
     _closeChannel();
     final Process? process = _process;
     _process = null;
-    if (process != null) {
-      process.kill(ProcessSignal.sigterm);
-      await process.exitCode
-          .timeout(const Duration(seconds: 3), onTimeout: () => -1);
-      // `uv run` lance python en sous-processus : nettoyer par motif.
-      await Process.run('/usr/bin/pkill', <String>[
-        '-f',
-        'nemotron_diar_mlx.server',
-      ]);
-    }
+    // Le groupe lancé (`uv run` puis python) : SIGTERM, puis SIGKILL.
+    if (process != null) await _processes.stop(_role);
   }
 
   // ---------------------------------------------------------------------------
@@ -285,27 +287,13 @@ class LiveDiarizationService {
   }
 
   Future<bool> _waitHealthy(int generation, Duration timeout) async {
-    final HttpClient client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 1);
     final Stopwatch watch = Stopwatch()..start();
-    try {
-      while (watch.elapsed < timeout) {
-        if (generation != _generation || _process == null) return false;
-        try {
-          final HttpClientRequest request = await client.getUrl(
-            Uri.parse('http://127.0.0.1:$port/health'),
-          );
-          final HttpClientResponse response = await request.close();
-          await response.drain<void>();
-          if (response.statusCode == HttpStatus.ok) return true;
-        } on Object {
-          // Pas encore lancé / modèle en chargement.
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-      }
-      return false;
-    } finally {
-      client.close(force: true);
+    while (watch.elapsed < timeout) {
+      if (generation != _generation || _process == null) return false;
+      // Pas encore lancé / modèle en chargement.
+      if (await _processes.isHealthy(_ports.diarizationHealth)) return true;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
     }
+    return false;
   }
 }

@@ -6,8 +6,10 @@ import 'package:ici_transcript/application/services/websocket_pcm_transcriber.da
 import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
 import 'package:ici_transcript/core/providers/data/datasource/transcription.remote.data_source.provider.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
+import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/transcription.service.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -37,14 +39,22 @@ LiveTranscriptionService liveTranscriptionService(Ref ref) {
     transcriptionServiceProvider,
   );
 
+  final ServerPorts ports = ref.watch(launchServerPortsProvider);
+
   final LiveTranscriptionService service = LiveTranscriptionService(
     processManagerService: processManagerService,
     audioCaptureChannel: audioCaptureChannel,
     transcriptionRemoteDataSource: transcriptionRemoteDataSource,
     transcriptionService: transcriptionService,
-    liveDiarization: LiveDiarizationService(),
+    liveDiarization: LiveDiarizationService(
+      processes: ref.watch(ownedProcessRegistryProvider),
+      ports: ports,
+    ),
+    ports: ports,
     gapBackfill: GapBackfillService(
-      transcriber: WebSocketPcmTranscriber(),
+      transcriber: WebSocketPcmTranscriber(
+        url: ports.transcriptionWebSocket.toString(),
+      ),
       transcripts: ref.watch(transcriptRepositoryProvider),
       isRecording: () => transcriptionService.isTranscribingStream.value,
     ),

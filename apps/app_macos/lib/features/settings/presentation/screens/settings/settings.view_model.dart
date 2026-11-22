@@ -51,7 +51,6 @@ class SettingsViewModel extends _$SettingsViewModel {
       dbSizeMb: 124.0,
       systemAudioEnabled: savedSystemAudio,
       autoStartServer: true,
-      serverPort: '8000',
       availableDevices: inputDevices,
       selectedMicId: resolvedMicId,
     );
@@ -87,10 +86,5 @@ class SettingsViewModel extends _$SettingsViewModel {
   /// Active ou desactive le lancement automatique du serveur.
   void toggleAutoStart() {
     state = state.copyWith(autoStartServer: !state.autoStartServer);
-  }
-
-  /// Met a jour le port du serveur ML.
-  void updatePort(String port) {
-    state = state.copyWith(serverPort: port);
   }
 }

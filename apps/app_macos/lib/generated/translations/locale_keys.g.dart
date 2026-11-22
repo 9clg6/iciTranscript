@@ -145,6 +145,7 @@ abstract class  LocaleKeys {
   static const server_state_ready = 'server_state.ready';
   static const server_state_starting = 'server_state.starting';
   static const server_state_error = 'server_state.error';
+  static const server_state_port_in_use = 'server_state.port_in_use';
   static const server_state_stopped = 'server_state.stopped';
   static const server_state = 'server_state';
   static const uv_title = 'uv.title';

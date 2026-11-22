@@ -81,7 +81,7 @@ packages/
 - **Domain** — Pure Dart use cases and entities
 - **Data** — Drift SQLite + platform channels (Swift) for audio and process management
 
-The transcription server (`voxmlx-serve`) runs as a child process launched by the app via `uvx`. It listens on `ws://localhost:8000` and streams transcript segments back in real time.
+The transcription server (`voxmlx-serve`) runs as a child process launched by the app via `uvx`. It listens on `ws://127.0.0.1:8000` (8100 for a dev build on its own data directory; live diarization uses 8001/8101) and streams transcript segments back in real time. The app records the servers it starts in `servers.json` in its data directory and only ever stops those; a port held by another program is reported, never freed.
 
 ---
 

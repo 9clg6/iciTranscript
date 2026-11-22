@@ -5,22 +5,24 @@ import 'dart:typed_data';
 import 'package:core_data/clients/websocket_client.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
+import 'package:ici_transcript/core/platform/server_ports.dart';
 
 /// [PcmTranscriber] sur le serveur voxmlx, par une socket dédiée de courte
 /// durée, utilisée seulement hors enregistrement. Le PCM part par morceaux
 /// de 30 s au plus, un à la fois, comme le renvoi étalé : chaque morceau
 /// attend son `done` avant le suivant.
 // ponytail: morceaux à taille fixe (une phrase peut être coupée au bord) ;
-// couper sur les silences si les bords gênent. URL par défaut du serveur
-// local, pas celle de la dernière session.
+// couper sur les silences si les bords gênent. L'URL vient des ports
+// résolus pour ce lancement (ServerPorts), comme la transcription en direct.
 final class WebSocketPcmTranscriber implements PcmTranscriber {
   /// Cree une instance de [WebSocketPcmTranscriber].
   WebSocketPcmTranscriber({
-    this.url = 'ws://localhost:8000/v1/realtime',
+    String? url,
     WebSocketClient Function()? createClient,
-  }) : _createClient = createClient ?? WebSocketClient.new;
+  }) : url = url ?? serverPorts().transcriptionWebSocket.toString(),
+       _createClient = createClient ?? WebSocketClient.new;
 
-  /// Point d'entrée du serveur de transcription.
+  /// Point d'entrée du serveur de transcription (ports de ce lancement).
   final String url;
   final WebSocketClient Function() _createClient;
 

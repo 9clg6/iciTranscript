@@ -292,7 +292,10 @@ class _LiveTranscriptionScreenState
       ),
       child: Row(
         children: <Widget>[
-          Flexible(child: ServerStatusWidget(serverState: state.serverState)),
+          Flexible(child: ServerStatusWidget(
+              serverState: state.serverState,
+              portInUse: state.serverPortInUse,
+            )),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,

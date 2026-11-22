@@ -170,6 +170,7 @@
     "ready": "Transcription prête",
     "starting": "Démarrage…",
     "error": "Erreur serveur",
+    "port_in_use": "Le port {} est utilisé par un autre programme.",
     "stopped": "Serveur arrêté"
   },
   "uv": {
