@@ -363,7 +363,9 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// Interrupteurs « Coach anglais » et « Interlocuteurs en direct » rangés
   /// dans prefs.json ; défauts de l'état initial si absents ou illisibles.
   Future<void> _loadSwitches() async {
-    final Map<String, Object?> prefs = await ref.read(prefsStoreProvider).read();
+    final Map<String, Object?> prefs = await ref
+        .read(prefsStoreProvider)
+        .read();
     if (!ref.mounted) return;
     state = state.copyWith(
       isCoachEnabled: _coachTouched
@@ -371,8 +373,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
           : prefValue<bool>(prefs, _coachKey) ?? state.isCoachEnabled,
       isLiveSpeakersEnabled: _speakersTouched
           ? state.isLiveSpeakersEnabled
-          : prefValue<bool>(prefs, _speakersKey) ??
-                state.isLiveSpeakersEnabled,
+          : prefValue<bool>(prefs, _speakersKey) ?? state.isLiveSpeakersEnabled,
     );
   }
 
@@ -390,9 +391,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// Active ou désactive l'identification des interlocuteurs en direct.
   void toggleLiveSpeakers() {
     _speakersTouched = true;
-    state = state.copyWith(
-      isLiveSpeakersEnabled: !state.isLiveSpeakersEnabled,
-    );
+    state = state.copyWith(isLiveSpeakersEnabled: !state.isLiveSpeakersEnabled);
     unawaited(
       ref.read(prefsStoreProvider).update(<String, Object?>{
         _speakersKey: state.isLiveSpeakersEnabled,

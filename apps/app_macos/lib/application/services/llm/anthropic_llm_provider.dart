@@ -7,10 +7,13 @@ import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 /// Claude via l'API Messages d'Anthropic, en streaming SSE.
 class AnthropicLlmProvider implements LlmProvider {
   /// Cree un [AnthropicLlmProvider].
-  AnthropicLlmProvider({required Dio dio, required String apiKey, String? model})
-    : _dio = dio,
-      _apiKey = apiKey,
-      _model = model ?? defaultModel;
+  AnthropicLlmProvider({
+    required Dio dio,
+    required String apiKey,
+    String? model,
+  }) : _dio = dio,
+       _apiKey = apiKey,
+       _model = model ?? defaultModel;
 
   /// Modele rapide par defaut.
   static const String defaultModel = 'claude-haiku-5-5';

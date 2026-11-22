@@ -117,10 +117,9 @@ class SettingsViewModel extends _$SettingsViewModel {
       await _keys.write(id, trimmed);
     } on Object {
       // Ni l'erreur ni la clé ne sont journalisées.
-      state = state.copyWith(llmKeyErrors: <LlmProviderId>{
-        ...state.llmKeyErrors,
-        id,
-      });
+      state = state.copyWith(
+        llmKeyErrors: <LlmProviderId>{...state.llmKeyErrors, id},
+      );
       return;
     }
     state = state.copyWith(
@@ -139,10 +138,9 @@ class SettingsViewModel extends _$SettingsViewModel {
     try {
       await _keys.delete(id);
     } on Object {
-      state = state.copyWith(llmKeyErrors: <LlmProviderId>{
-        ...state.llmKeyErrors,
-        id,
-      });
+      state = state.copyWith(
+        llmKeyErrors: <LlmProviderId>{...state.llmKeyErrors, id},
+      );
       return;
     }
     state = state.copyWith(
@@ -197,23 +195,20 @@ class SettingsViewModel extends _$SettingsViewModel {
     try {
       key = await _keys.read(id);
     } on Object {
-      state = state.copyWith(llmKeyErrors: <LlmProviderId>{
-        ...state.llmKeyErrors,
-        id,
-      });
+      state = state.copyWith(
+        llmKeyErrors: <LlmProviderId>{...state.llmKeyErrors, id},
+      );
       return;
     }
     if (key == null) return;
     _setTest(id, LlmTestStatus.testing);
     try {
       await buildLlmProvider(
-            id,
-            dio: ref.read(llmDioProvider),
-            apiKey: key,
-            model: _settings.modelFor(id),
-          )
-          .streamChat(_ping)
-          .drain<void>();
+        id,
+        dio: ref.read(llmDioProvider),
+        apiKey: key,
+        model: _settings.modelFor(id),
+      ).streamChat(_ping).drain<void>();
       _setTest(id, LlmTestStatus.ok);
     } on LlmInvalidKeyException {
       _setTest(id, LlmTestStatus.invalidKey);

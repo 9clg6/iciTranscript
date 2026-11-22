@@ -156,6 +156,37 @@
       "description": "Résumés et coach anglais tournent sur votre Mac. Téléchargement unique : moteur Ollama (~106 Mo) et modèle Mistral (~4 Go).",
       "install": "Installer",
       "ready": "Modèle local prêt, sur votre Mac."
+    },
+    "ai": {
+      "title": "Intelligence artificielle",
+      "cloud_allowed": "Autoriser l'envoi à un service en ligne",
+      "privacy_notice": "Quand l'envoi est autorisé, le texte de la transcription et des documents utiles à la réponse part chez le fournisseur choisi. L'audio reste sur votre Mac.",
+      "active_provider": "Fournisseur utilisé",
+      "cloud_paused": "{} en pause : l'envoi à un service en ligne est coupé.",
+      "cloud_off_hint": "Services en ligne en pause : l'envoi est coupé.",
+      "cloud_offer": "Pour utiliser cette clé, autorisez l'envoi à un service en ligne.",
+      "cloud_offer_action": "Autoriser",
+      "provider": {
+        "anthropic": "Claude",
+        "openai": "OpenAI",
+        "gemini": "Gemini",
+        "ollama": "Local (Ollama)"
+      },
+      "api_key_label": "Clé API",
+      "save": "Enregistrer",
+      "cancel": "Annuler",
+      "key_saved": "•••• {}",
+      "replace": "Remplacer",
+      "remove": "Supprimer",
+      "key_error": "Trousseau inaccessible : la clé n'a pas pu être lue ou enregistrée.",
+      "model_label": "Modèle",
+      "test": "Tester",
+      "testing": "Test en cours…",
+      "test_ok": "Connexion réussie",
+      "test_invalid_key": "Clé invalide",
+      "test_rate_limited": "Limite atteinte",
+      "test_unreachable": "Injoignable",
+      "test_failed": "Échec du test"
     }
   },
   "ollama": {
