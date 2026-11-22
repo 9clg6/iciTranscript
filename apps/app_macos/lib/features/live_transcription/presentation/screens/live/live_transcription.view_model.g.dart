@@ -47,7 +47,7 @@ final class LiveTranscriptionViewModelProvider
 }
 
 String _$liveTranscriptionViewModelHash() =>
-    r'1803bbeb22f2d47ca153c9a648e91a9306ac67a2';
+    r'947501b1c6fdc1baf26c3934e3d9ab8834abfce4';
 
 /// ViewModel de l'ecran de transcription en direct.
 
