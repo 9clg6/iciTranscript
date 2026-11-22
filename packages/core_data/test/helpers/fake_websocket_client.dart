@@ -34,6 +34,12 @@ final class FakeWebSocketClient extends WebSocketClient {
   /// Numéro de chaque chunk audio reçu (voir [chunk]), dans l'ordre.
   final List<int> appendedChunkIds = <int>[];
 
+  /// Numéros reçus, connexion par connexion.
+  final List<List<int>> connections = <List<int>>[];
+
+  /// Messages reçus, connexion par connexion.
+  final List<List<String>> connectionMessages = <List<String>>[];
+
   final StreamController<String> _messages =
       StreamController<String>.broadcast();
 
@@ -52,6 +58,8 @@ final class FakeWebSocketClient extends WebSocketClient {
       throw const SocketException('Connection refused');
     }
     _connected = true;
+    connections.add(<int>[]);
+    connectionMessages.add(<String>[]);
   }
 
   /// La socket se ferme côté serveur (crash, redémarrage).
@@ -61,10 +69,13 @@ final class FakeWebSocketClient extends WebSocketClient {
   void send(String message) {
     if (!_connected) return;
     received.add(message);
+    connectionMessages.last.add(message);
     final Map<String, dynamic> json =
         jsonDecode(message) as Map<String, dynamic>;
     if (json['type'] == 'input_audio_buffer.append') {
-      appendedChunkIds.add(chunkIdOf(json['audio'] as String));
+      final int id = chunkIdOf(json['audio'] as String);
+      appendedChunkIds.add(id);
+      connections.last.add(id);
     }
   }
 
