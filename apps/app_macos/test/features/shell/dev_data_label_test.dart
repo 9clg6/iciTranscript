@@ -16,7 +16,7 @@ void main() {
   Finder devLabel() =>
       find.descendant(of: sidebar, matching: find.text('app.dev_data'.tr()));
 
-  Future<void> pumpApp(WidgetTester tester, {required bool devData}) async {
+  Future<void> pumpApp(WidgetTester tester, {bool? devData}) async {
     final AppFakes fakes = AppFakes(ollama: kOllamaReady);
     tester.view.physicalSize = const Size(1280, 800);
     tester.view.devicePixelRatio = 1;
@@ -26,7 +26,8 @@ void main() {
         child: const RootAppWidget(),
         overrides: <Override>[
           ...fakes.overrides,
-          isDevDataDirectoryProvider.overrideWithValue(devData),
+          if (devData != null)
+            isDevDataDirectoryProvider.overrideWithValue(devData),
         ],
         withMaterialApp: false,
       ),
@@ -46,6 +47,14 @@ void main() {
     WidgetTester tester,
   ) async {
     await pumpApp(tester, devData: false);
+
+    expect(devLabel(), findsNothing);
+  });
+
+  testWidgets('sous flutter test, sans surcharge, aucune mention de dev', (
+    WidgetTester tester,
+  ) async {
+    await pumpApp(tester);
 
     expect(devLabel(), findsNothing);
   });

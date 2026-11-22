@@ -140,6 +140,22 @@ void main() {
       expect(logs(launched, AppBuildMode.debug), devLogs);
     });
 
+    test('profile : le dossier de journaux de dev', () {
+      expect(logs(launched, AppBuildMode.profile), devLogs);
+    });
+
+    for (final AppBuildMode mode in AppBuildMode.values) {
+      test('${mode.name} : avec OATS_DATA_DIR, les journaux vont dans '
+          '\$OATS_DATA_DIR/Logs', () {
+        expect(logs(withOverride(overrideDir), mode), '$overrideDir/Logs');
+      });
+    }
+
+    test('OATS_DATA_DIR ignoré : journaux inchangés', () {
+      expect(logs(withOverride('data'), AppBuildMode.release), realLogs);
+      expect(logs(withOverride(''), AppBuildMode.debug), devLogs);
+    });
+
     test('sous flutter test, un dossier temporaire', () {
       final String dir = logs(underTest, AppBuildMode.debug);
 
@@ -178,6 +194,48 @@ void main() {
 
     test('faux en release avec un OATS_DATA_DIR ignoré', () {
       expect(dev(withOverride('data'), AppBuildMode.release), isFalse);
+    });
+
+    for (final AppBuildMode mode in AppBuildMode.values) {
+      test('${mode.name} : faux sous flutter test (aucun repère dans les '
+          'tests ordinaires)', () {
+        expect(dev(underTest, mode), isFalse);
+      });
+    }
+  });
+
+  // Le dossier des outils est partagé avec la release : un lancement de dev
+  // n'y écrase ni n'y supprime rien. Ses scripts de diarization générés
+  // vont dans SON dossier de données ; la release ne change pas.
+  group('scripts de diarization générés', () {
+    String scripts(Map<String, String> env, AppBuildMode mode) =>
+        resolveScriptsDirectory(env, buildMode: mode);
+
+    test('release : dans le dossier des outils, comme aujourd\'hui', () {
+      expect(scripts(launched, AppBuildMode.release), '$realDir/diar');
+    });
+
+    test('debug : dans le dossier de données de dev, pas dans les outils', () {
+      expect(scripts(launched, AppBuildMode.debug), '$devDir/diar');
+    });
+
+    test('profile : dans le dossier de données de dev', () {
+      expect(scripts(launched, AppBuildMode.profile), '$devDir/diar');
+    });
+
+    test('release avec OATS_DATA_DIR : dans ce dossier, pas dans les '
+        'outils', () {
+      expect(
+        scripts(withOverride(overrideDir), AppBuildMode.release),
+        '$overrideDir/diar',
+      );
+    });
+
+    test('sous flutter test, dans un dossier temporaire', () {
+      final String dir = scripts(underTest, AppBuildMode.debug);
+
+      expect(dir, startsWith(Directory.systemTemp.path));
+      expect(dir, isNot(startsWith('$fakeHome/Library')));
     });
   });
 }
