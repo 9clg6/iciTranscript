@@ -20,6 +20,27 @@ class TextOutputChannel {
     }
   }
 
+  /// Demande système d'Accessibilité (si pas encore accordée) ; rend l'état
+  /// actuel, la réponse de l'utilisateur vient plus tard.
+  Future<bool> requestAccessibility() async {
+    try {
+      return await _method.invokeMethod<bool>('requestAccessibility') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// Ouvre Réglages Système > Confidentialité et sécurité > Accessibilité.
+  Future<void> openAccessibilitySettings() async {
+    try {
+      await _method.invokeMethod<bool>('openAccessibilitySettings');
+    } on MissingPluginException {
+      // Sans plugin (tests) : rien à ouvrir.
+    }
+  }
+
   /// Remplace le presse-papiers par [text].
   Future<void> copy(String text) =>
       _method.invokeMethod<void>('copy', <String, String>{'text': text});

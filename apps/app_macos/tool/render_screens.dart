@@ -40,6 +40,10 @@ import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.sta
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
+import 'package:ici_transcript/features/settings/presentation/screens/settings/settings_dictation.view_model.dart';
+import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
+import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
+import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/presentation/app.dart';
 
 import '../test/helpers/fake_data.dart';
@@ -216,11 +220,54 @@ class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
   Future<void> recheckPermissions() async {}
 }
 
+class _DictationViewModel extends DictationSettingsViewModel {
+  _DictationViewModel(this._state);
+
+  final DictationSettingsState _state;
+
+  @override
+  DictationSettingsState build() => _state;
+}
+
+/// Section Dictée : état montré et état du raccourci.
+typedef _Dictation = ({DictationSettingsState state, ShortcutStatus status});
+
+const _Dictation _dictationOn = (
+  state: DictationSettingsState(accessibilityTrusted: true),
+  status: ShortcutStatus.registered,
+);
+
+final Map<String, _Dictation> _dictationStates = <String, _Dictation>{
+  'enabled': _dictationOn,
+  'disabled': (
+    state: const DictationSettingsState(
+      settings: DictationSettings(enabled: false),
+      accessibilityTrusted: true,
+    ),
+    status: ShortcutStatus.disabled,
+  ),
+  'shortcut-error': (
+    state: const DictationSettingsState(accessibilityTrusted: true),
+    status: ShortcutStatus.unavailable,
+  ),
+  'no-accessibility': (
+    state: const DictationSettingsState(),
+    status: ShortcutStatus.registered,
+  ),
+};
+
 List<Override> _overrides(
   List<SessionEntity> sessions, {
   OllamaSetupState ollama = const OllamaSetupState(),
   SettingsState? settings,
+  _Dictation dictation = _dictationOn,
 }) => <Override>[
+  dictationSettingsViewModelProvider.overrideWith(
+    () => _DictationViewModel(dictation.state),
+  ),
+  dictationShortcutStatusProvider.overrideWith(
+    (Ref ref) => Stream<ShortcutStatus>.value(dictation.status),
+  ),
   kernelProvider.overrideWith((Ref ref) async {}),
   // Jamais le vrai trousseau ni le réseau.
   apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
@@ -319,6 +366,7 @@ void main() {
         List<SessionEntity> sessions, {
         OllamaSetupState ollama = const OllamaSetupState(),
         SettingsState? settings,
+        _Dictation dictation = _dictationOn,
       }) async {
         tester.view.physicalSize = size.value;
         tester.view.devicePixelRatio = 1;
@@ -336,6 +384,7 @@ void main() {
                 sessions,
                 ollama: ollama,
                 settings: settings,
+                dictation: dictation,
               ),
               child: EasyLocalization(
                 supportedLocales: const <Locale>[Locale('fr')],
@@ -461,6 +510,32 @@ void main() {
           await tester.drag(title, Offset(0, -(size.value.height - 200)));
           await _pump(tester, 10);
           await _shot(tester, key, 'settings-ai-${ai.key}-blocks-$suffix');
+        });
+      }
+
+      // Section Dictée : activée, coupée, raccourci pris, sans Accessibilité.
+      for (final MapEntry<String, _Dictation> dictation
+          in _dictationStates.entries) {
+        shoot('settings-dictation-${dictation.key}', (
+          WidgetTester tester,
+        ) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            dictation: dictation.value,
+          );
+          await tester.tap(find.text('Réglages'));
+          await _pump(tester, 10);
+          final Finder title = find.text('Dictée');
+          await tester.ensureVisible(title);
+          await _pump(tester, 5);
+          await tester.drag(title, Offset(0, 40 - tester.getTopLeft(title).dy));
+          await _pump(tester, 10);
+          await _shot(
+            tester,
+            key,
+            'settings-dictation-${dictation.key}-$suffix',
+          );
         });
       }
 

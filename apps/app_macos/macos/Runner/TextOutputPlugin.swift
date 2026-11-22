@@ -7,6 +7,10 @@ import FlutterMacOS
 ///
 /// Channel `com.icitranscript/text_output`:
 /// - `isAccessibilityTrusted` -> Bool, never shows the system prompt.
+/// - `requestAccessibility` -> Bool: same check, but asks macOS to show its
+///   prompt when not trusted (asynchronous; the value is the current state).
+/// - `openAccessibilitySettings` -> Bool: opens System Settings, Privacy &
+///   Security > Accessibility.
 /// - `copy` {text} -> nil: replaces the general pasteboard with the text.
 /// - `saveClipboard` -> nil: in-memory copy of every item and every type of
 ///   the general pasteboard (images, files, rich text...).
@@ -18,6 +22,11 @@ import FlutterMacOS
 ///
 /// Apple documentation used:
 /// - https://developer.apple.com/documentation/applicationservices/1460720-axisprocesstrusted
+/// - https://developer.apple.com/documentation/applicationservices/1459186-axisprocesstrustedwithoptions
+///   (kAXTrustedCheckOptionPrompt: true shows the prompt, asynchronously)
+/// - https://developer.apple.com/documentation/appkit/nsworkspace/open(_:)
+///   The `x-apple.systempreferences:` pane URL is not documented by Apple;
+///   it is the one AudioCapturePlugin already uses for the other panes.
 /// - https://developer.apple.com/documentation/coregraphics/cgevent/init(keyboardeventsource:virtualkey:keydown:)
 /// - https://developer.apple.com/documentation/coregraphics/cgevent/post(tap:)
 /// - https://developer.apple.com/documentation/appkit/nspasteboarditem
@@ -41,6 +50,12 @@ class TextOutputPlugin: NSObject, FlutterPlugin {
         switch call.method {
         case "isAccessibilityTrusted":
             result(AXIsProcessTrusted())
+        case "requestAccessibility":
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            result(AXIsProcessTrustedWithOptions(options))
+        case "openAccessibilitySettings":
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            result(NSWorkspace.shared.open(url))
         case "copy":
             guard let text = (call.arguments as? [String: Any])?["text"] as? String else {
                 result(FlutterError(code: "BAD_ARGS", message: "Missing text", details: nil))
