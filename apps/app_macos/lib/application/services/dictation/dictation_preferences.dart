@@ -1,7 +1,4 @@
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:ici_transcript/core/platform/app_data_directory.dart';
+import 'package:ici_transcript/core/platform/prefs_store.dart';
 
 /// Où va le texte dicté.
 enum DictationOutputMode { paste, clipboard }
@@ -11,10 +8,11 @@ enum DictationOutputMode { paste, clipboard }
 class DictationShortcut {
   const DictationShortcut({required this.keyCode, required this.modifiers});
 
-  /// ⌥Espace.
-  static const DictationShortcut optionSpace = DictationShortcut(
+  /// ⌃⌥Espace (⌥Espace seul tape une espace insécable sur clavier
+  /// français).
+  static const DictationShortcut controlOptionSpace = DictationShortcut(
     keyCode: 49,
-    modifiers: 2048,
+    modifiers: 4096 | 2048,
   );
 
   final int keyCode;
@@ -25,7 +23,7 @@ class DictationShortcut {
 class DictationSettings {
   const DictationSettings({
     this.enabled = true,
-    this.shortcut = DictationShortcut.optionSpace,
+    this.shortcut = DictationShortcut.controlOptionSpace,
     this.outputMode = DictationOutputMode.paste,
   });
 
@@ -34,55 +32,42 @@ class DictationSettings {
   final DictationOutputMode outputMode;
 }
 
-/// Lit et écrit les réglages de la dictée dans prefs.json, à côté des
-/// autres réglages (les clés inconnues sont gardées).
+/// Lit et écrit les réglages de la dictée dans prefs.json, via le
+/// [PrefsStore] partagé (les autres clés sont gardées).
 class DictationPreferences {
+  /// Crée les préférences sur [store] (défaut : prefs.json de l'app).
+  DictationPreferences([PrefsStore? store]) : _store = store ?? PrefsStore();
+
   static const String _enabled = 'dictation_enabled';
   static const String _keyCode = 'dictation_key_code';
   static const String _modifiers = 'dictation_modifiers';
   static const String _outputMode = 'dictation_output_mode';
 
-  File get _file => File('${appDataDirectory()}/prefs.json');
+  final PrefsStore _store;
 
   /// Réglages enregistrés ; défauts pour tout champ absent ou illisible.
   Future<DictationSettings> load() async {
-    final Map<String, dynamic> json = await _read();
+    final Map<String, Object?> json = await _store.read();
     const DictationSettings d = DictationSettings();
-    final Object? keyCode = json[_keyCode];
-    final Object? modifiers = json[_modifiers];
+    final int? keyCode = prefValue<int>(json, _keyCode);
+    final int? modifiers = prefValue<int>(json, _modifiers);
     return DictationSettings(
-      enabled: json[_enabled] is bool ? json[_enabled] as bool : d.enabled,
-      shortcut: keyCode is int && modifiers is int
+      enabled: prefValue<bool>(json, _enabled) ?? d.enabled,
+      shortcut: keyCode != null && modifiers != null
           ? DictationShortcut(keyCode: keyCode, modifiers: modifiers)
           : d.shortcut,
-      outputMode: DictationOutputMode.values.asNameMap()[json[_outputMode]] ??
+      outputMode:
+          DictationOutputMode.values.asNameMap()[json[_outputMode]] ??
           d.outputMode,
     );
   }
 
   /// Enregistre [settings] sans toucher aux autres clés de prefs.json.
-  Future<void> save(DictationSettings settings) async {
-    final Map<String, dynamic> json = await _read()
-      ..addAll(<String, Object>{
+  Future<void> save(DictationSettings settings) =>
+      _store.update(<String, Object?>{
         _enabled: settings.enabled,
         _keyCode: settings.shortcut.keyCode,
         _modifiers: settings.shortcut.modifiers,
         _outputMode: settings.outputMode.name,
       });
-    final File f = _file;
-    await f.parent.create(recursive: true);
-    // Écriture atomique : un fichier à moitié écrit perdrait tous les réglages.
-    final File tmp = File('${f.path}.tmp');
-    await tmp.writeAsString(jsonEncode(json), flush: true);
-    await tmp.rename(f.path);
-  }
-
-  Future<Map<String, dynamic>> _read() async {
-    try {
-      final Object? json = jsonDecode(await _file.readAsString());
-      return json is Map<String, dynamic> ? json : <String, dynamic>{};
-    } on Object {
-      return <String, dynamic>{};
-    }
-  }
 }
