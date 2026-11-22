@@ -608,6 +608,61 @@ def score_one(sched, ev, name, lo, hi, end_s):
     return res
 
 
+def grams(ws, n):
+    from collections import Counter
+    return Counter(tuple(ws[i:i + n]) for i in range(len(ws) - n + 1))
+
+
+def cmd_svcscore(a):
+    """Scores a service_probe run from its final segment dump (one session)."""
+    ev = [json.loads(l) for l in open(a.run)]
+    sched = json.loads((AUDIO / a.audio / "schedule.json").read_text())
+    segs = [e for e in ev if e["ev"] == "segments"][-1]["list"]
+    sess = a.session or next(e["session"] for e in ev if e["ev"] == "meeting_started")
+    feed = next(e for e in ev if e["ev"] == "feed_start")
+    end_s = int(feed["seconds"])
+    seen = {}  # first wall time each final (non-partial, non-marker) id appeared
+    for e in ev:
+        if e["ev"] == "segment" and e["session"] == sess and not e.get("partial") and e["id"] not in seen \
+                and not e["text"].startswith("Transcription interrompue"):
+            seen[e["id"]] = (e["t"], e["ts"])
+    out = {"run": Path(a.run).stem, "windows": []}
+    for src in ("mic", "sys"):
+        ref = [s for s in sched[src] if s["end"] <= end_s]
+        mine = sorted((g for g in segs if g["session"] == sess and g["src"] == src), key=lambda g: g["t"])
+        markers = [g for g in mine if g["text"].startswith("Transcription interrompue")]
+        live = [g for g in mine if g not in markers]
+        hyp_all = words(" ".join(g["text"] for g in live))
+        hg = grams(hyp_all, 3)
+        missing = [s["i"] for s in ref if (lambda g: sum(min(c, hg[k]) for k, c in g.items()) / max(1, sum(g.values())))(grams(words(s["text"]), 3)) < 0.5]
+        rg4, hg4 = grams(words(" ".join(s["text"] for s in ref)), 4), grams(hyp_all, 4)
+        dup4 = sum(max(0, c - rg4[k]) for k, c in hg4.items() if rg4[k] > 0)
+        delays = []
+        for g in live:
+            if g["id"] in seen and "_backfill_" not in g["id"]:
+                t_wall, ts = seen[g["id"]]
+                s = min(ref, key=lambda s: abs(s["start"] - ts), default=None)
+                if s:
+                    delays.append(round(t_wall - feed["t"] - s["end"], 1))
+        out[src] = {"sentences": len(ref), "wer": wer(" ".join(s["text"] for s in ref), " ".join(hyp_all)),
+                    "missing": missing, "dup_4grams": dup4, "markers_left": [m["text"] for m in markers],
+                    "partial_left": sum(1 for g in live if g.get("partial")),
+                    "backfill_segments": sum(1 for g in live if "_backfill_" in g["id"]),
+                    "max_delay_s": max(delays, default=None)}
+        if a.window:
+            for w0 in range(0, end_s, a.window):
+                r = [s for s in ref if w0 <= s["start"] < w0 + a.window]
+                h = [g for g in live if w0 <= g["t"] < w0 + a.window]
+                hw = words(" ".join(g["text"] for g in h))
+                d = [x for g, x in zip([g for g in live if g["id"] in seen and "_backfill_" not in g["id"]], delays)
+                     if w0 <= g["t"] < w0 + a.window]
+                out["windows"].append({"src": src, "min": f"{w0 // 60}-{(w0 + a.window) // 60}",
+                                       "wer": wer(" ".join(s["text"] for s in r), " ".join(hw)),
+                                       "missing": [i for i in missing if any(s["i"] == i for s in r)],
+                                       "max_delay_s": max(d, default=None)})
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--url", default="ws://127.0.0.1:8017/v1/realtime")
@@ -628,8 +683,13 @@ def main():
     sc.add_argument("--out")
     sc.add_argument("--audio", default="live")
     sc.add_argument("--window", type=int, default=0)
+    ss = sub.add_parser("svcscore")
+    ss.add_argument("run")
+    ss.add_argument("--audio", default="live")
+    ss.add_argument("--session")
+    ss.add_argument("--window", type=int, default=0)
     a = p.parse_args()
-    if a.cmd in ("gen", "timeline", "score"):
+    if a.cmd in ("gen", "timeline", "score", "svcscore"):
         return globals()[f"cmd_{a.cmd}"](a)
     asyncio.run(globals()[a.cmd](a))
 

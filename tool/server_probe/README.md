@@ -60,6 +60,11 @@ Scoring: `probe.py score <run.jsonl>... [--audio live60 --window 300]`. It repor
   - Runs the real `GapBackfillService` and `WebSocketPcmTranscriber` on the run's gaps.
   - `MODE=retry`: drives `GapBackfillRetry` with the server absent, then starts the server itself (`SERVER_CMD`, `PROBE_DIR`) and snapshots `.backfill_pending.json`.
 - `service_probe.dart`:
-  - Env: `MODE=b2b|yield|kill|relaunch|lang`, `AUDIO=$PROBE_DIR/audio`, `STATE=<dir>`, `OUT=<jsonl>`.
+  - Env: `MODE=D|long20|b2b|yield|kill|relaunch|lang|langcheck`, `AUDIO=$PROBE_DIR/audio`, `STATE=<dir>`, `OUT=<jsonl>`.
   - Drives the real `LiveTranscriptionService`, with the repo's fakes for capture and the process manager only. Sessions and segments persist to `STATE/state.json`.
+  - `D`: 150 s refusal, then the stop drain and backfill. `long20`: 20 min of `live60` with a 3 s cut and a 45 s refusal.
+  - `b2b`: meeting B starts 2 s after stopping A during a catch-up. `yield`: B starts while A's backfill is in flight.
   - `kill` kills its own process during an outage; `relaunch` then replays the launch path (repair, WAV repair, enqueue, `retryPending`).
+  - `lang`: replays the two long-run wrong-language utterances 5 times each.
+  - `langcheck` (`FILES=a.jsonl,b.jsonl`): counts language-check flags on the reference sentences and on real `done` texts.
+  - Score a run: `probe.py svcscore <run.jsonl> [--audio live60 --window 300]`. It reports WER, missing sentences, duplicated 4-grams, markers and partials left, and delay.
