@@ -1,0 +1,306 @@
+{
+  "_note": "Synthetic meetings and documents for tool/live_answers_probe.dart. kind: a = answer in an excerpt (expected_doc), b = answer only in the meeting, c = answer nowhere (near-miss excerpts), d = not a real question to the user. Lines are 13 s apart; the question is the last line, said by the other participant.",
+  "meetings": [
+    {
+      "id": "fr1",
+      "lang": "fr",
+      "lines": [
+        ["user", "Bonjour à tous, merci d'être là. L'idée aujourd'hui, c'est de faire le point sur le remplacement de l'outil de réservation des salles de réunion."],
+        ["other", "Bonjour. Oui, de mon côté j'ai repris les retours des équipes. Le principal reproche à l'outil actuel, c'est qu'il ne sait pas exporter les réservations vers les agendas."],
+        ["user", "C'est aussi ce qu'on entend à l'accueil. Les gens réservent deux fois parce qu'ils ne voient pas la salle dans leur agenda, et ensuite il faut arbitrer."],
+        ["other", "Pour le nouvel outil, le prestataire nous a fait une démonstration la semaine dernière. L'export vers les agendas fonctionne, mais seulement dans un sens."],
+        ["user", "Dans un sens, ça veut dire qu'une réservation créée dans l'agenda ne remonte pas dans l'outil, c'est bien ça ?"],
+        ["other", "Exactement. Ils disent que la synchronisation dans les deux sens arrive dans une prochaine version, sans date précise pour l'instant."],
+        ["user", "D'accord. Pour le pilote, on part sur quarante personnes, réparties entre le deuxième et le troisième étage. J'ai la liste, je la partage après la réunion."],
+        ["other", "Quarante, c'est bien. Il faudrait des gens qui réservent souvent, sinon on n'aura pas assez de retours en trois semaines."],
+        ["user", "Oui, j'ai pris en priorité les assistantes d'équipe et les responsables de projet. Le lancement du pilote est prévu le quatorze mars."],
+        ["other", "Et la formation ? On avait parlé de sessions courtes, peut-être une demi-heure, plutôt qu'un long tutoriel que personne ne lit."],
+        ["user", "Trois sessions d'une demi-heure, en visio, la semaine avant le lancement. Le prestataire fournit aussi une fiche d'une page."],
+        ["other", "Très bien. Il restera la recette avec le prestataire, on en a parlé mais on n'a rien calé. Et il faut regarder le contrat d'hébergement de l'ancien outil."],
+        ["user", "Oui, je n'ai pas le contrat en tête, il est dans nos documents. Pour le budget, la direction veut un chiffre par utilisateur avant de généraliser."]
+      ]
+    },
+    {
+      "id": "fr2",
+      "lang": "fr",
+      "lines": [
+        ["user", "Bon, on attaque l'organisation du séminaire d'équipe. Je propose qu'on fasse le tour : lieu, dates, participants, puis le programme."],
+        ["other", "Pour le lieu, on a gardé le gîte dont je vous ai parlé, à environ deux heures de route. Il y a une grande salle et un jardin."],
+        ["user", "Parfait. Les dates sont confirmées, ce sera le jeudi douze et le vendredi treize juin, avec une arrivée le jeudi vers dix heures."],
+        ["other", "Côté inscriptions, j'ai relancé tout le monde lundi. Pour l'instant on a trente-cinq participants confirmés, et quelques réponses en attente."],
+        ["user", "Trente-cinq, c'est déjà bien. Le gîte peut accueillir jusqu'à quarante-cinq personnes, donc on a de la marge."],
+        ["other", "Pour le transport, tu t'en occupes toujours ? On avait évoqué un car au départ du bureau plutôt que du covoiturage."],
+        ["user", "Oui, je m'en occupe. J'attends deux devis pour le car, je les aurai normalement la semaine prochaine."],
+        ["other", "Pour les repas, le dîner du vendredi est le moment fort. On en a parlé plusieurs fois, mais on n'a encore choisi personne pour le traiteur."],
+        ["user", "C'est vrai, il faudra trancher. Le gîte nous a envoyé un devis pour l'hébergement et la salle, je l'ai rangé dans le dossier partagé."],
+        ["other", "Pour le programme, je verrais un atelier le jeudi après-midi sur nos façons de travailler, et une matinée plus libre le vendredi."],
+        ["user", "Ça me va. On pourrait aussi prévoir une activité dehors le jeudi soir, si le temps le permet, une balade ou un jeu."],
+        ["other", "Bonne idée. Je prépare une première version du programme pour la semaine prochaine et je vous l'envoie."],
+        ["user", "Super. Il nous reste à signer le devis du gîte avant la fin du mois, sinon ils ne garantissent pas la réservation."]
+      ]
+    },
+    {
+      "id": "fr3",
+      "lang": "fr",
+      "lines": [
+        ["user", "Bonjour. On commence la revue du sprint de l'application mobile interne. Je vous propose le bilan, les problèmes, puis la suite."],
+        ["other", "Allons-y. Sur ce sprint, l'équipe a fermé dix-huit tickets, et trois ont été reportés au sprint suivant faute de temps."],
+        ["user", "Dix-huit, c'est mieux que le sprint précédent. Les trois reportés, ce sont surtout des écrans de réglages, rien de bloquant."],
+        ["other", "Le gros sujet, c'est le bug de synchronisation hors ligne. Quand on modifie une fiche sans réseau, la modification peut être perdue au retour du réseau."],
+        ["user", "On a trouvé la cause hier : deux enregistrements arrivent dans le désordre. Le correctif est prêt, il est en relecture."],
+        ["other", "Très bien. La version deux point quatre est en test interne depuis lundi, auprès d'une vingtaine de collègues volontaires."],
+        ["user", "Oui, et elle n'est pas encore en production. On attend le correctif de synchronisation avant de la publier."],
+        ["other", "Pour la démo du sprint, on garde jeudi à dix heures ? Il faudrait montrer le nouveau formulaire et le mode sombre."],
+        ["user", "Jeudi dix heures, c'est bon pour moi. Je préparerai aussi deux diapositives sur les chiffres d'usage."],
+        ["other", "Autre point : la sécurité nous a rappelé la politique sur les pièces jointes, il y a une taille maximale à respecter dans l'application."],
+        ["user", "D'accord, je ne connais pas la valeur exacte, mais la politique est dans nos documents, on pourra vérifier."],
+        ["other", "Côté qualité, on suit aussi le taux de crash, mais je n'ai pas les chiffres sous les yeux aujourd'hui."],
+        ["user", "Pas de souci, on les regardera au prochain point. Pour le sprint suivant, la priorité reste la stabilité."]
+      ]
+    },
+    {
+      "id": "en1",
+      "lang": "en",
+      "lines": [
+        ["user", "Hi everyone, thanks for joining. Today we go through the office move: the date, the space, and what still needs to be decided."],
+        ["other", "Sounds good. The move is now planned for the eighth of September, so we have roughly ten weeks to get everything ready."],
+        ["user", "Right. The new space is the whole fourth floor, with a hundred and twenty desks, which is a bit more than we have today."],
+        ["other", "And IT wants to do the network cabling over a weekend, so that nobody loses a working day during the move."],
+        ["user", "Yes, they suggested the weekend just before the move. I said that was fine as long as they test the meeting rooms on Monday morning."],
+        ["other", "Good. On parking, the building manager came back to us last week. We get twenty-five spaces in the underground car park."],
+        ["user", "Twenty-five is less than we hoped, so we will need a simple rule for who gets a space, probably based on commute."],
+        ["other", "Agreed. Then furniture. We have asked several suppliers for desks and chairs, but nothing is decided and there is no figure yet."],
+        ["user", "I would rather keep the furniture discussion for next week, once the quotes are in. Let's not guess numbers today."],
+        ["other", "Fine. One more thing: we still need to give notice on the current lease, and I am not sure how far ahead we have to do it."],
+        ["user", "The lease summary is in our documents. I also put the floor plan notes there, with the room list for the new floor."],
+        ["other", "Perfect. I will also check whether the kitchen on the fourth floor needs new equipment, the current one looks quite old."],
+        ["user", "Thanks. Let's also plan a short visit of the new floor for the team in July, so people can see where they will sit."]
+      ]
+    },
+    {
+      "id": "en2",
+      "lang": "en",
+      "lines": [
+        ["user", "Okay, let's start the review of our customer support tooling. I'd like to cover the numbers, the staffing, and the chatbot pilot."],
+        ["other", "Sure. Last month our average first response time was four hours, which is well above the two-hour target we set in spring."],
+        ["user", "Four hours, yes. Most of the delay comes from Monday mornings, when the weekend backlog lands on a small team."],
+        ["other", "That's where the new hires should help. Three new support agents start in January, after two weeks of onboarding."],
+        ["user", "Good. I would put at least one of them on the Monday morning shift from the start, to absorb the backlog."],
+        ["other", "Makes sense. About weekends: customers keep asking what we cover on Saturday and Sunday, and the answer is in the support policy."],
+        ["user", "Right, the policy is in our documents. I don't remember the exact wording, so let's check it before we reply to anyone."],
+        ["other", "Then the chatbot pilot. It handles billing questions only, for about ten percent of incoming chats, since the start of the month."],
+        ["user", "And the first feedback is mixed. It answers simple invoice questions well, but it hands over too late on anything unusual."],
+        ["other", "The vendor says they can tune the hand-over. On pricing, they have not given us anything concrete yet."],
+        ["user", "Okay. Let me put the weekly numbers on the shared dashboard so everyone can follow the pilot."],
+        ["other", "Great. I'll also collect the ten worst chatbot conversations of the week so we can review them together on Friday."],
+        ["user", "Perfect. And let's agree to decide on extending the pilot only after we see a full month of data."]
+      ]
+    },
+    {
+      "id": "en3",
+      "lang": "en",
+      "lines": [
+        ["user", "Morning. This is the quarterly planning for the data platform. I want to agree on the priorities and who works on what."],
+        ["other", "Sure. From my side, I see three priorities: the warehouse migration, cleaning up old pipelines, and better data quality checks."],
+        ["user", "Agreed, and the migration comes first. The goal is to move everything to the new warehouse by the end of the second quarter."],
+        ["other", "Who is on it? Last time we talked about one person, but that sounded too thin for the size of the job."],
+        ["user", "We now have two engineers assigned to the warehouse migration full time, and the analytics team will help with testing."],
+        ["other", "Two is much better. And the old reporting dashboard, are we still planning to retire it?"],
+        ["user", "Yes, it will be deprecated in April, after the main reports have been rebuilt on the new warehouse."],
+        ["other", "For the pipelines cleanup, I counted around forty jobs that nobody seems to own. We should list them and switch off what nobody needs."],
+        ["user", "Good idea. Let's send the list to all teams and give them two weeks to claim the jobs they still use."],
+        ["other", "Then cost. Finance wants to know what the new warehouse will cost per terabyte, and I don't have that number."],
+        ["user", "Neither do I. The contract has a rate card, but I only have the pricing summary, not the actual table."],
+        ["other", "Okay. And the legal team asked us again how long we keep raw event data. It's in the retention policy, I believe."],
+        ["user", "Yes, the policy is in our documents. Let's close with the quality checks, I'd like a first version by the end of the month."]
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "fr1-a1", "meeting": "fr1", "kind": "a",
+      "question": "Est-ce que tu sais quel est le préavis de résiliation du contrat d'hébergement de l'ancien outil ?",
+      "expected_doc": "doc-fr1-contrat", "expected": ["90 jours", "quatre-vingt-dix jours", "trois mois"],
+      "excerpts": [
+        {"id": "doc-fr1-cadrage", "title": "Note de cadrage", "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."},
+        {"id": "doc-fr1-contrat", "title": "Contrat d'hébergement", "text": "Le contrat est conclu pour une durée d'un an, renouvelable tacitement. Chaque partie peut le résilier par lettre recommandée avec un préavis de 90 jours avant l'échéance."}
+      ]
+    },
+    {
+      "id": "fr1-a2", "meeting": "fr1", "kind": "a",
+      "question": "Et la nouvelle offre, elle coûte combien par utilisateur ?",
+      "expected_doc": "doc-fr1-tarifs", "expected": ["4,20", "4.20"],
+      "excerpts": [
+        {"id": "doc-fr1-tarifs", "title": "Grille tarifaire du prestataire", "text": "Offre standard : 4,20 € par utilisateur et par mois, facturés à l'année. La formation initiale et la fiche de prise en main sont incluses."},
+        {"id": "doc-fr1-cadrage", "title": "Note de cadrage", "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."}
+      ]
+    },
+    {
+      "id": "fr1-b", "meeting": "fr1", "kind": "b",
+      "question": "Tu me rappelles combien de personnes participent au pilote ?",
+      "expected": ["40", "quarante"],
+      "excerpts": [
+        {"id": "doc-fr1-cadrage", "title": "Note de cadrage", "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."}
+      ]
+    },
+    {
+      "id": "fr1-c", "meeting": "fr1", "kind": "c",
+      "question": "Quelle est la date prévue pour la recette avec le prestataire ?",
+      "excerpts": [
+        {"id": "doc-fr1-planning", "title": "Planning du projet", "text": "La recette aura lieu après la phase pilote, à une date à confirmer avec le prestataire. La généralisation suivra la recette."},
+        {"id": "doc-fr1-cadrage", "title": "Note de cadrage", "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."}
+      ]
+    },
+    {
+      "id": "fr2-a", "meeting": "fr2", "kind": "a",
+      "question": "Le gîte demande combien d'acompte à la signature du devis ?",
+      "expected_doc": "doc-fr2-devis", "expected": ["1 650", "1650", "30 %", "30%"],
+      "excerpts": [
+        {"id": "doc-fr2-devis", "title": "Devis du gîte", "text": "Hébergement de 45 personnes maximum et location de la grande salle pour deux jours : 5 500 €. Un acompte de 30 %, soit 1 650 €, est demandé à la signature."},
+        {"id": "doc-fr2-programme", "title": "Programme provisoire", "text": "Jeudi : arrivée à 10 h, atelier l'après-midi. Vendredi : matinée libre, dîner de clôture."}
+      ]
+    },
+    {
+      "id": "fr2-b", "meeting": "fr2", "kind": "b",
+      "question": "On a combien de participants confirmés pour l'instant ?",
+      "expected": ["35", "trente-cinq"],
+      "excerpts": []
+    },
+    {
+      "id": "fr2-c", "meeting": "fr2", "kind": "c",
+      "question": "Quel traiteur on a retenu pour le dîner du vendredi ?",
+      "excerpts": [
+        {"id": "doc-fr2-restauration", "title": "Informations du gîte", "text": "Restauration : le gîte tient à disposition une liste de traiteurs partenaires. Le choix du traiteur doit être communiqué au plus tard un mois avant l'arrivée."}
+      ]
+    },
+    {
+      "id": "fr2-d", "meeting": "fr2", "kind": "d",
+      "question": "Franchement, qui aurait cru qu'on arriverait un jour à caler une date avec tout le monde ?",
+      "excerpts": []
+    },
+    {
+      "id": "fr3-a", "meeting": "fr3", "kind": "a",
+      "question": "Tu sais quelle est la taille maximale autorisée pour les pièces jointes ?",
+      "expected_doc": "doc-fr3-securite", "expected": ["15 Mo", "15 mo", "quinze"],
+      "excerpts": [
+        {"id": "doc-fr3-charte", "title": "Charte de développement", "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."},
+        {"id": "doc-fr3-release", "title": "Notes de version 2.4", "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."},
+        {"id": "doc-fr3-securite", "title": "Politique de sécurité mobile", "text": "Les pièces jointes envoyées depuis l'application sont limitées à 15 Mo par fichier. Les fichiers exécutables sont refusés."}
+      ]
+    },
+    {
+      "id": "fr3-b", "meeting": "fr3", "kind": "b",
+      "question": "Combien de tickets l'équipe a fermés sur ce sprint ?",
+      "expected": ["18", "dix-huit"],
+      "excerpts": [
+        {"id": "doc-fr3-charte", "title": "Charte de développement", "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."}
+      ]
+    },
+    {
+      "id": "fr3-c", "meeting": "fr3", "kind": "c",
+      "question": "Quel est le taux de crash de la version 2.4 en production ?",
+      "excerpts": [
+        {"id": "doc-fr3-qualite", "title": "Suivi qualité", "text": "Le taux de crash est mesuré chaque semaine sur la version en production et présenté au point qualité mensuel."},
+        {"id": "doc-fr3-release", "title": "Notes de version 2.4", "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."}
+      ]
+    },
+    {
+      "id": "fr3-d", "meeting": "fr3", "kind": "d",
+      "question": "Comment on a corrigé le bug de synchro je vous le montre juste après sur l'écran partagé",
+      "excerpts": []
+    },
+    {
+      "id": "en1-a1", "meeting": "en1", "kind": "a",
+      "question": "Do you know how much notice we have to give on the current lease?",
+      "expected_doc": "doc-en1-lease", "expected": ["six months", "6 months"],
+      "excerpts": [
+        {"id": "doc-en1-floor", "title": "Floor plan notes", "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."},
+        {"id": "doc-en1-lease", "title": "Lease summary", "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."}
+      ]
+    },
+    {
+      "id": "en1-a2", "meeting": "en1", "kind": "a",
+      "question": "How many meeting rooms does the new floor have?",
+      "expected_doc": "doc-en1-floor", "expected": ["nine", "9"],
+      "excerpts": [
+        {"id": "doc-en1-floor", "title": "Floor plan notes", "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."},
+        {"id": "doc-en1-lease", "title": "Lease summary", "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."}
+      ]
+    },
+    {
+      "id": "en1-b", "meeting": "en1", "kind": "b",
+      "question": "Remind me, how many parking spaces did we get in the new building?",
+      "expected": ["25", "twenty-five", "twenty five"],
+      "excerpts": [
+        {"id": "doc-en1-floor", "title": "Floor plan notes", "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."}
+      ]
+    },
+    {
+      "id": "en1-c", "meeting": "en1", "kind": "c",
+      "question": "What's the total budget approved for the new furniture?",
+      "excerpts": [
+        {"id": "doc-en1-furniture", "title": "Furniture plan", "text": "Quotes for desks and chairs are expected from three suppliers by the end of the month. The furniture budget will then be approved by the steering group."},
+        {"id": "doc-en1-floor", "title": "Floor plan notes", "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."}
+      ]
+    },
+    {
+      "id": "en2-a", "meeting": "en2", "kind": "a",
+      "question": "What does our support policy say about weekend coverage?",
+      "expected_doc": "doc-en2-policy", "expected": ["priority-one", "priority one", "P1", "8 hours", "eight hours"],
+      "excerpts": [
+        {"id": "doc-en2-policy", "title": "Support policy", "text": "Weekend coverage is limited to priority-one incidents. These receive a first response within 8 hours on Saturdays and Sundays."},
+        {"id": "doc-en2-onboarding", "title": "Onboarding plan", "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."}
+      ]
+    },
+    {
+      "id": "en2-b", "meeting": "en2", "kind": "b",
+      "question": "What was our average first response time last month?",
+      "expected": ["four hours", "4 hours"],
+      "excerpts": [
+        {"id": "doc-en2-onboarding", "title": "Onboarding plan", "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."}
+      ]
+    },
+    {
+      "id": "en2-c", "meeting": "en2", "kind": "c",
+      "question": "How much does the chatbot vendor charge per conversation?",
+      "excerpts": [
+        {"id": "doc-en2-pilot", "title": "Chatbot pilot brief", "text": "The pilot covers billing questions only. Pricing is usage-based; the vendor will share its price list at the end of the pilot."}
+      ]
+    },
+    {
+      "id": "en2-d", "meeting": "en2", "kind": "d",
+      "question": "Can everyone see the shared dashboard on their side now?",
+      "excerpts": []
+    },
+    {
+      "id": "en3-a", "meeting": "en3", "kind": "a",
+      "question": "How long do we keep raw event data according to the policy?",
+      "expected_doc": "doc-en3-retention", "expected": ["13 months", "thirteen months"],
+      "excerpts": [
+        {"id": "doc-en3-roadmap", "title": "Platform roadmap", "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."},
+        {"id": "doc-en3-pricing", "title": "Warehouse pricing summary", "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."},
+        {"id": "doc-en3-retention", "title": "Data retention policy", "text": "Raw event data is kept for 13 months and then deleted. Aggregated data is kept for five years."}
+      ]
+    },
+    {
+      "id": "en3-b", "meeting": "en3", "kind": "b",
+      "question": "How many engineers are assigned to the warehouse migration?",
+      "expected": ["two", "2"],
+      "excerpts": [
+        {"id": "doc-en3-roadmap", "title": "Platform roadmap", "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."}
+      ]
+    },
+    {
+      "id": "en3-c", "meeting": "en3", "kind": "c",
+      "question": "What will the new warehouse cost us per terabyte?",
+      "excerpts": [
+        {"id": "doc-en3-pricing", "title": "Warehouse pricing summary", "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."}
+      ]
+    },
+    {
+      "id": "en3-d", "meeting": "en3", "kind": "d",
+      "question": "What I want us to remember from this quarter is that the migration comes first",
+      "excerpts": []
+    }
+  ]
+}

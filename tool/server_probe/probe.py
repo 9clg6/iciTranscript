@@ -466,6 +466,23 @@ async def q7(a):
     print(mem)
 
 
+async def asr(a):
+    """Speaks each {lang, text} of --texts with `say`, transcribes it on one socket, writes [{lang, ref, asr}]."""
+    AUDIO.mkdir(parents=True, exist_ok=True)
+    items = json.loads(Path(a.texts).read_text())
+    r = Run("asr", a.url)
+    s = await r.sock("q")
+    for i, it in enumerate(items):
+        name = f"spoken{i}"
+        gen_one(name, FR[i % 2] if it["lang"] == "fr" else EN[i % 2], it["text"])
+        await s.utter(name, silence(500) + load(name), it["text"])
+        await s.wait_all(60)
+    await s.close()
+    r.finish()
+    Path(a.out).write_text(json.dumps([{"lang": it["lang"], "ref": it["text"], "asr": (u["text"] or "").strip()}
+                                       for it, u in zip(items, s.utts)], ensure_ascii=False, indent=1))
+
+
 # ---------- live client harness: corpus + scoring ----------
 
 FR_S = ["Le jardinier", "La boulangère", "Le facteur", "La voisine", "Le maire", "La musicienne", "Le libraire", "La gardienne"]
@@ -620,6 +637,9 @@ def main():
     q7p = sub.add_parser("q7")
     q7p.add_argument("--minutes", type=float, default=15)
     q7p.add_argument("--server-pid", type=int, required=True)
+    ap = sub.add_parser("asr")
+    ap.add_argument("--texts", required=True)
+    ap.add_argument("--out", required=True)
     tl = sub.add_parser("timeline")
     tl.add_argument("--seconds", type=int, default=300)
     tl.add_argument("--name", default="live")

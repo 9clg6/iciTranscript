@@ -24,6 +24,7 @@ until curl -sf http://127.0.0.1:8017/health; do sleep 0.3; done
 ## Audio (`probe.py`, run with `uv run --with websockets python tool/server_probe/probe.py …`)
 
 - `gen`: clips for the protocol questions.
+- `asr --texts <json [{lang, text}]> --out <json>`: speaks each text with `say`, transcribes it on one socket, writes `[{lang, ref, asr}]` (for the question gate).
 - `timeline [--seconds 300] [--name live]`: two 16 kHz mono PCM16 timelines (`mic.wav`, `sys.wav`) of unique sentences, plus `schedule.json`. Use `--seconds 3600 --name live60` for the long run.
 
 ## 1. Protocol questions (raw WebSocket)
@@ -63,3 +64,23 @@ Scoring: `probe.py score <run.jsonl>... [--audio live60 --window 300]`. It repor
   - Env: `MODE=b2b|yield|kill|relaunch|lang`, `AUDIO=$PROBE_DIR/audio`, `STATE=<dir>`, `OUT=<jsonl>`.
   - Drives the real `LiveTranscriptionService`, with the repo's fakes for capture and the process manager only. Sessions and segments persist to `STATE/state.json`.
   - `kill` kills its own process during an outage; `relaunch` then replays the launch path (repair, WAV repair, enqueue, `retryPending`).
+
+## 4. Live answers against a real local model (`apps/app_macos/tool/live_answers_probe.dart`)
+
+Drives the real `detectQuestions`, `buildLiveAnswerRequest`, `OllamaLlmProvider` and `parseAnswer`. Cases: `tool/live_answers_probe_cases.json` (6 synthetic meetings, 24 questions: a = answer in an excerpt, b = only in the meeting, c = nowhere, d = not a question to the user). Spoken questions for the gate: `tool/live_answers_probe_spoken.json`.
+
+Safety: run your own daemon on its own port, on an APFS clone of a model store (`cp -cR`), never `pull`/`create`/`rm`, stop it by its PID. The probe rewrites the provider's fixed `localhost:11434` to `OLLAMA` and refuses any other host or port.
+
+```sh
+OLLAMA_HOST=127.0.0.1:11517 OLLAMA_MODELS=<clone> OLLAMA_NOPRUNE=1 /usr/local/bin/ollama serve &
+echo $! > ollama.pid
+cd apps/app_macos
+MODE=contract PASSES=3 OUT=<dir> OLLAMA=http://127.0.0.1:11517 fvm flutter test tool/live_answers_probe.dart
+```
+
+- `MODE=contract`: every case `PASSES` times; the first request of a fresh daemon is the cold load (`label: first`).
+- `MODE=cold`: `COLD_RUNS` requests, each after unloading the model (`keep_alive: 0`).
+- `MODE=load`: `LOAD_RUNS` requests in a row, with epoch-ms start times (to line up with a transcription run).
+- `MODE=gate`: `detectQuestions` over the final texts (`done`, `raw_done`) of the `.jsonl` logs in `LOGS=<dir>:<dir>`, and over `ASR=<json>` from `probe.py asr`.
+
+Output in `OUT`: `<mode>.jsonl` (raw text, parsed headline/bullets, declined, truncated, cited document ids, timings, shape flags computed without `parseAnswer`), `prompts/`, `outputs/`, and one request body as sent (`<mode>.request_bodies.json`).
