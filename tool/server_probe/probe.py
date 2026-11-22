@@ -494,9 +494,9 @@ def sentences(rnd, s, v, o, e, n, seen):
 
 def cmd_timeline(a):
     """Two 16 kHz mono PCM16 timelines (mic, sys) of unique sentences + schedule."""
-    out = AUDIO / "live"
+    out = AUDIO / a.name
     out.mkdir(parents=True, exist_ok=True)
-    rnd, seen, sched = random.Random(11), set(), {}
+    rnd, seen, sched = random.Random(11 if a.name == "live" else 23), set(), {}
     for src, voices in (("mic", (FR[0], EN[0])), ("sys", (EN[1], FR[1]))):
         pcm, items, i = bytearray(), [], 0
         while len(pcm) < a.seconds * RATE * 2:
@@ -504,14 +504,15 @@ def cmd_timeline(a):
             fr = voice in FR
             text = sentences(rnd, FR_S if fr else EN_S, FR_V if fr else EN_V, FR_O if fr else EN_O,
                              FR_E if fr else EN_E, 1, seen)[0]
-            name = f"live/{src}{i}"
+            name = f"{a.name}/{src}{i}"
             gen_one(name, voice, text)
             clip = load(name)
             (AUDIO / f"{name}.wav").unlink()
             start = len(pcm) / 2 / RATE
             pcm += clip
             items.append({"i": i, "text": text, "start": round(start, 2), "end": round(len(pcm) / 2 / RATE, 2)})
-            pcm += silence(rnd.choice((2000, 2500, 3000)))
+            pcm += silence(rnd.choice((2000, 2500, 3000)) if a.name == "live"
+                           else rnd.choice((1500, 2000, 2500, 3000, 4000, 6000)))
             i += 1
         with wave.open(str(out / f"{src}.wav"), "wb") as w:
             w.setnchannels(1), w.setsampwidth(2), w.setframerate(RATE)
@@ -523,16 +524,39 @@ def cmd_timeline(a):
 
 def cmd_score(a):
     """Score live-harness JSONL runs against the schedule (sentence match by text)."""
-    sched = json.loads((AUDIO / "live" / "schedule.json").read_text())
+    sched = json.loads((AUDIO / a.audio / "schedule.json").read_text())
     rows = []
     for path in a.runs:
         ev = [json.loads(l) for l in open(path)]
         meta_ev = next(e for e in ev if e["ev"] == "start")
         end_s = meta_ev["seconds"]
-        res = {"run": Path(path).stem}
+        if a.window:
+            for w0 in range(0, end_s, a.window):
+                r = score_one(sched, ev, Path(path).stem + f"@{w0 // 60}-{(w0 + a.window) // 60}min",
+                              lo=w0, hi=min(end_s, w0 + a.window), end_s=end_s)
+                rows.append(r)
+                print(json.dumps(r, ensure_ascii=False))
+            continue
+        res = score_one(sched, ev, Path(path).stem, 0, end_s, end_s)
+        rows.append(res)
+        print(json.dumps(res, ensure_ascii=False))
+    if a.out:
+        Path(a.out).write_text(json.dumps(rows, ensure_ascii=False, indent=1))
+
+
+def score_one(sched, ev, name, lo, hi, end_s):
+    """Scores sentences that start in [lo, hi[ and end before the feed ends."""
+    res = {"run": name}
+    if True:
         for src in ("mic", "sys"):
-            ref = [s for s in sched[src] if s["end"] <= end_s]
-            dones = [e for e in ev if e["ev"] == "done" and e["src"] == src]
+            ref = [s for s in sched[src] if s["end"] <= end_s and lo <= s["start"] < hi]
+            if not ref:
+                continue
+            ids_in = {s["i"] for s in ref}
+            span = (ref[0]["start"] - 1, ref[-1]["end"] + 1)
+            dones = [e for e in ev if e["ev"] == "done" and e["src"] == src
+                     and e.get("win_start_s") is not None and span[0] <= e["win_start_s"] <= span[1]] \
+                if lo > 0 or hi < end_s else [e for e in ev if e["ev"] == "done" and e["src"] == src]
             matched, partial, unmatched = [], 0, []
             for d in dones:
                 if not words(d["text"]):
@@ -543,6 +567,8 @@ def cmd_score(a):
                 else:
                     best = min(ref, key=lambda s: wer(s["text"], d["text"]))
                 w_ = wer(best["text"], d["text"])
+                if best["i"] not in ids_in:
+                    continue
                 if w_ <= 0.5:
                     matched.append((best["i"], w_, d))
                     partial += w_ > 0.2
@@ -551,25 +577,35 @@ def cmd_score(a):
             ids = [m[0] for m in matched]
             delays = [d["t"] - d["win_end_s"] for _, _, d in matched if d.get("win_end_s") is not None]
             gaps = [e for e in ev if e["ev"] == "gap" and e["src"] == src]
+            missing = sorted(ids_in - set(ids))
+            byi = {s["i"]: s for s in ref}
+            uncovered = [i for i in missing if not any(
+                g["start_s"] - 0.5 < byi[i]["end"] and byi[i]["start"] < g["end_s"] + 0.5 for g in gaps)]
+            t_stop = next((e["t"] for e in ev if e["ev"] == "drained"), float("inf"))
+            closes = [e["t"] for e in ev if e["ev"] == "closed_by_server" and e["src"] == src and e["t"] < t_stop]
+            seen = [e["t"] for e in ev if e["ev"] == "ws_onclosed" and e["src"] == src]
+            close_lat = [round(min((x for x in seen if x >= c - 0.05), default=float("nan")) - c, 3) for c in closes]
+            buf = [e[src] for e in ev if e["ev"] == "buffered" and lo <= e["t"] < hi]
             res[src] = {
                 "ref_words": sum(len(words(s["text"])) for s in ref),
                 "got_words": sum(len(words(d["text"])) for d in dones),
                 "wer_all": wer(" ".join(s["text"] for s in ref), " ".join(d["text"] for d in dones)),
                 "sentences": len(ref), "dup": len(ids) - len(set(ids)),
-                "missing": sorted({s["i"] for s in ref} - set(ids)),
+                "missing": missing, "missing_outside_gaps": uncovered,
+                "server_closes": len(closes), "close_to_onclosed_s": close_lat,
                 "partial": partial, "unmatched": unmatched,
                 "in_order": ids == sorted(ids),
                 "gaps": [(round(g["start_s"], 1), round(g["end_s"] - g["start_s"], 1)) for g in gaps],
                 "connects": sum(1 for e in ev if e["ev"] == "connect" and e["src"] == src),
                 "control": [e["type"] for e in ev if e["ev"] == "control" and e["src"] == src],
-                "max_buffered_s": max((e[src] for e in ev if e["ev"] == "buffered"), default=0),
+                "max_buffered_s": max(buf, default=0),
                 "max_delay_s": round(max(delays, default=0), 1),
                 "last_done_after_end_s": round(max((d["t"] for d in dones), default=0) - end_s, 1),
             }
-        rows.append(res)
-        print(json.dumps(res, ensure_ascii=False))
-    if a.out:
-        Path(a.out).write_text(json.dumps(rows, ensure_ascii=False, indent=1))
+        res["footprint_mb"] = [(round(e["t"] / 60, 1), e["mb"]) for e in ev
+                               if e["ev"] == "footprint" and lo <= e["t"] < hi + 1]
+        res["drained"] = next((e for e in ev if e["ev"] == "drained"), None) if hi >= end_s else None
+    return res
 
 
 def main():
@@ -584,10 +620,14 @@ def main():
     q7p = sub.add_parser("q7")
     q7p.add_argument("--minutes", type=float, default=15)
     q7p.add_argument("--server-pid", type=int, required=True)
-    sub.add_parser("timeline").add_argument("--seconds", type=int, default=300)
+    tl = sub.add_parser("timeline")
+    tl.add_argument("--seconds", type=int, default=300)
+    tl.add_argument("--name", default="live")
     sc = sub.add_parser("score")
     sc.add_argument("runs", nargs="+")
     sc.add_argument("--out")
+    sc.add_argument("--audio", default="live")
+    sc.add_argument("--window", type=int, default=0)
     a = p.parse_args()
     if a.cmd in ("gen", "timeline", "score"):
         return globals()[f"cmd_{a.cmd}"](a)

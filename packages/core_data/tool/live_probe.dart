@@ -29,9 +29,7 @@ late final int _epoch0;
 double _t() => (DateTime.now().millisecondsSinceEpoch - _epoch0) / 1000;
 
 void log(String ev, [Map<String, Object?> fields = const <String, Object?>{}]) {
-  _log.writeln(
-    jsonEncode(<String, Object?>{'t': _t(), 'ev': ev, ...fields}),
-  );
+  _log.writeln(jsonEncode(<String, Object?>{'t': _t(), 'ev': ev, ...fields}));
 }
 
 /// TCP proxy to the server: cut, refuse (port closed) or stall (no bytes
@@ -44,6 +42,7 @@ class Proxy {
   ServerSocket? _server;
   bool _stalled = false;
   final List<List<Object>> _conns = <List<Object>>[];
+  final Set<List<Object>> _cutPairs = Set<List<Object>>.identity();
 
   Future<void> listen() async {
     _server = await ServerSocket.bind(InternetAddress.loopbackIPv4, port);
@@ -70,25 +69,36 @@ class Proxy {
       }
     }
 
+    final List<Object> pair = <Object>[client, up];
+    void closedBy(String side) {
+      if (!_cutPairs.contains(pair)) {
+        log('closed_by_$side', <String, Object?>{'src': name});
+      }
+      client.destroy();
+      up.destroy();
+    }
+
     final StreamSubscription<Uint8List> a = client.listen(
       (Uint8List d) => pipe(up, d),
-      onDone: up.destroy,
-      onError: (Object _) => up.destroy(),
+      onDone: () => closedBy('client'),
+      onError: (Object _) => closedBy('client'),
     );
     final StreamSubscription<Uint8List> b = up.listen(
       (Uint8List d) => pipe(client, d),
-      onDone: client.destroy,
-      onError: (Object _) => client.destroy(),
+      onDone: () => closedBy('server'),
+      onError: (Object _) => closedBy('server'),
     );
     if (_stalled) {
       a.pause();
       b.pause();
     }
-    _conns.add(<Object>[client, up, a, b]);
+    pair.addAll(<Object>[a, b]);
+    _conns.add(pair);
   }
 
   void cut() {
     for (final List<Object> c in _conns) {
+      _cutPairs.add(c);
       (c[0] as Socket).destroy();
       (c[1] as Socket).destroy();
     }
@@ -126,6 +136,31 @@ class Proxy {
   }
 }
 
+Uint8List wavHeader(int dataBytes) {
+  final ByteData h = ByteData(44);
+  void tag(int at, String s) {
+    for (int i = 0; i < 4; i++) {
+      h.setUint8(at + i, s.codeUnitAt(i));
+    }
+  }
+
+  tag(0, 'RIFF');
+  h.setUint32(4, 36 + dataBytes, Endian.little);
+  tag(8, 'WAVE');
+  tag(12, 'fmt ');
+  h
+    ..setUint32(16, 16, Endian.little)
+    ..setUint16(20, 1, Endian.little)
+    ..setUint16(22, 1, Endian.little)
+    ..setUint32(24, 16000, Endian.little)
+    ..setUint32(28, 32000, Endian.little)
+    ..setUint16(32, 2, Endian.little)
+    ..setUint16(34, 16, Endian.little);
+  tag(36, 'data');
+  h.setUint32(40, dataBytes, Endian.little);
+  return h.buffer.asUint8List();
+}
+
 Uint8List readPcm(String path) {
   final Uint8List b = File(path).readAsBytesSync();
   final ByteData d = ByteData.sublistView(b);
@@ -140,13 +175,10 @@ Uint8List readPcm(String path) {
 }
 
 Future<void> main(List<String> args) async {
-  await runZonedGuarded(
-    () => _run(args),
-    (Object e, StackTrace st) {
-      stderr.writeln('harness_error: $e\n$st');
-      log('harness_error', <String, Object?>{'err': '$e'});
-    },
-  );
+  await runZonedGuarded(() => _run(args), (Object e, StackTrace st) {
+    stderr.writeln('harness_error: $e\n$st');
+    log('harness_error', <String, Object?>{'err': '$e'});
+  });
 }
 
 Future<void> _run(List<String> args) async {
@@ -165,12 +197,16 @@ Future<void> _run(List<String> args) async {
   await micProxy.listen();
   await sysProxy.listen();
 
-  WebSocketClient client(String src, int port) => WebSocketClient(
-    connectChannel: (Uri uri) {
-      log('connect', <String, Object?>{'src': src});
-      return WebSocketChannel.connect(uri.replace(port: port));
-    },
-  );
+  WebSocketClient client(String src, int port) {
+    final WebSocketClient c = WebSocketClient(
+      connectChannel: (Uri uri) {
+        log('connect', <String, Object?>{'src': src});
+        return WebSocketChannel.connect(uri.replace(port: port));
+      },
+    );
+    c.onClosed.listen((_) => log('ws_onclosed', <String, Object?>{'src': src}));
+    return c;
+  }
 
   final TranscriptionRemoteDataSourceImpl ds =
       TranscriptionRemoteDataSourceImpl(
@@ -248,18 +284,43 @@ Future<void> _run(List<String> args) async {
     log('server_start', <String, Object?>{'pgid': p.pid});
   }
 
-  final List<double> micMids = (sched['mic'] as List<dynamic>)
+  List<double> mids(String src) => (sched[src] as List<dynamic>)
       .map((dynamic s) => ((s['start'] as num) + (s['end'] as num)) / 2)
       .cast<double>()
       .toList();
-  double midNear(double t) =>
-      micMids.reduce((double a, double b) => (a - t).abs() < (b - t).abs() ? a : b);
+  final Map<String, List<double>> allMids = <String, List<double>>{
+    'mic': mids('mic'),
+    'sys': mids('sys'),
+  };
+  double midNear(double t, [String src = 'mic']) => allMids[src]!.reduce(
+    (double a, double b) => (a - t).abs() < (b - t).abs() ? a : b,
+  );
+
+  Future<void> killServer() async {
+    final String pgid = File('$probeDir/server.pid').readAsStringSync().trim();
+    await Process.run('kill', <String>['--', '-$pgid']);
+    log('server_kill', <String, Object?>{'pgid': pgid});
+  }
+
+  // Long run: a 3 s cut every ~10 min on alternating sources, a 45 s
+  // refusal at 30 min, a server kill + restart at 45 min.
+  final List<(double, String)> longCuts = <(double, String)>[
+    (600, 'mic'),
+    (1200, 'sys'),
+    (2100, 'mic'),
+    (3000, 'sys'),
+    (3400, 'mic'),
+  ];
 
   final Map<double, Future<void> Function()> faults =
       <double, Future<void> Function()>{
         if (scenario == 'B')
-          for (final double t in <double>[40, 110, 180, 250]) ...<double,
-              Future<void> Function()>{
+          for (final double t in <double>[
+            40,
+            110,
+            180,
+            250,
+          ]) ...<double, Future<void> Function()>{
             midNear(t): () async => micProxy.refuse(),
             midNear(t) + 3: () async => micProxy.reopen(),
           },
@@ -280,14 +341,25 @@ Future<void> _run(List<String> args) async {
           240: () async => both((Proxy p) async => p.stall(false)),
         },
         if (scenario == 'F') ...<double, Future<void> Function()>{
-          100: () async {
-            final String pgid = File('$probeDir/server.pid')
-                .readAsStringSync()
-                .trim();
-            await Process.run('kill', <String>['--', '-$pgid']);
-            log('server_kill', <String, Object?>{'pgid': pgid});
-          },
+          100: killServer,
           115: restartServer,
+        },
+        if (scenario.startsWith('G')) ...<double, Future<void> Function()>{
+          60: () => both((Proxy p) => p.refuse()),
+          120: () => both((Proxy p) => p.reopen()),
+        },
+        if (scenario == 'L') ...<double, Future<void> Function()>{
+          for (final (double t, String src)
+              in longCuts) ...<double, Future<void> Function()>{
+            midNear(t, src): () =>
+                (src == 'mic' ? micProxy : sysProxy).refuse(),
+            midNear(t, src) + 3: () =>
+                (src == 'mic' ? micProxy : sysProxy).reopen(),
+          },
+          1800: () => both((Proxy p) => p.refuse()),
+          1845: () => both((Proxy p) => p.reopen()),
+          2700: killServer,
+          2715: restartServer,
         },
       };
   for (final MapEntry<double, Future<void> Function()> f in faults.entries) {
@@ -296,6 +368,39 @@ Future<void> _run(List<String> args) async {
       await f.value();
     });
   }
+
+  Future<void> sampleFootprint() async {
+    final String pgid = File('$probeDir/server.pid').readAsStringSync().trim();
+    final String ps =
+        (await Process.run('ps', <String>[
+              '-o',
+              'pid=,comm=',
+              '-g',
+              pgid,
+            ])).stdout
+            as String;
+    final String? pid = ps
+        .split('\n')
+        .where((String l) => l.contains('Python'))
+        .map((String l) => l.trim().split(' ').first)
+        .firstOrNull;
+    if (pid == null) return log('footprint', <String, Object?>{'mb': null});
+    final String out =
+        (await Process.run('footprint', <String>[pid])).stdout as String;
+    final RegExpMatch? m = RegExp(
+      r'Footprint: ([\d.]+) (MB|GB)',
+    ).firstMatch(out);
+    final double? mb = m == null
+        ? null
+        : double.parse(m.group(1)!) * (m.group(2) == 'GB' ? 1024 : 1);
+    log('footprint', <String, Object?>{'pid': pid, 'mb': mb});
+  }
+
+  await sampleFootprint();
+  final Timer footprints = Timer.periodic(
+    const Duration(minutes: 5),
+    (_) => unawaited(sampleFootprint()),
+  );
 
   // Real-time feed: both sources, one 100 ms chunk each every 100 ms.
   final int n = seconds * 10;
@@ -319,15 +424,48 @@ Future<void> _run(List<String> args) async {
     }
   }
   log('feed_end');
+  // Mirrors LiveTranscriptionService stop: final commit, then wait for the
+  // catch-up up to its 120 s limit, or until the user skips the wait.
+  final int drainLimit = int.parse(
+    Platform.environment['DRAIN_LIMIT'] ?? '120',
+  );
+  final int? skipAfter = int.tryParse(
+    Platform.environment['STOP_SKIP_AFTER'] ?? '',
+  );
+  final int limit = skipAfter ?? drainLimit;
+  final DateTime stopAt = DateTime.now();
   ds.sendCommit(isFinal: true);
-  final DateTime giveUp = DateTime.now().add(const Duration(seconds: 150));
+  final DateTime giveUp = stopAt.add(Duration(seconds: limit));
   while (ds.activeSources.isNotEmpty && DateTime.now().isBefore(giveUp)) {
     await Future<void>.delayed(const Duration(milliseconds: 200));
   }
   log('drained', <String, Object?>{
+    'waited_s': DateTime.now().difference(stopAt).inMilliseconds / 1000,
+    'skipped': skipAfter != null && ds.activeSources.isNotEmpty,
     'active': ds.activeSources.map((AudioSource s) => s.name).toList(),
+    'unacked_mic':
+        ds.unacknowledgedAudio(AudioSource.input).inMilliseconds / 1000,
+    'unacked_sys':
+        ds.unacknowledgedAudio(AudioSource.output).inMilliseconds / 1000,
   });
   sampler.cancel();
+  footprints.cancel();
+  await sampleFootprint();
+  // The WAVs the app would have written: every captured chunk, 44-byte header.
+  final String stem = args[2].replaceAll(RegExp(r'\.jsonl$'), '');
+  for (final (String track, Uint8List pcm) in <(String, Uint8List)>[
+    ('mic', mic),
+    ('system', sys),
+  ]) {
+    final int len = (seconds * 10 * chunkBytes).clamp(
+      0,
+      pcm.length - pcm.length % chunkBytes,
+    );
+    File('${stem}_$track.wav').writeAsBytesSync(<int>[
+      ...wavHeader(len),
+      ...Uint8List.sublistView(pcm, 0, len),
+    ]);
+  }
   await ds.disconnect();
   for (final StreamSubscription<Object?> s in subs) {
     await s.cancel();
