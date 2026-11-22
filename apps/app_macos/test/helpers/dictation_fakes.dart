@@ -12,6 +12,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
+import 'package:ici_transcript/application/services/transcription_server_arbiter.dart';
 import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
 import 'package:ici_transcript/core/platform/text_output_channel.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -115,6 +116,9 @@ final class ScriptedTranscriptionRemote
       <({String url, bool systemAudioEnabled})>[];
   int disconnectCalls = 0;
   int finalCommits = 0;
+
+  /// Sources visées par chaque commit final (null : toutes).
+  final List<Set<AudioSource>?> finalCommitSources = <Set<AudioSource>?>[];
   bool connected = false;
 
   bool _open = false;
@@ -186,9 +190,13 @@ final class ScriptedTranscriptionRemote
   }
 
   @override
-  Set<AudioSource> sendCommit({bool isFinal = false}) {
+  Set<AudioSource> sendCommit({
+    bool isFinal = false,
+    Set<AudioSource>? sources,
+  }) {
     if (!isFinal) return <AudioSource>{};
     finalCommits++;
+    finalCommitSources.add(sources);
     log.add('dictation.commit');
     if (!_open) return <AudioSource>{};
     _open = false;
@@ -235,7 +243,11 @@ final class DictationHarness {
   DictationHarness(this.async, {LiveServiceHarness? live})
     : live = live ?? LiveServiceHarness(async) {
     remote = ScriptedTranscriptionRemote(log: this.live.audio.log);
+    arbiter = TranscriptionServerArbiter(
+      isRecording: () => this.live.service.isRecording,
+    );
     controller = DictationController(
+      arbiter: arbiter,
       shortcuts: shortcuts,
       textOutput: output,
       audioCapture: this.live.audio,
@@ -255,6 +267,9 @@ final class DictationHarness {
   final FakeGlobalShortcutChannel shortcuts = FakeGlobalShortcutChannel();
   final FakeTextOutputChannel output = FakeTextOutputChannel();
   late final ScriptedTranscriptionRemote remote;
+
+  /// Arbitre du serveur unique : enregistrement > dictée > rattrapage.
+  late final TranscriptionServerArbiter arbiter;
   late final DictationController controller;
 
   FakeProcessManagerChannel get process => live.process;
