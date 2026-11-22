@@ -9,6 +9,7 @@ import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/services.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
@@ -93,7 +94,7 @@ final class FakeTextOutputChannel extends TextOutputChannel {
   @override
   Future<void> paste() async {
     log.add('paste');
-    if (pasteFails) throw StateError('collage refusé');
+    if (pasteFails) throw PlatformException(code: 'PASTE_FAILED');
   }
 }
 

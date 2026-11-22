@@ -568,6 +568,49 @@ void main() {
       });
     });
 
+    test('après un délai de garde, un nouvel appui ferme d abord l ancien '
+        'flux ; l ancien texte ne rejoint jamais la nouvelle dictée', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        d.holdAndSay(10);
+        async.elapse(
+          DictationController.finalTextTimeout + const Duration(seconds: 1),
+        );
+
+        d.press();
+        d.say(10);
+        d.release();
+        d.remote.emitDone('Nouveau.');
+        async.elapse(Duration.zero);
+
+        final List<String> log = d.remote.log
+            .where((String e) => e.startsWith('dictation.'))
+            .toList();
+        final int second = log.lastIndexOf('dictation.connect');
+        expect(second, greaterThan(0));
+        expect(log.sublist(0, second), contains('dictation.disconnect'));
+        expect(d.output.copies, <String>['Nouveau.']);
+      });
+    });
+
+    test('après un délai de garde, démarrer un enregistrement ferme d abord '
+        'le flux de la dictée (jamais trois flux)', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        d.holdAndSay(10);
+        async.elapse(
+          DictationController.finalTextTimeout + const Duration(seconds: 1),
+        );
+
+        d.live.start();
+
+        final List<String> log = d.audio.log;
+        final int meeting = log.indexOf('capture.start(output: true)');
+        expect(meeting, greaterThan(0));
+        expect(log.sublist(0, meeting), contains('dictation.disconnect'));
+      });
+    });
+
     test('micro refusé : erreur explicite, Échap libérée', () {
       fakeAsync((FakeAsync async) {
         final DictationHarness d = launched(async);
@@ -581,7 +624,11 @@ void main() {
           (d.state as DictationError).reason,
           DictationErrorReason.microphone,
         );
-        expect(d.shortcuts.cancelKey.last, isFalse);
+        expect(
+          d.shortcuts.cancelKey.isEmpty || !d.shortcuts.cancelKey.last,
+          isTrue,
+          reason: 'Échap jamais laissée capturée',
+        );
       });
     });
   });
@@ -609,6 +656,11 @@ void main() {
           List<int>.generate(20, (int i) => 1000000 + i * 100),
         );
         expect(d.remote.finalCommits, 1);
+        expect(
+          d.process.starts,
+          hasLength(1),
+          reason: 'pas de 2e démarrage à froid',
+        );
 
         d.remote.emitDone('Dit pendant le démarrage.');
         async.elapse(Duration.zero);
@@ -627,6 +679,11 @@ void main() {
         d.say(90);
         expect(d.state, isA<DictationListening>());
         expect(d.remote.sentAudio, hasLength(90));
+        expect(
+          d.process.starts,
+          hasLength(1),
+          reason: 'pas de 2e démarrage à froid',
+        );
         d.release();
 
         d.remote.emitDone('Long.');
@@ -752,7 +809,10 @@ void main() {
           isFalse,
           reason: 'micro seul : un flux, pas deux',
         );
-        expect(d.audio.log.first, 'capture.start(output: false)');
+        expect(
+          d.audio.log.where((String e) => e.startsWith('capture.start')).first,
+          'capture.start(output: false)',
+        );
       });
     });
 
