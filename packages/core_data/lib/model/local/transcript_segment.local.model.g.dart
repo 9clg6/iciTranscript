@@ -15,6 +15,7 @@ _TranscriptSegmentLocalModel _$TranscriptSegmentLocalModelFromJson(
   text: json['text'] as String,
   timestampMs: (json['timestampMs'] as num).toInt(),
   createdAt: json['createdAt'] as String,
+  isPartial: json['isPartial'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$TranscriptSegmentLocalModelToJson(
@@ -26,4 +27,5 @@ Map<String, dynamic> _$TranscriptSegmentLocalModelToJson(
   'text': instance.text,
   'timestampMs': instance.timestampMs,
   'createdAt': instance.createdAt,
+  'isPartial': instance.isPartial,
 };

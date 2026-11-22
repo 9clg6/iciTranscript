@@ -58,6 +58,9 @@ class TranscriptSegments extends Table {
   /// Locuteur du segment, ex. "Intervenant 2" (schema v2).
   TextColumn get speaker => text().nullable()();
 
+  /// Texte connu incomplet, remplacé par le rattrapage (schema v3).
+  BoolColumn get isPartial => boolean().withDefault(const Constant<bool>(false))();
+
   @override
   Set<Column<Object>> get primaryKey => <Column<Object>>{id};
 }
@@ -198,7 +201,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -229,8 +232,16 @@ class AppDatabase extends _$AppDatabase {
           '(SELECT chunk_id FROM document_chunks_fts)',
         );
       }
+      if (from < 3) await _migrateV2ToV3(m);
     },
   );
+
+  /// Étape 2 -> 3, seule et rejouable : `transcript_segments.is_partial`
+  /// (booléen non nul, faux par défaut), ajoutée seulement si elle manque
+  /// (une base peut déjà l'avoir avec `user_version = 2`). Aucun autre
+  /// objet n'est touché (FTS, triggers, tables v2).
+  Future<void> _migrateV2ToV3(Migrator m) =>
+      _addColumnIfMissing(m, transcriptSegments, transcriptSegments.isPartial);
 
   Future<void> _addColumnIfMissing(
     Migrator m,

@@ -20,7 +20,10 @@ mixin _$TranscriptSegmentEntity {
  AudioSource get source;/// Texte transcrit.
  String get text;/// Offset en millisecondes depuis le debut de la session.
  int get timestampMs;/// Date de creation du segment.
- DateTime get createdAt;
+ DateTime get createdAt;/// Texte connu incomplet : phrase en cours sauvée, ou scellée par une
+/// coupure ou un arrêt brutal. Le rattrapage depuis le WAV remplace ces
+/// segments au lieu de les laisser à côté du texte retrouvé.
+ bool get isPartial;
 /// Create a copy of TranscriptSegmentEntity
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -31,16 +34,16 @@ $TranscriptSegmentEntityCopyWith<TranscriptSegmentEntity> get copyWith => _$Tran
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is TranscriptSegmentEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.source, source) || other.source == source)&&(identical(other.text, text) || other.text == text)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is TranscriptSegmentEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.source, source) || other.source == source)&&(identical(other.text, text) || other.text == text)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.isPartial, isPartial) || other.isPartial == isPartial));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,sessionId,source,text,timestampMs,createdAt);
+int get hashCode => Object.hash(runtimeType,id,sessionId,source,text,timestampMs,createdAt,isPartial);
 
 @override
 String toString() {
-  return 'TranscriptSegmentEntity(id: $id, sessionId: $sessionId, source: $source, text: $text, timestampMs: $timestampMs, createdAt: $createdAt)';
+  return 'TranscriptSegmentEntity(id: $id, sessionId: $sessionId, source: $source, text: $text, timestampMs: $timestampMs, createdAt: $createdAt, isPartial: $isPartial)';
 }
 
 
@@ -51,7 +54,7 @@ abstract mixin class $TranscriptSegmentEntityCopyWith<$Res>  {
   factory $TranscriptSegmentEntityCopyWith(TranscriptSegmentEntity value, $Res Function(TranscriptSegmentEntity) _then) = _$TranscriptSegmentEntityCopyWithImpl;
 @useResult
 $Res call({
- String id, String sessionId, AudioSource source, String text, int timestampMs, DateTime createdAt
+ String id, String sessionId, AudioSource source, String text, int timestampMs, DateTime createdAt, bool isPartial
 });
 
 
@@ -68,7 +71,7 @@ class _$TranscriptSegmentEntityCopyWithImpl<$Res>
 
 /// Create a copy of TranscriptSegmentEntity
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? sessionId = null,Object? source = null,Object? text = null,Object? timestampMs = null,Object? createdAt = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? sessionId = null,Object? source = null,Object? text = null,Object? timestampMs = null,Object? createdAt = null,Object? isPartial = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,sessionId: null == sessionId ? _self.sessionId : sessionId // ignore: cast_nullable_to_non_nullable
@@ -76,7 +79,8 @@ as String,source: null == source ? _self.source : source // ignore: cast_nullabl
 as AudioSource,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
 as String,timestampMs: null == timestampMs ? _self.timestampMs : timestampMs // ignore: cast_nullable_to_non_nullable
 as int,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
-as DateTime,
+as DateTime,isPartial: null == isPartial ? _self.isPartial : isPartial // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -161,10 +165,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String sessionId,  AudioSource source,  String text,  int timestampMs,  DateTime createdAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String sessionId,  AudioSource source,  String text,  int timestampMs,  DateTime createdAt,  bool isPartial)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _TranscriptSegmentEntity() when $default != null:
-return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestampMs,_that.createdAt);case _:
+return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestampMs,_that.createdAt,_that.isPartial);case _:
   return orElse();
 
 }
@@ -182,10 +186,10 @@ return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestamp
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String sessionId,  AudioSource source,  String text,  int timestampMs,  DateTime createdAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String sessionId,  AudioSource source,  String text,  int timestampMs,  DateTime createdAt,  bool isPartial)  $default,) {final _that = this;
 switch (_that) {
 case _TranscriptSegmentEntity():
-return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestampMs,_that.createdAt);case _:
+return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestampMs,_that.createdAt,_that.isPartial);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -202,10 +206,10 @@ return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestamp
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String sessionId,  AudioSource source,  String text,  int timestampMs,  DateTime createdAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String sessionId,  AudioSource source,  String text,  int timestampMs,  DateTime createdAt,  bool isPartial)?  $default,) {final _that = this;
 switch (_that) {
 case _TranscriptSegmentEntity() when $default != null:
-return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestampMs,_that.createdAt);case _:
+return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestampMs,_that.createdAt,_that.isPartial);case _:
   return null;
 
 }
@@ -217,7 +221,7 @@ return $default(_that.id,_that.sessionId,_that.source,_that.text,_that.timestamp
 
 
 class _TranscriptSegmentEntity implements TranscriptSegmentEntity {
-  const _TranscriptSegmentEntity({required this.id, required this.sessionId, required this.source, required this.text, required this.timestampMs, required this.createdAt});
+  const _TranscriptSegmentEntity({required this.id, required this.sessionId, required this.source, required this.text, required this.timestampMs, required this.createdAt, this.isPartial = false});
   
 
 /// Identifiant unique du segment.
@@ -232,6 +236,10 @@ class _TranscriptSegmentEntity implements TranscriptSegmentEntity {
 @override final  int timestampMs;
 /// Date de creation du segment.
 @override final  DateTime createdAt;
+/// Texte connu incomplet : phrase en cours sauvée, ou scellée par une
+/// coupure ou un arrêt brutal. Le rattrapage depuis le WAV remplace ces
+/// segments au lieu de les laisser à côté du texte retrouvé.
+@override@JsonKey() final  bool isPartial;
 
 /// Create a copy of TranscriptSegmentEntity
 /// with the given fields replaced by the non-null parameter values.
@@ -243,16 +251,16 @@ _$TranscriptSegmentEntityCopyWith<_TranscriptSegmentEntity> get copyWith => __$T
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _TranscriptSegmentEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.source, source) || other.source == source)&&(identical(other.text, text) || other.text == text)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _TranscriptSegmentEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.sessionId, sessionId) || other.sessionId == sessionId)&&(identical(other.source, source) || other.source == source)&&(identical(other.text, text) || other.text == text)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.isPartial, isPartial) || other.isPartial == isPartial));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,sessionId,source,text,timestampMs,createdAt);
+int get hashCode => Object.hash(runtimeType,id,sessionId,source,text,timestampMs,createdAt,isPartial);
 
 @override
 String toString() {
-  return 'TranscriptSegmentEntity(id: $id, sessionId: $sessionId, source: $source, text: $text, timestampMs: $timestampMs, createdAt: $createdAt)';
+  return 'TranscriptSegmentEntity(id: $id, sessionId: $sessionId, source: $source, text: $text, timestampMs: $timestampMs, createdAt: $createdAt, isPartial: $isPartial)';
 }
 
 
@@ -263,7 +271,7 @@ abstract mixin class _$TranscriptSegmentEntityCopyWith<$Res> implements $Transcr
   factory _$TranscriptSegmentEntityCopyWith(_TranscriptSegmentEntity value, $Res Function(_TranscriptSegmentEntity) _then) = __$TranscriptSegmentEntityCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String sessionId, AudioSource source, String text, int timestampMs, DateTime createdAt
+ String id, String sessionId, AudioSource source, String text, int timestampMs, DateTime createdAt, bool isPartial
 });
 
 
@@ -280,7 +288,7 @@ class __$TranscriptSegmentEntityCopyWithImpl<$Res>
 
 /// Create a copy of TranscriptSegmentEntity
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? sessionId = null,Object? source = null,Object? text = null,Object? timestampMs = null,Object? createdAt = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? sessionId = null,Object? source = null,Object? text = null,Object? timestampMs = null,Object? createdAt = null,Object? isPartial = null,}) {
   return _then(_TranscriptSegmentEntity(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,sessionId: null == sessionId ? _self.sessionId : sessionId // ignore: cast_nullable_to_non_nullable
@@ -288,7 +296,8 @@ as String,source: null == source ? _self.source : source // ignore: cast_nullabl
 as AudioSource,text: null == text ? _self.text : text // ignore: cast_nullable_to_non_nullable
 as String,timestampMs: null == timestampMs ? _self.timestampMs : timestampMs // ignore: cast_nullable_to_non_nullable
 as int,createdAt: null == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
-as DateTime,
+as DateTime,isPartial: null == isPartial ? _self.isPartial : isPartial // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

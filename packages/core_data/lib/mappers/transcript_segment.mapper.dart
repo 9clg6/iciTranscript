@@ -13,6 +13,7 @@ extension TranscriptSegmentLocalModelX on TranscriptSegmentLocalModel {
     text: text,
     timestampMs: timestampMs,
     createdAt: DateTime.parse(createdAt),
+    isPartial: isPartial,
   );
 }
 
@@ -26,5 +27,6 @@ extension TranscriptSegmentEntityToLocalX on TranscriptSegmentEntity {
     text: text,
     timestampMs: timestampMs,
     createdAt: createdAt.toIso8601String(),
+    isPartial: isPartial,
   );
 }

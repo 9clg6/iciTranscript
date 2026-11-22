@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:core_data/clients/websocket_client.dart';
+import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 import 'package:ici_transcript/core/platform/server_ports.dart';
@@ -34,11 +35,54 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
   final String url;
   final WebSocketClient Function() _createClient;
 
-  static const int _pieceBytes = 30000 * 32; // 30 s de PCM16 16 kHz
-  static const int _chunkBytes = 3200; // 100 ms
+  /// Durée maximale d'un morceau : un démarrage n'attend qu'environ un
+  /// morceau sur le serveur séquentiel (sonde 4 : 8,8 s avec 30 s).
+  static const Duration maxPiece = Duration(seconds: 12);
+  static const int _chunkBytes = 3200; // 100 ms, le pas de la porte RMS
   static const Duration _doneTimeout = Duration(seconds: 60);
 
   static const Duration _yieldPoll = Duration(milliseconds: 100);
+
+  /// Morceaux (octets) de [maxPiece] au plus, coupés après le dernier
+  /// silence de la fenêtre (porte RMS par pas de 100 ms) : une phrase plus
+  /// courte que la borne n'est jamais coupée ; une parole continue plus
+  /// longue l'est à la borne.
+  static List<({int start, int end})> splitAtSilences(Uint8List pcm) {
+    final int chunks = (pcm.length + _chunkBytes - 1) ~/ _chunkBytes;
+    final List<bool> speech = <bool>[
+      for (int c = 0; c < chunks; c++)
+        TranscriptionRemoteDataSourceImpl.isSpeechChunk(
+          Uint8List.sublistView(
+            pcm,
+            c * _chunkBytes,
+            ((c + 1) * _chunkBytes).clamp(0, pcm.length),
+          ),
+        ),
+    ];
+    final int maxChunks = maxPiece.inMilliseconds ~/ 100;
+    final List<({int start, int end})> pieces = <({int start, int end})>[];
+    int start = 0;
+    while (start < chunks) {
+      int end = start + maxChunks;
+      if (end >= chunks) {
+        end = chunks;
+      } else {
+        // Dernière frontière qui suit un silence ; sinon la borne.
+        for (int b = end; b > start; b--) {
+          if (!speech[b - 1]) {
+            end = b;
+            break;
+          }
+        }
+      }
+      pieces.add((
+        start: start * _chunkBytes,
+        end: (end * _chunkBytes).clamp(0, pcm.length),
+      ));
+      start = end;
+    }
+    return pieces;
+  }
 
   /// [done], ou [TranscriberUnavailable] dès qu'un enregistrement démarre :
   /// la socket se ferme sans attendre la fin du morceau en vol.
@@ -73,11 +117,12 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
     try {
       final List<({int offsetMs, String text})> pieces =
           <({int offsetMs, String text})>[];
-      for (int start = 0; start < pcm.length; start += _pieceBytes) {
+      for (final ({int start, int end}) piece in splitAtSilences(pcm)) {
         if (_shouldYield()) {
           throw const TranscriberUnavailable('enregistrement');
         }
-        final int end = (start + _pieceBytes).clamp(0, pcm.length);
+        final int start = piece.start;
+        final int end = piece.end;
         final Future<String> done = client.messageStream
             .map((String m) => jsonDecode(m) as Map<String, dynamic>)
             .firstWhere(

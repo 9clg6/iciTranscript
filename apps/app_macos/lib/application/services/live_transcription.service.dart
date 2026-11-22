@@ -544,13 +544,19 @@ final class LiveTranscriptionService {
     final GapBackfillService? backfill = _gapBackfill;
     final GapBackfillRetry? retry = _gapBackfillRetry;
     if (backfill == null && retry == null) return;
-    final List<({String markerId, AudioSource source, int startMs, int endMs})>
-    plan = GapBackfillService.plan(
+    final List<BackfillGap> plan = GapBackfillService.plan(
       segmentsStream.value
           .where((TranscriptSegmentEntity s) => s.sessionId == sessionId)
           .toList(),
     );
-    if (plan.isEmpty) return;
+    if (plan.isEmpty) {
+      // Rien à rattraper ici, mais le serveur se libère : les sessions en
+      // attente d'autres réunions repartent (en tâche de fond).
+      if (retry != null && !_startRequested) {
+        unawaited(retry.afterSession(sessionId));
+      }
+      return;
+    }
     if (_startRequested || skip.isCompleted) {
       // Un enregistrement arrive (ou l'utilisateur a passé) : la session est
       // mise en attente de reprise, sans tentative ; le repère reste.
@@ -562,10 +568,8 @@ final class LiveTranscriptionService {
     _finalisingRemaining.add(
       plan.fold<Duration>(
         Duration.zero,
-        (
-          Duration sum,
-          ({String markerId, AudioSource source, int startMs, int endMs}) g,
-        ) => sum + Duration(milliseconds: g.endMs - g.startMs),
+        (Duration sum, BackfillGap g) =>
+            sum + Duration(milliseconds: g.endMs - g.startMs),
       ),
     );
     // « Passer » rend la main tout de suite ; le rattrapage continue en
@@ -1026,6 +1030,8 @@ final class LiveTranscriptionService {
       text: text,
       timestampMs: _phraseStart[source]!,
       createdAt: clock.now(),
+      // Début perdu : le rattrapage la remplacera par la phrase entière.
+      isPartial: true,
     );
     late final Future<void> task;
     task = (provisionalWrite ?? Future<void>.value())
@@ -1057,6 +1063,7 @@ final class LiveTranscriptionService {
       text: text,
       timestampMs: _phraseStart[source]!,
       createdAt: clock.now(),
+      isPartial: true,
     );
     // Écritures chaînées : un provisoire tardif n'écrase jamais la finale.
     _provisionalWrites[source] =
@@ -1098,9 +1105,17 @@ final class LiveTranscriptionService {
     _transcriptionService.segmentsStream.add(segs);
 
     String? text;
-    if (TranscriptTextNormalizer.isForeignScript(normalized)) {
+    // Écriture non latine ou langue non attendue : avec de la parole, ce
+    // n'est pas du bruit mais une phrase mal transcrite (sonde 4, hindi et
+    // espagnol) ; elle devient un repère, rattrapé depuis le WAV.
+    final bool wrongOutput =
+        TranscriptTextNormalizer.isForeignScript(normalized) ||
+        TranscriptTextNormalizer.isUnexpectedLanguage(normalized);
+    final bool markInstead = wrongOutput && window?.hadSpeech == true;
+    if (wrongOutput) {
       _log.info(
-        'Phrase écartée (alphabet non latin, bruit probable): $normalized',
+        'Phrase mal transcrite (écriture ou langue): $normalized'
+        '${markInstead ? ', repère' : ', écartée'}',
       );
     } else {
       text = TranscriptTextNormalizer.filterFinalText(
@@ -1116,7 +1131,19 @@ final class LiveTranscriptionService {
     }
 
     await provisionalWrite;
-    if (text == null) {
+    if (markInstead) {
+      final int start = _offsetOf(session, window!.startMs);
+      await _transcriptionService.saveSegment(
+        TranscriptSegmentEntity(
+          id: provisionalId ?? _newSegmentId(session, source),
+          sessionId: session.id,
+          source: source,
+          text: gapMarkerText(start, _offsetOf(session, window.endMs)),
+          timestampMs: start,
+          createdAt: clock.now(),
+        ),
+      );
+    } else if (text == null) {
       if (provisionalWrite != null && provisionalId != null) {
         await _transcriptionService.discardProvisional(provisionalId);
       }

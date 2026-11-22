@@ -11,9 +11,11 @@ import 'package:drift/native.dart';
 /// utilisateurs.
 ///
 /// [extraStatements] s'executent apres les donnees, avant de fixer
-/// `user_version` a 1 : ils simulent une migration deja (en partie) passee.
+/// `user_version` a [userVersion] (1 par defaut) : ils simulent une
+/// migration deja (en partie) passee, ou une base v2 (tour 6, v2 -> v3).
 QueryExecutor v1DatabaseWithData({
   List<String> extraStatements = const <String>[],
+  int userVersion = 1,
 }) {
   return NativeDatabase.memory(
     // ponytail: type `Database` de package:sqlite3, non dependance directe.
@@ -61,7 +63,7 @@ QueryExecutor v1DatabaseWithData({
         "'Ancienne réunion.', 'mistral', '2026-10-01T10:00:00.000')",
       );
       extraStatements.forEach(raw.execute);
-      raw.execute('PRAGMA user_version = 1');
+      raw.execute('PRAGMA user_version = $userVersion');
     },
   );
 }

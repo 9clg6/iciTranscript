@@ -192,6 +192,10 @@ final class FakeTranscriptionRemoteDataSource
     ),
   );
 
+  /// Événement interne de la source distante (ex. phrase perdue).
+  void emitControl(AudioSource source, String type) =>
+      _of(source).add(TranscriptEventRemoteModel(type: type));
+
   void emitDone(AudioSource source, String text, {UtteranceWindow? window}) {
     final TranscriptEventRemoteModel event = TranscriptEventRemoteModel(
       type: 'response.audio_transcript.done',
