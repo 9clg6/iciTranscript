@@ -554,6 +554,12 @@ final class TranscriptionRemoteDataSourceImpl
   UtteranceWindow? windowOf(TranscriptEventRemoteModel event) =>
       _eventWindows[event];
 
+  /// Fenêtre de la dernière phrase finalisée de [source] dont le `done` est
+  /// attendu (null : aucune). Les `done` arrivent dans l'ordre des commits :
+  /// celui de cette fenêtre est le dernier des phrases déjà finalisées.
+  UtteranceWindow? lastPendingWindow(AudioSource source) =>
+      _pendingWindows[source]!.isEmpty ? null : _pendingWindows[source]!.last;
+
   @override
   Future<void> disconnect() async {
     _sessionOpen = false;
