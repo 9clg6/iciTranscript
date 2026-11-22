@@ -291,14 +291,21 @@ final class TranscriptionRemoteDataSourceImpl
       ..lostEndMs = null;
   }
 
-  /// Ferme les coupures et le tampon : l'audio encore sans `done` est perdu
-  /// pour la transcription (il reste dans le WAV) et signalé comme tel.
+  /// Ferme les coupures et vide le tampon. Seul l'audio d'une source coupée
+  /// est perdu (il reste dans le WAV) et signalé : sur une socket vivante,
+  /// le serveur l'a reçu, son texte est au moins dans les deltas.
   void _clearOutages() {
     for (final AudioSource source in AudioSource.values) {
-      _outages[source]?.retry?.cancel();
+      final _Outage? outage = _outages[source];
+      outage?.retry?.cancel();
       _outages[source] = null;
-      final _Unacked unacked = _unacked[source]!..loseAll();
-      _emitGap(source, unacked);
+      final _Unacked unacked = _unacked[source]!;
+      if (outage != null) {
+        unacked.loseAll();
+        _emitGap(source, unacked);
+      } else {
+        unacked.clear();
+      }
     }
   }
 
@@ -529,6 +536,14 @@ class _Unacked {
       if (range.startMs != null) _markLost(range.startMs!, range.endMs!);
     }
     _sentEvicted.clear();
+  }
+
+  void clear() {
+    queue.clear();
+    audioMs = 0;
+    _sentEvicted.clear();
+    lostStartMs = null;
+    lostEndMs = null;
   }
 
   void loseAll() {
