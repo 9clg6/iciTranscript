@@ -36,7 +36,8 @@ void main() {
   final Finder sidebar = find.byKey(const ValueKey<String>('oats-sidebar'));
   Finder navItem(String key) =>
       find.descendant(of: sidebar, matching: find.text(key.tr()));
-  final Finder install = find.text('settings.local_model.install'.tr());
+  // Évalué à l'usage : .tr() doit tourner après le chargement des traductions.
+  Finder install() => find.text('settings.local_model.install'.tr());
 
   Future<FakeOllamaService> pumpApp(
     WidgetTester tester, {
@@ -73,7 +74,8 @@ void main() {
     await settle(tester);
   }
 
-  final Finder configure = find.textContaining('llm.configure_model'.tr());
+  // Évalué à l'usage : .tr() doit tourner après le chargement des traductions.
+  Finder configure() => find.textContaining('llm.configure_model'.tr());
 
   group('au lancement', () {
     testWidgets('modèle absent : détecte, ne télécharge rien, pas prêt', (
@@ -85,7 +87,7 @@ void main() {
       expect(service.detectCalls, greaterThanOrEqualTo(1));
       expect(isReady(tester), isFalse);
       await openNote(tester);
-      expect(configure, findsWidgets);
+      expect(configure(), findsWidgets);
     });
 
     testWidgets('modèle déjà installé : détecte, ne télécharge rien, prêt', (
@@ -97,7 +99,7 @@ void main() {
       expect(isReady(tester), isTrue);
       await openNote(tester);
       expect(find.text('Point équipe'), findsWidgets);
-      expect(configure, findsNothing);
+      expect(configure(), findsNothing);
     });
   });
 
@@ -109,10 +111,10 @@ void main() {
       final FakeOllamaService service = await pumpApp(tester, installed: false);
       await goTo(tester, 'nav.settings');
 
-      expect(install.hitTestable(), findsOneWidget);
+      expect(install().hitTestable(), findsOneWidget);
       expect(service.installCalls, 0);
 
-      await tester.tap(install);
+      await tester.tap(install());
       await settle(tester);
       expect(service.installCalls, 1);
 
@@ -134,9 +136,9 @@ void main() {
       await settle(tester);
 
       expect(isReady(tester), isTrue);
-      expect(install, findsNothing);
+      expect(install(), findsNothing);
       await openNote(tester);
-      expect(configure, findsNothing);
+      expect(configure(), findsNothing);
     });
 
     testWidgets('après une erreur, on peut relancer l\'installation', (
@@ -144,7 +146,7 @@ void main() {
     ) async {
       final FakeOllamaService service = await pumpApp(tester, installed: false);
       await goTo(tester, 'nav.settings');
-      await tester.tap(install);
+      await tester.tap(install());
       await settle(tester);
 
       service.installRun!.completeError(Exception('réseau coupé'));
@@ -154,7 +156,7 @@ void main() {
 
       final Finder retry = find.text('common.action.retry'.tr()).hitTestable();
       await tester.tap(
-        retry.evaluate().isNotEmpty ? retry.first : install.hitTestable().first,
+        retry.evaluate().isNotEmpty ? retry.first : install().hitTestable().first,
       );
       await settle(tester);
       expect(service.installCalls, 2);
@@ -167,7 +169,7 @@ void main() {
       await goTo(tester, 'nav.settings');
 
       expect(find.textContaining('settings.local_model.ready'.tr()), findsOneWidget);
-      expect(install, findsNothing);
+      expect(install(), findsNothing);
       expect(service.installCalls, 0);
     });
   });

@@ -81,7 +81,8 @@ void main() {
     await settle(tester);
   }
 
-  final Finder configure = find.textContaining('llm.configure_model'.tr());
+  // Évalué à l'usage : .tr() doit tourner après le chargement des traductions.
+  Finder configure() => find.textContaining('llm.configure_model'.tr());
 
   group('modèle local non installé', () {
     for (final String action in <String>[
@@ -98,7 +99,7 @@ void main() {
 
         expect(ollama.ensureReadyCalls, 0, reason: 'téléchargement silencieux');
         expect(ollama.summarizeCalls + ollama.analyzeCalls, 0);
-        expect(configure, findsWidgets);
+        expect(configure(), findsWidgets);
         expect(find.textContaining('Erreur'), findsNothing);
       });
     }
@@ -111,7 +112,7 @@ void main() {
       await tapAction(tester, 'history.detail.summarize');
 
       expect(find.textContaining(InstantOllamaService.summary), findsOneWidget);
-      expect(configure, findsNothing);
+      expect(configure(), findsNothing);
     });
 
     testWidgets('Coach anglais affiche le retour', (WidgetTester tester) async {
