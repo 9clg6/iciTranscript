@@ -52,7 +52,16 @@ void main() {
       Object? outcome;
       b.dataSource
           .connect(systemAudioEnabled: false)
-          .then((_) => outcome = 'ok', onError: (Object e) => outcome = e);
+          .then<void>(
+            (_) {
+              outcome = 'ok';
+            },
+            // Corps en bloc : `(e) => outcome = e` ferait inférer
+            // then<String>, et Dart refuserait ce handler à l'erreur.
+            onError: (Object e) {
+              outcome = e;
+            },
+          );
       async.elapse(const Duration(seconds: 15));
 
       expect(outcome, isNotNull, reason: 'connect ne doit pas pendre');

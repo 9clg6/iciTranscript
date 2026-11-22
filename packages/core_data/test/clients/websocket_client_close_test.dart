@@ -62,7 +62,16 @@ void main() {
       Object? outcome;
       client
           .connect('ws://test')
-          .then((_) => outcome = 'ok', onError: (Object e) => outcome = e);
+          .then<void>(
+            (_) {
+              outcome = 'ok';
+            },
+            // Corps en bloc : `(e) => outcome = e` ferait inférer
+            // then<String>, et Dart refuserait ce handler à l'erreur.
+            onError: (Object e) {
+              outcome = e;
+            },
+          );
       async.elapse(const Duration(seconds: 11));
 
       expect(outcome, isNotNull);
