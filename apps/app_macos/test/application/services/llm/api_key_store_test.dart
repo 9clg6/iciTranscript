@@ -89,6 +89,26 @@ void main() {
     test('lire une clé jamais écrite renvoie null', () async {
       expect(await store.read(LlmProviderId.openai), isNull);
     });
+
+    test('une clé est rangée sans les blancs autour', () async {
+      await store.write(LlmProviderId.openai, '  sk-openai-test \n');
+
+      expect(await store.read(LlmProviderId.openai), 'sk-openai-test');
+      expect(keychain.items.values, <String>['sk-openai-test']);
+    });
+
+    test('écrire une clé vide ou faite de blancs revient à la supprimer',
+        () async {
+      for (final String blank in <String>['', '   \n\t']) {
+        await store.write(LlmProviderId.anthropic, _key);
+
+        await store.write(LlmProviderId.anthropic, blank);
+
+        expect(await store.read(LlmProviderId.anthropic), isNull,
+            reason: 'clé "$blank"');
+        expect(keychain.items, isEmpty, reason: 'clé "$blank"');
+      }
+    });
   });
 
   group('la clé ne quitte pas le trousseau', () {
@@ -200,6 +220,54 @@ void main() {
 
       expect(await selection.isConfigured(LlmProviderId.gemini), isFalse);
       expect(await selection.activeProvider(), LlmProviderId.ollama);
+    });
+
+    test('Ollama compte toujours comme configuré, sans clé', () async {
+      expect(await selection.isConfigured(LlmProviderId.ollama), isTrue);
+
+      await store.write(LlmProviderId.anthropic, _key);
+
+      expect(await selection.isConfigured(LlmProviderId.ollama), isTrue);
+    });
+
+    test('sans choix, le premier configuré gagne dans l’ordre anthropic, '
+        'openai, gemini', () async {
+      await store.write(LlmProviderId.gemini, 'gemini-test-key');
+      await store.write(LlmProviderId.openai, 'sk-openai-test');
+      expect(await selection.activeProvider(), LlmProviderId.openai);
+
+      await store.write(LlmProviderId.anthropic, _key);
+      expect(await selection.activeProvider(), LlmProviderId.anthropic);
+    });
+
+    test('le choix de l’utilisateur gagne quand son fournisseur est configuré',
+        () async {
+      await store.write(LlmProviderId.anthropic, _key);
+      await store.write(LlmProviderId.gemini, 'gemini-test-key');
+
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.gemini),
+        LlmProviderId.gemini,
+      );
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.ollama),
+        LlmProviderId.ollama,
+      );
+    });
+
+    test('un choix sans clé est ignoré : premier configuré, sinon Ollama',
+        () async {
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.openai),
+        LlmProviderId.ollama,
+      );
+
+      await store.write(LlmProviderId.gemini, 'gemini-test-key');
+
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.openai),
+        LlmProviderId.gemini,
+      );
     });
   });
 }
