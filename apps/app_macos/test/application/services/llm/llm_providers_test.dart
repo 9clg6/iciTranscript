@@ -70,20 +70,21 @@ const String _anthropicStream =
     'data: {"type": "message_stop"}\n'
     '\n';
 
-// Fixture d'apres les exemples de chat.completion.chunk (premier morceau avec
-// le seul role, deltas de contenu, morceau finish_reason, puis data: [DONE]) :
+// Fixture reassemblee d'apres les fragments cites des exemples de
+// chat.completion.chunk (premier morceau avec le seul role, deltas de contenu,
+// morceau finish_reason, champ obfuscation, puis data: [DONE]) :
 // https://developers.openai.com/api/reference/resources/chat
 // (consulte le 2026-11-22).
 const String _openAiStream =
-    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}]}\n'
+    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"obfuscation":"r4N7vQ2m"}\n'
     '\n'
-    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"content":"Le budget"},"logprobs":null,"finish_reason":null}]}\n'
+    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"content":"Le budget"},"logprobs":null,"finish_reason":null}],"obfuscation":"r4N7vQ2m"}\n'
     '\n'
-    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"content":" est validé"},"logprobs":null,"finish_reason":null}]}\n'
+    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"content":" est validé"},"logprobs":null,"finish_reason":null}],"obfuscation":"r4N7vQ2m"}\n'
     '\n'
-    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}]}\n'
+    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":null}],"obfuscation":"r4N7vQ2m"}\n'
     '\n'
-    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}]}\n'
+    'data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"gpt-6-luna","system_fingerprint":"fp_44709d6fcb","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"obfuscation":"r4N7vQ2m"}\n'
     '\n'
     'data: [DONE]\n'
     '\n';
@@ -98,11 +99,11 @@ const String _openAiStream =
 // ("Streaming mode: The response body contains a stream of
 // GenerateContentResponse instances"), consultes le 2026-11-22.
 const String _geminiStream =
-    'data: {"candidates": [{"content": {"parts": [{"text": "Le budget"}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 12,"candidatesTokenCount": 2,"totalTokenCount": 14},"modelVersion": "gemini-3.5-flash-lite"}\n'
+    'data: {"candidates": [{"content": {"parts": [{"text": "Le budget"}],"role": "model"}}],"usageMetadata": {"promptTokenCount": 12,"candidatesTokenCount": 2,"totalTokenCount": 14}}\n'
     '\n'
-    'data: {"candidates": [{"content": {"parts": [{"text": " est validé"}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 12,"candidatesTokenCount": 5,"totalTokenCount": 17},"modelVersion": "gemini-3.5-flash-lite"}\n'
+    'data: {"candidates": [{"content": {"parts": [{"text": " est validé"}],"role": "model"}}],"usageMetadata": {"promptTokenCount": 12,"candidatesTokenCount": 5,"totalTokenCount": 17}}\n'
     '\n'
-    'data: {"candidates": [{"content": {"parts": [{"text": "."}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 12,"candidatesTokenCount": 6,"totalTokenCount": 18},"modelVersion": "gemini-3.5-flash-lite"}\n'
+    'data: {"candidates": [{"content": {"parts": [{"text": "."}],"role": "model"},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 12,"candidatesTokenCount": 6,"totalTokenCount": 18}}\n'
     '\n';
 
 // Fixture CONSTRUITE d'apres le schema ChatStreamEvent (application/x-ndjson :
@@ -115,7 +116,7 @@ const String _ollamaStream =
     '{"model":"mistral","created_at":"2026-11-22T10:00:00.000000Z","message":{"role":"assistant","content":"Le budget"},"done":false}\n'
     '{"model":"mistral","created_at":"2026-11-22T10:00:00.100000Z","message":{"role":"assistant","content":" est validé"},"done":false}\n'
     '{"model":"mistral","created_at":"2026-11-22T10:00:00.200000Z","message":{"role":"assistant","content":"."},"done":false}\n'
-    '{"model":"mistral","created_at":"2026-11-22T10:00:00.300000Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","total_duration":174560334,"eval_count":6}\n';
+    '{"model":"mistral","created_at":"2026-11-22T10:00:00.300000Z","message":{"role":"assistant","content":""},"done":true}\n';
 
 /// Un fournisseur sous test, construit sur un transport factice.
 class _Case {

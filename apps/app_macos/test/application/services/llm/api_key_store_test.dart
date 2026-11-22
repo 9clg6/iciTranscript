@@ -103,9 +103,12 @@ void main() {
           // Temoin : l'interception des fichiers est bien active.
           File('probe.json');
 
-          await store.write(LlmProviderId.anthropic, _key);
-          await store.read(LlmProviderId.anthropic);
-          await store.delete(LlmProviderId.anthropic);
+          // Construit dans la zone : un fichier ouvert des le constructeur
+          // est intercepte lui aussi.
+          final ApiKeyStore zonedStore = KeychainApiKeyStore();
+          await zonedStore.write(LlmProviderId.anthropic, _key);
+          await zonedStore.read(LlmProviderId.anthropic);
+          await zonedStore.delete(LlmProviderId.anthropic);
         },
         // Tout fichier ouvert pendant le test est redirige vers un dossier
         // temporaire : le vrai prefs.json de l'utilisateur n'est jamais
