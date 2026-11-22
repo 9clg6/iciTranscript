@@ -26,6 +26,8 @@ void main() {
       'transcription.live.finalising': 'Finalisation de la transcription…',
       'transcription.live.finalising_remaining': '~{} s',
       'transcription.live.skip_finalising': 'Passer',
+      // Barre latérale pendant la finalisation (remplace « Enregistre »).
+      'transcription.live.finalising_short': 'Finalisation…',
     };
     exact.forEach((String key, String value) {
       test('$key = « $value »', () => expect(frValue(key), value));
