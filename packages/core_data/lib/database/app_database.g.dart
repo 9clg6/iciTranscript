@@ -68,6 +68,39 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _calendarEventIdMeta = const VerificationMeta(
+    'calendarEventId',
+  );
+  @override
+  late final GeneratedColumn<String> calendarEventId = GeneratedColumn<String>(
+    'calendar_event_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _calendarEventTitleMeta =
+      const VerificationMeta('calendarEventTitle');
+  @override
+  late final GeneratedColumn<String> calendarEventTitle =
+      GeneratedColumn<String>(
+        'calendar_event_title',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _attendeesMeta = const VerificationMeta(
+    'attendees',
+  );
+  @override
+  late final GeneratedColumn<String> attendees = GeneratedColumn<String>(
+    'attendees',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -76,6 +109,9 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     updatedAt,
     durationSeconds,
     status,
+    calendarEventId,
+    calendarEventTitle,
+    attendees,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -135,6 +171,30 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     } else if (isInserting) {
       context.missing(_statusMeta);
     }
+    if (data.containsKey('calendar_event_id')) {
+      context.handle(
+        _calendarEventIdMeta,
+        calendarEventId.isAcceptableOrUnknown(
+          data['calendar_event_id']!,
+          _calendarEventIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('calendar_event_title')) {
+      context.handle(
+        _calendarEventTitleMeta,
+        calendarEventTitle.isAcceptableOrUnknown(
+          data['calendar_event_title']!,
+          _calendarEventTitleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('attendees')) {
+      context.handle(
+        _attendeesMeta,
+        attendees.isAcceptableOrUnknown(data['attendees']!, _attendeesMeta),
+      );
+    }
     return context;
   }
 
@@ -168,6 +228,18 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.string,
         data['${effectivePrefix}status'],
       )!,
+      calendarEventId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}calendar_event_id'],
+      ),
+      calendarEventTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}calendar_event_title'],
+      ),
+      attendees: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}attendees'],
+      ),
     );
   }
 
@@ -195,6 +267,15 @@ class Session extends DataClass implements Insertable<Session> {
 
   /// Statut de la session (active, completed, error).
   final String status;
+
+  /// Identifiant de l'evenement d'agenda rattache (schema v2).
+  final String? calendarEventId;
+
+  /// Titre de l'evenement d'agenda rattache (schema v2).
+  final String? calendarEventTitle;
+
+  /// Participants, liste JSON de noms (schema v2).
+  final String? attendees;
   const Session({
     required this.id,
     required this.title,
@@ -202,6 +283,9 @@ class Session extends DataClass implements Insertable<Session> {
     required this.updatedAt,
     this.durationSeconds,
     required this.status,
+    this.calendarEventId,
+    this.calendarEventTitle,
+    this.attendees,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -214,6 +298,15 @@ class Session extends DataClass implements Insertable<Session> {
       map['duration_seconds'] = Variable<int>(durationSeconds);
     }
     map['status'] = Variable<String>(status);
+    if (!nullToAbsent || calendarEventId != null) {
+      map['calendar_event_id'] = Variable<String>(calendarEventId);
+    }
+    if (!nullToAbsent || calendarEventTitle != null) {
+      map['calendar_event_title'] = Variable<String>(calendarEventTitle);
+    }
+    if (!nullToAbsent || attendees != null) {
+      map['attendees'] = Variable<String>(attendees);
+    }
     return map;
   }
 
@@ -227,6 +320,15 @@ class Session extends DataClass implements Insertable<Session> {
           ? const Value.absent()
           : Value(durationSeconds),
       status: Value(status),
+      calendarEventId: calendarEventId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(calendarEventId),
+      calendarEventTitle: calendarEventTitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(calendarEventTitle),
+      attendees: attendees == null && nullToAbsent
+          ? const Value.absent()
+          : Value(attendees),
     );
   }
 
@@ -242,6 +344,11 @@ class Session extends DataClass implements Insertable<Session> {
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
       durationSeconds: serializer.fromJson<int?>(json['durationSeconds']),
       status: serializer.fromJson<String>(json['status']),
+      calendarEventId: serializer.fromJson<String?>(json['calendarEventId']),
+      calendarEventTitle: serializer.fromJson<String?>(
+        json['calendarEventTitle'],
+      ),
+      attendees: serializer.fromJson<String?>(json['attendees']),
     );
   }
   @override
@@ -254,6 +361,9 @@ class Session extends DataClass implements Insertable<Session> {
       'updatedAt': serializer.toJson<String>(updatedAt),
       'durationSeconds': serializer.toJson<int?>(durationSeconds),
       'status': serializer.toJson<String>(status),
+      'calendarEventId': serializer.toJson<String?>(calendarEventId),
+      'calendarEventTitle': serializer.toJson<String?>(calendarEventTitle),
+      'attendees': serializer.toJson<String?>(attendees),
     };
   }
 
@@ -264,6 +374,9 @@ class Session extends DataClass implements Insertable<Session> {
     String? updatedAt,
     Value<int?> durationSeconds = const Value.absent(),
     String? status,
+    Value<String?> calendarEventId = const Value.absent(),
+    Value<String?> calendarEventTitle = const Value.absent(),
+    Value<String?> attendees = const Value.absent(),
   }) => Session(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -273,6 +386,13 @@ class Session extends DataClass implements Insertable<Session> {
         ? durationSeconds.value
         : this.durationSeconds,
     status: status ?? this.status,
+    calendarEventId: calendarEventId.present
+        ? calendarEventId.value
+        : this.calendarEventId,
+    calendarEventTitle: calendarEventTitle.present
+        ? calendarEventTitle.value
+        : this.calendarEventTitle,
+    attendees: attendees.present ? attendees.value : this.attendees,
   );
   Session copyWithCompanion(SessionsCompanion data) {
     return Session(
@@ -284,6 +404,13 @@ class Session extends DataClass implements Insertable<Session> {
           ? data.durationSeconds.value
           : this.durationSeconds,
       status: data.status.present ? data.status.value : this.status,
+      calendarEventId: data.calendarEventId.present
+          ? data.calendarEventId.value
+          : this.calendarEventId,
+      calendarEventTitle: data.calendarEventTitle.present
+          ? data.calendarEventTitle.value
+          : this.calendarEventTitle,
+      attendees: data.attendees.present ? data.attendees.value : this.attendees,
     );
   }
 
@@ -295,14 +422,26 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('durationSeconds: $durationSeconds, ')
-          ..write('status: $status')
+          ..write('status: $status, ')
+          ..write('calendarEventId: $calendarEventId, ')
+          ..write('calendarEventTitle: $calendarEventTitle, ')
+          ..write('attendees: $attendees')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, title, createdAt, updatedAt, durationSeconds, status);
+  int get hashCode => Object.hash(
+    id,
+    title,
+    createdAt,
+    updatedAt,
+    durationSeconds,
+    status,
+    calendarEventId,
+    calendarEventTitle,
+    attendees,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -312,7 +451,10 @@ class Session extends DataClass implements Insertable<Session> {
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.durationSeconds == this.durationSeconds &&
-          other.status == this.status);
+          other.status == this.status &&
+          other.calendarEventId == this.calendarEventId &&
+          other.calendarEventTitle == this.calendarEventTitle &&
+          other.attendees == this.attendees);
 }
 
 class SessionsCompanion extends UpdateCompanion<Session> {
@@ -322,6 +464,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<String> updatedAt;
   final Value<int?> durationSeconds;
   final Value<String> status;
+  final Value<String?> calendarEventId;
+  final Value<String?> calendarEventTitle;
+  final Value<String?> attendees;
   final Value<int> rowid;
   const SessionsCompanion({
     this.id = const Value.absent(),
@@ -330,6 +475,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.updatedAt = const Value.absent(),
     this.durationSeconds = const Value.absent(),
     this.status = const Value.absent(),
+    this.calendarEventId = const Value.absent(),
+    this.calendarEventTitle = const Value.absent(),
+    this.attendees = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SessionsCompanion.insert({
@@ -339,6 +487,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     required String updatedAt,
     this.durationSeconds = const Value.absent(),
     required String status,
+    this.calendarEventId = const Value.absent(),
+    this.calendarEventTitle = const Value.absent(),
+    this.attendees = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -352,6 +503,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<String>? updatedAt,
     Expression<int>? durationSeconds,
     Expression<String>? status,
+    Expression<String>? calendarEventId,
+    Expression<String>? calendarEventTitle,
+    Expression<String>? attendees,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -361,6 +515,10 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (updatedAt != null) 'updated_at': updatedAt,
       if (durationSeconds != null) 'duration_seconds': durationSeconds,
       if (status != null) 'status': status,
+      if (calendarEventId != null) 'calendar_event_id': calendarEventId,
+      if (calendarEventTitle != null)
+        'calendar_event_title': calendarEventTitle,
+      if (attendees != null) 'attendees': attendees,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -372,6 +530,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<String>? updatedAt,
     Value<int?>? durationSeconds,
     Value<String>? status,
+    Value<String?>? calendarEventId,
+    Value<String?>? calendarEventTitle,
+    Value<String?>? attendees,
     Value<int>? rowid,
   }) {
     return SessionsCompanion(
@@ -381,6 +542,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       updatedAt: updatedAt ?? this.updatedAt,
       durationSeconds: durationSeconds ?? this.durationSeconds,
       status: status ?? this.status,
+      calendarEventId: calendarEventId ?? this.calendarEventId,
+      calendarEventTitle: calendarEventTitle ?? this.calendarEventTitle,
+      attendees: attendees ?? this.attendees,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -406,6 +570,15 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (calendarEventId.present) {
+      map['calendar_event_id'] = Variable<String>(calendarEventId.value);
+    }
+    if (calendarEventTitle.present) {
+      map['calendar_event_title'] = Variable<String>(calendarEventTitle.value);
+    }
+    if (attendees.present) {
+      map['attendees'] = Variable<String>(attendees.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -421,6 +594,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('updatedAt: $updatedAt, ')
           ..write('durationSeconds: $durationSeconds, ')
           ..write('status: $status, ')
+          ..write('calendarEventId: $calendarEventId, ')
+          ..write('calendarEventTitle: $calendarEventTitle, ')
+          ..write('attendees: $attendees, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -498,6 +674,17 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _speakerMeta = const VerificationMeta(
+    'speaker',
+  );
+  @override
+  late final GeneratedColumn<String> speaker = GeneratedColumn<String>(
+    'speaker',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -506,6 +693,7 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     textContent,
     timestampMs,
     createdAt,
+    speaker,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -570,6 +758,12 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('speaker')) {
+      context.handle(
+        _speakerMeta,
+        speaker.isAcceptableOrUnknown(data['speaker']!, _speakerMeta),
+      );
+    }
     return context;
   }
 
@@ -603,6 +797,10 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.string,
         data['${effectivePrefix}created_at'],
       )!,
+      speaker: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}speaker'],
+      ),
     );
   }
 
@@ -631,6 +829,9 @@ class TranscriptSegment extends DataClass
 
   /// Date de creation au format ISO 8601.
   final String createdAt;
+
+  /// Locuteur du segment, ex. "Intervenant 2" (schema v2).
+  final String? speaker;
   const TranscriptSegment({
     required this.id,
     required this.sessionId,
@@ -638,6 +839,7 @@ class TranscriptSegment extends DataClass
     required this.textContent,
     required this.timestampMs,
     required this.createdAt,
+    this.speaker,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -648,6 +850,9 @@ class TranscriptSegment extends DataClass
     map['text_content'] = Variable<String>(textContent);
     map['timestamp_ms'] = Variable<int>(timestampMs);
     map['created_at'] = Variable<String>(createdAt);
+    if (!nullToAbsent || speaker != null) {
+      map['speaker'] = Variable<String>(speaker);
+    }
     return map;
   }
 
@@ -659,6 +864,9 @@ class TranscriptSegment extends DataClass
       textContent: Value(textContent),
       timestampMs: Value(timestampMs),
       createdAt: Value(createdAt),
+      speaker: speaker == null && nullToAbsent
+          ? const Value.absent()
+          : Value(speaker),
     );
   }
 
@@ -674,6 +882,7 @@ class TranscriptSegment extends DataClass
       textContent: serializer.fromJson<String>(json['textContent']),
       timestampMs: serializer.fromJson<int>(json['timestampMs']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
+      speaker: serializer.fromJson<String?>(json['speaker']),
     );
   }
   @override
@@ -686,6 +895,7 @@ class TranscriptSegment extends DataClass
       'textContent': serializer.toJson<String>(textContent),
       'timestampMs': serializer.toJson<int>(timestampMs),
       'createdAt': serializer.toJson<String>(createdAt),
+      'speaker': serializer.toJson<String?>(speaker),
     };
   }
 
@@ -696,6 +906,7 @@ class TranscriptSegment extends DataClass
     String? textContent,
     int? timestampMs,
     String? createdAt,
+    Value<String?> speaker = const Value.absent(),
   }) => TranscriptSegment(
     id: id ?? this.id,
     sessionId: sessionId ?? this.sessionId,
@@ -703,6 +914,7 @@ class TranscriptSegment extends DataClass
     textContent: textContent ?? this.textContent,
     timestampMs: timestampMs ?? this.timestampMs,
     createdAt: createdAt ?? this.createdAt,
+    speaker: speaker.present ? speaker.value : this.speaker,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -716,6 +928,7 @@ class TranscriptSegment extends DataClass
           ? data.timestampMs.value
           : this.timestampMs,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      speaker: data.speaker.present ? data.speaker.value : this.speaker,
     );
   }
 
@@ -727,14 +940,22 @@ class TranscriptSegment extends DataClass
           ..write('source: $source, ')
           ..write('textContent: $textContent, ')
           ..write('timestampMs: $timestampMs, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('speaker: $speaker')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, sessionId, source, textContent, timestampMs, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    sessionId,
+    source,
+    textContent,
+    timestampMs,
+    createdAt,
+    speaker,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -744,7 +965,8 @@ class TranscriptSegment extends DataClass
           other.source == this.source &&
           other.textContent == this.textContent &&
           other.timestampMs == this.timestampMs &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.speaker == this.speaker);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -754,6 +976,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<String> textContent;
   final Value<int> timestampMs;
   final Value<String> createdAt;
+  final Value<String?> speaker;
   final Value<int> rowid;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
@@ -762,6 +985,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.textContent = const Value.absent(),
     this.timestampMs = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.speaker = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
@@ -771,6 +995,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     required String textContent,
     required int timestampMs,
     required String createdAt,
+    this.speaker = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        sessionId = Value(sessionId),
@@ -785,6 +1010,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<String>? textContent,
     Expression<int>? timestampMs,
     Expression<String>? createdAt,
+    Expression<String>? speaker,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -794,6 +1020,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (textContent != null) 'text_content': textContent,
       if (timestampMs != null) 'timestamp_ms': timestampMs,
       if (createdAt != null) 'created_at': createdAt,
+      if (speaker != null) 'speaker': speaker,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -805,6 +1032,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<String>? textContent,
     Value<int>? timestampMs,
     Value<String>? createdAt,
+    Value<String?>? speaker,
     Value<int>? rowid,
   }) {
     return TranscriptSegmentsCompanion(
@@ -814,6 +1042,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       textContent: textContent ?? this.textContent,
       timestampMs: timestampMs ?? this.timestampMs,
       createdAt: createdAt ?? this.createdAt,
+      speaker: speaker ?? this.speaker,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -839,6 +1068,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (createdAt.present) {
       map['created_at'] = Variable<String>(createdAt.value);
     }
+    if (speaker.present) {
+      map['speaker'] = Variable<String>(speaker.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -854,6 +1086,7 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('textContent: $textContent, ')
           ..write('timestampMs: $timestampMs, ')
           ..write('createdAt: $createdAt, ')
+          ..write('speaker: $speaker, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1232,6 +1465,1234 @@ class SummariesCompanion extends UpdateCompanion<Summary> {
   }
 }
 
+class $DetectedQuestionsTable extends DetectedQuestions
+    with TableInfo<$DetectedQuestionsTable, DetectedQuestion> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DetectedQuestionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sessionIdMeta = const VerificationMeta(
+    'sessionId',
+  );
+  @override
+  late final GeneratedColumn<String> sessionId = GeneratedColumn<String>(
+    'session_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES sessions (id)',
+    ),
+  );
+  static const VerificationMeta _segmentIdMeta = const VerificationMeta(
+    'segmentId',
+  );
+  @override
+  late final GeneratedColumn<String> segmentId = GeneratedColumn<String>(
+    'segment_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _questionMeta = const VerificationMeta(
+    'question',
+  );
+  @override
+  late final GeneratedColumn<String> question = GeneratedColumn<String>(
+    'question',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _timestampMsMeta = const VerificationMeta(
+    'timestampMs',
+  );
+  @override
+  late final GeneratedColumn<int> timestampMs = GeneratedColumn<int>(
+    'timestamp_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _answerMeta = const VerificationMeta('answer');
+  @override
+  late final GeneratedColumn<String> answer = GeneratedColumn<String>(
+    'answer',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _answerModelMeta = const VerificationMeta(
+    'answerModel',
+  );
+  @override
+  late final GeneratedColumn<String> answerModel = GeneratedColumn<String>(
+    'answer_model',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourcesMeta = const VerificationMeta(
+    'sources',
+  );
+  @override
+  late final GeneratedColumn<String> sources = GeneratedColumn<String>(
+    'sources',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    sessionId,
+    segmentId,
+    question,
+    timestampMs,
+    answer,
+    answerModel,
+    sources,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'detected_questions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DetectedQuestion> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('session_id')) {
+      context.handle(
+        _sessionIdMeta,
+        sessionId.isAcceptableOrUnknown(data['session_id']!, _sessionIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sessionIdMeta);
+    }
+    if (data.containsKey('segment_id')) {
+      context.handle(
+        _segmentIdMeta,
+        segmentId.isAcceptableOrUnknown(data['segment_id']!, _segmentIdMeta),
+      );
+    }
+    if (data.containsKey('question')) {
+      context.handle(
+        _questionMeta,
+        question.isAcceptableOrUnknown(data['question']!, _questionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_questionMeta);
+    }
+    if (data.containsKey('timestamp_ms')) {
+      context.handle(
+        _timestampMsMeta,
+        timestampMs.isAcceptableOrUnknown(
+          data['timestamp_ms']!,
+          _timestampMsMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_timestampMsMeta);
+    }
+    if (data.containsKey('answer')) {
+      context.handle(
+        _answerMeta,
+        answer.isAcceptableOrUnknown(data['answer']!, _answerMeta),
+      );
+    }
+    if (data.containsKey('answer_model')) {
+      context.handle(
+        _answerModelMeta,
+        answerModel.isAcceptableOrUnknown(
+          data['answer_model']!,
+          _answerModelMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sources')) {
+      context.handle(
+        _sourcesMeta,
+        sources.isAcceptableOrUnknown(data['sources']!, _sourcesMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DetectedQuestion map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DetectedQuestion(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      sessionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}session_id'],
+      )!,
+      segmentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}segment_id'],
+      ),
+      question: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}question'],
+      )!,
+      timestampMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}timestamp_ms'],
+      )!,
+      answer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}answer'],
+      ),
+      answerModel: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}answer_model'],
+      ),
+      sources: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sources'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DetectedQuestionsTable createAlias(String alias) {
+    return $DetectedQuestionsTable(attachedDatabase, alias);
+  }
+}
+
+class DetectedQuestion extends DataClass
+    implements Insertable<DetectedQuestion> {
+  /// Identifiant unique de la question.
+  final String id;
+
+  /// Identifiant de la session parente (supprimee avec elle, par trigger).
+  final String sessionId;
+
+  /// Segment d'ou vient la question, s'il est connu.
+  final String? segmentId;
+
+  /// Texte de la question.
+  final String question;
+
+  /// Offset en millisecondes depuis le debut de la session.
+  final int timestampMs;
+
+  /// Reponse proposee, null tant qu'elle n'est pas generee.
+  final String? answer;
+
+  /// Modele qui a genere la reponse.
+  final String? answerModel;
+
+  /// Sources de la reponse, liste JSON {documentId, title, excerpt}.
+  final String? sources;
+
+  /// Date de creation au format ISO 8601.
+  final String createdAt;
+  const DetectedQuestion({
+    required this.id,
+    required this.sessionId,
+    this.segmentId,
+    required this.question,
+    required this.timestampMs,
+    this.answer,
+    this.answerModel,
+    this.sources,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['session_id'] = Variable<String>(sessionId);
+    if (!nullToAbsent || segmentId != null) {
+      map['segment_id'] = Variable<String>(segmentId);
+    }
+    map['question'] = Variable<String>(question);
+    map['timestamp_ms'] = Variable<int>(timestampMs);
+    if (!nullToAbsent || answer != null) {
+      map['answer'] = Variable<String>(answer);
+    }
+    if (!nullToAbsent || answerModel != null) {
+      map['answer_model'] = Variable<String>(answerModel);
+    }
+    if (!nullToAbsent || sources != null) {
+      map['sources'] = Variable<String>(sources);
+    }
+    map['created_at'] = Variable<String>(createdAt);
+    return map;
+  }
+
+  DetectedQuestionsCompanion toCompanion(bool nullToAbsent) {
+    return DetectedQuestionsCompanion(
+      id: Value(id),
+      sessionId: Value(sessionId),
+      segmentId: segmentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(segmentId),
+      question: Value(question),
+      timestampMs: Value(timestampMs),
+      answer: answer == null && nullToAbsent
+          ? const Value.absent()
+          : Value(answer),
+      answerModel: answerModel == null && nullToAbsent
+          ? const Value.absent()
+          : Value(answerModel),
+      sources: sources == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sources),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DetectedQuestion.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DetectedQuestion(
+      id: serializer.fromJson<String>(json['id']),
+      sessionId: serializer.fromJson<String>(json['sessionId']),
+      segmentId: serializer.fromJson<String?>(json['segmentId']),
+      question: serializer.fromJson<String>(json['question']),
+      timestampMs: serializer.fromJson<int>(json['timestampMs']),
+      answer: serializer.fromJson<String?>(json['answer']),
+      answerModel: serializer.fromJson<String?>(json['answerModel']),
+      sources: serializer.fromJson<String?>(json['sources']),
+      createdAt: serializer.fromJson<String>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'sessionId': serializer.toJson<String>(sessionId),
+      'segmentId': serializer.toJson<String?>(segmentId),
+      'question': serializer.toJson<String>(question),
+      'timestampMs': serializer.toJson<int>(timestampMs),
+      'answer': serializer.toJson<String?>(answer),
+      'answerModel': serializer.toJson<String?>(answerModel),
+      'sources': serializer.toJson<String?>(sources),
+      'createdAt': serializer.toJson<String>(createdAt),
+    };
+  }
+
+  DetectedQuestion copyWith({
+    String? id,
+    String? sessionId,
+    Value<String?> segmentId = const Value.absent(),
+    String? question,
+    int? timestampMs,
+    Value<String?> answer = const Value.absent(),
+    Value<String?> answerModel = const Value.absent(),
+    Value<String?> sources = const Value.absent(),
+    String? createdAt,
+  }) => DetectedQuestion(
+    id: id ?? this.id,
+    sessionId: sessionId ?? this.sessionId,
+    segmentId: segmentId.present ? segmentId.value : this.segmentId,
+    question: question ?? this.question,
+    timestampMs: timestampMs ?? this.timestampMs,
+    answer: answer.present ? answer.value : this.answer,
+    answerModel: answerModel.present ? answerModel.value : this.answerModel,
+    sources: sources.present ? sources.value : this.sources,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DetectedQuestion copyWithCompanion(DetectedQuestionsCompanion data) {
+    return DetectedQuestion(
+      id: data.id.present ? data.id.value : this.id,
+      sessionId: data.sessionId.present ? data.sessionId.value : this.sessionId,
+      segmentId: data.segmentId.present ? data.segmentId.value : this.segmentId,
+      question: data.question.present ? data.question.value : this.question,
+      timestampMs: data.timestampMs.present
+          ? data.timestampMs.value
+          : this.timestampMs,
+      answer: data.answer.present ? data.answer.value : this.answer,
+      answerModel: data.answerModel.present
+          ? data.answerModel.value
+          : this.answerModel,
+      sources: data.sources.present ? data.sources.value : this.sources,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DetectedQuestion(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('segmentId: $segmentId, ')
+          ..write('question: $question, ')
+          ..write('timestampMs: $timestampMs, ')
+          ..write('answer: $answer, ')
+          ..write('answerModel: $answerModel, ')
+          ..write('sources: $sources, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    sessionId,
+    segmentId,
+    question,
+    timestampMs,
+    answer,
+    answerModel,
+    sources,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DetectedQuestion &&
+          other.id == this.id &&
+          other.sessionId == this.sessionId &&
+          other.segmentId == this.segmentId &&
+          other.question == this.question &&
+          other.timestampMs == this.timestampMs &&
+          other.answer == this.answer &&
+          other.answerModel == this.answerModel &&
+          other.sources == this.sources &&
+          other.createdAt == this.createdAt);
+}
+
+class DetectedQuestionsCompanion extends UpdateCompanion<DetectedQuestion> {
+  final Value<String> id;
+  final Value<String> sessionId;
+  final Value<String?> segmentId;
+  final Value<String> question;
+  final Value<int> timestampMs;
+  final Value<String?> answer;
+  final Value<String?> answerModel;
+  final Value<String?> sources;
+  final Value<String> createdAt;
+  final Value<int> rowid;
+  const DetectedQuestionsCompanion({
+    this.id = const Value.absent(),
+    this.sessionId = const Value.absent(),
+    this.segmentId = const Value.absent(),
+    this.question = const Value.absent(),
+    this.timestampMs = const Value.absent(),
+    this.answer = const Value.absent(),
+    this.answerModel = const Value.absent(),
+    this.sources = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DetectedQuestionsCompanion.insert({
+    required String id,
+    required String sessionId,
+    this.segmentId = const Value.absent(),
+    required String question,
+    required int timestampMs,
+    this.answer = const Value.absent(),
+    this.answerModel = const Value.absent(),
+    this.sources = const Value.absent(),
+    required String createdAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       sessionId = Value(sessionId),
+       question = Value(question),
+       timestampMs = Value(timestampMs),
+       createdAt = Value(createdAt);
+  static Insertable<DetectedQuestion> custom({
+    Expression<String>? id,
+    Expression<String>? sessionId,
+    Expression<String>? segmentId,
+    Expression<String>? question,
+    Expression<int>? timestampMs,
+    Expression<String>? answer,
+    Expression<String>? answerModel,
+    Expression<String>? sources,
+    Expression<String>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (sessionId != null) 'session_id': sessionId,
+      if (segmentId != null) 'segment_id': segmentId,
+      if (question != null) 'question': question,
+      if (timestampMs != null) 'timestamp_ms': timestampMs,
+      if (answer != null) 'answer': answer,
+      if (answerModel != null) 'answer_model': answerModel,
+      if (sources != null) 'sources': sources,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DetectedQuestionsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? sessionId,
+    Value<String?>? segmentId,
+    Value<String>? question,
+    Value<int>? timestampMs,
+    Value<String?>? answer,
+    Value<String?>? answerModel,
+    Value<String?>? sources,
+    Value<String>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return DetectedQuestionsCompanion(
+      id: id ?? this.id,
+      sessionId: sessionId ?? this.sessionId,
+      segmentId: segmentId ?? this.segmentId,
+      question: question ?? this.question,
+      timestampMs: timestampMs ?? this.timestampMs,
+      answer: answer ?? this.answer,
+      answerModel: answerModel ?? this.answerModel,
+      sources: sources ?? this.sources,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (sessionId.present) {
+      map['session_id'] = Variable<String>(sessionId.value);
+    }
+    if (segmentId.present) {
+      map['segment_id'] = Variable<String>(segmentId.value);
+    }
+    if (question.present) {
+      map['question'] = Variable<String>(question.value);
+    }
+    if (timestampMs.present) {
+      map['timestamp_ms'] = Variable<int>(timestampMs.value);
+    }
+    if (answer.present) {
+      map['answer'] = Variable<String>(answer.value);
+    }
+    if (answerModel.present) {
+      map['answer_model'] = Variable<String>(answerModel.value);
+    }
+    if (sources.present) {
+      map['sources'] = Variable<String>(sources.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<String>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DetectedQuestionsCompanion(')
+          ..write('id: $id, ')
+          ..write('sessionId: $sessionId, ')
+          ..write('segmentId: $segmentId, ')
+          ..write('question: $question, ')
+          ..write('timestampMs: $timestampMs, ')
+          ..write('answer: $answer, ')
+          ..write('answerModel: $answerModel, ')
+          ..write('sources: $sources, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DocumentsTable extends Documents
+    with TableInfo<$DocumentsTable, Document> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DocumentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+    'path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<String> addedAt = GeneratedColumn<String>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, title, path, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'documents';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Document> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('path')) {
+      context.handle(
+        _pathMeta,
+        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pathMeta);
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  Document map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Document(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      path: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}path'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DocumentsTable createAlias(String alias) {
+    return $DocumentsTable(attachedDatabase, alias);
+  }
+}
+
+class Document extends DataClass implements Insertable<Document> {
+  /// Identifiant unique du document.
+  final String id;
+
+  /// Titre affiche du document.
+  final String title;
+
+  /// Chemin du fichier sur le disque.
+  final String path;
+
+  /// Date d'ajout au format ISO 8601.
+  final String addedAt;
+  const Document({
+    required this.id,
+    required this.title,
+    required this.path,
+    required this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['title'] = Variable<String>(title);
+    map['path'] = Variable<String>(path);
+    map['added_at'] = Variable<String>(addedAt);
+    return map;
+  }
+
+  DocumentsCompanion toCompanion(bool nullToAbsent) {
+    return DocumentsCompanion(
+      id: Value(id),
+      title: Value(title),
+      path: Value(path),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory Document.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Document(
+      id: serializer.fromJson<String>(json['id']),
+      title: serializer.fromJson<String>(json['title']),
+      path: serializer.fromJson<String>(json['path']),
+      addedAt: serializer.fromJson<String>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'title': serializer.toJson<String>(title),
+      'path': serializer.toJson<String>(path),
+      'addedAt': serializer.toJson<String>(addedAt),
+    };
+  }
+
+  Document copyWith({
+    String? id,
+    String? title,
+    String? path,
+    String? addedAt,
+  }) => Document(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    path: path ?? this.path,
+    addedAt: addedAt ?? this.addedAt,
+  );
+  Document copyWithCompanion(DocumentsCompanion data) {
+    return Document(
+      id: data.id.present ? data.id.value : this.id,
+      title: data.title.present ? data.title.value : this.title,
+      path: data.path.present ? data.path.value : this.path,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Document(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('path: $path, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, title, path, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Document &&
+          other.id == this.id &&
+          other.title == this.title &&
+          other.path == this.path &&
+          other.addedAt == this.addedAt);
+}
+
+class DocumentsCompanion extends UpdateCompanion<Document> {
+  final Value<String> id;
+  final Value<String> title;
+  final Value<String> path;
+  final Value<String> addedAt;
+  final Value<int> rowid;
+  const DocumentsCompanion({
+    this.id = const Value.absent(),
+    this.title = const Value.absent(),
+    this.path = const Value.absent(),
+    this.addedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DocumentsCompanion.insert({
+    required String id,
+    required String title,
+    required String path,
+    required String addedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       title = Value(title),
+       path = Value(path),
+       addedAt = Value(addedAt);
+  static Insertable<Document> custom({
+    Expression<String>? id,
+    Expression<String>? title,
+    Expression<String>? path,
+    Expression<String>? addedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (title != null) 'title': title,
+      if (path != null) 'path': path,
+      if (addedAt != null) 'added_at': addedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DocumentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? title,
+    Value<String>? path,
+    Value<String>? addedAt,
+    Value<int>? rowid,
+  }) {
+    return DocumentsCompanion(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      path: path ?? this.path,
+      addedAt: addedAt ?? this.addedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<String>(addedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DocumentsCompanion(')
+          ..write('id: $id, ')
+          ..write('title: $title, ')
+          ..write('path: $path, ')
+          ..write('addedAt: $addedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DocumentChunksTable extends DocumentChunks
+    with TableInfo<$DocumentChunksTable, DocumentChunk> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DocumentChunksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _documentIdMeta = const VerificationMeta(
+    'documentId',
+  );
+  @override
+  late final GeneratedColumn<String> documentId = GeneratedColumn<String>(
+    'document_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES documents (id)',
+    ),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentMeta = const VerificationMeta(
+    'content',
+  );
+  @override
+  late final GeneratedColumn<String> content = GeneratedColumn<String>(
+    'content',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, documentId, position, content];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'document_chunks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DocumentChunk> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('document_id')) {
+      context.handle(
+        _documentIdMeta,
+        documentId.isAcceptableOrUnknown(data['document_id']!, _documentIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_documentIdMeta);
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_positionMeta);
+    }
+    if (data.containsKey('content')) {
+      context.handle(
+        _contentMeta,
+        content.isAcceptableOrUnknown(data['content']!, _contentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_contentMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DocumentChunk map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DocumentChunk(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      documentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}document_id'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+      content: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content'],
+      )!,
+    );
+  }
+
+  @override
+  $DocumentChunksTable createAlias(String alias) {
+    return $DocumentChunksTable(attachedDatabase, alias);
+  }
+}
+
+class DocumentChunk extends DataClass implements Insertable<DocumentChunk> {
+  /// Identifiant unique du morceau.
+  final String id;
+
+  /// Identifiant du document parent (supprime avec lui, par trigger).
+  final String documentId;
+
+  /// Rang du morceau dans le document, a partir de 0.
+  final int position;
+
+  /// Texte du morceau.
+  final String content;
+  const DocumentChunk({
+    required this.id,
+    required this.documentId,
+    required this.position,
+    required this.content,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['document_id'] = Variable<String>(documentId);
+    map['position'] = Variable<int>(position);
+    map['content'] = Variable<String>(content);
+    return map;
+  }
+
+  DocumentChunksCompanion toCompanion(bool nullToAbsent) {
+    return DocumentChunksCompanion(
+      id: Value(id),
+      documentId: Value(documentId),
+      position: Value(position),
+      content: Value(content),
+    );
+  }
+
+  factory DocumentChunk.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DocumentChunk(
+      id: serializer.fromJson<String>(json['id']),
+      documentId: serializer.fromJson<String>(json['documentId']),
+      position: serializer.fromJson<int>(json['position']),
+      content: serializer.fromJson<String>(json['content']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'documentId': serializer.toJson<String>(documentId),
+      'position': serializer.toJson<int>(position),
+      'content': serializer.toJson<String>(content),
+    };
+  }
+
+  DocumentChunk copyWith({
+    String? id,
+    String? documentId,
+    int? position,
+    String? content,
+  }) => DocumentChunk(
+    id: id ?? this.id,
+    documentId: documentId ?? this.documentId,
+    position: position ?? this.position,
+    content: content ?? this.content,
+  );
+  DocumentChunk copyWithCompanion(DocumentChunksCompanion data) {
+    return DocumentChunk(
+      id: data.id.present ? data.id.value : this.id,
+      documentId: data.documentId.present
+          ? data.documentId.value
+          : this.documentId,
+      position: data.position.present ? data.position.value : this.position,
+      content: data.content.present ? data.content.value : this.content,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DocumentChunk(')
+          ..write('id: $id, ')
+          ..write('documentId: $documentId, ')
+          ..write('position: $position, ')
+          ..write('content: $content')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, documentId, position, content);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DocumentChunk &&
+          other.id == this.id &&
+          other.documentId == this.documentId &&
+          other.position == this.position &&
+          other.content == this.content);
+}
+
+class DocumentChunksCompanion extends UpdateCompanion<DocumentChunk> {
+  final Value<String> id;
+  final Value<String> documentId;
+  final Value<int> position;
+  final Value<String> content;
+  final Value<int> rowid;
+  const DocumentChunksCompanion({
+    this.id = const Value.absent(),
+    this.documentId = const Value.absent(),
+    this.position = const Value.absent(),
+    this.content = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DocumentChunksCompanion.insert({
+    required String id,
+    required String documentId,
+    required int position,
+    required String content,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       documentId = Value(documentId),
+       position = Value(position),
+       content = Value(content);
+  static Insertable<DocumentChunk> custom({
+    Expression<String>? id,
+    Expression<String>? documentId,
+    Expression<int>? position,
+    Expression<String>? content,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (documentId != null) 'document_id': documentId,
+      if (position != null) 'position': position,
+      if (content != null) 'content': content,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DocumentChunksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? documentId,
+    Value<int>? position,
+    Value<String>? content,
+    Value<int>? rowid,
+  }) {
+    return DocumentChunksCompanion(
+      id: id ?? this.id,
+      documentId: documentId ?? this.documentId,
+      position: position ?? this.position,
+      content: content ?? this.content,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (documentId.present) {
+      map['document_id'] = Variable<String>(documentId.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (content.present) {
+      map['content'] = Variable<String>(content.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DocumentChunksCompanion(')
+          ..write('id: $id, ')
+          ..write('documentId: $documentId, ')
+          ..write('position: $position, ')
+          ..write('content: $content, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1239,6 +2700,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $TranscriptSegmentsTable transcriptSegments =
       $TranscriptSegmentsTable(this);
   late final $SummariesTable summaries = $SummariesTable(this);
+  late final $DetectedQuestionsTable detectedQuestions =
+      $DetectedQuestionsTable(this);
+  late final $DocumentsTable documents = $DocumentsTable(this);
+  late final $DocumentChunksTable documentChunks = $DocumentChunksTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1247,6 +2712,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     sessions,
     transcriptSegments,
     summaries,
+    detectedQuestions,
+    documents,
+    documentChunks,
   ];
 }
 
@@ -1258,6 +2726,9 @@ typedef $$SessionsTableCreateCompanionBuilder =
       required String updatedAt,
       Value<int?> durationSeconds,
       required String status,
+      Value<String?> calendarEventId,
+      Value<String?> calendarEventTitle,
+      Value<String?> attendees,
       Value<int> rowid,
     });
 typedef $$SessionsTableUpdateCompanionBuilder =
@@ -1268,6 +2739,9 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<String> updatedAt,
       Value<int?> durationSeconds,
       Value<String> status,
+      Value<String?> calendarEventId,
+      Value<String?> calendarEventTitle,
+      Value<String?> attendees,
       Value<int> rowid,
     });
 
@@ -1316,6 +2790,30 @@ final class $$SessionsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$DetectedQuestionsTable, List<DetectedQuestion>>
+  _detectedQuestionsRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.detectedQuestions,
+        aliasName: $_aliasNameGenerator(
+          db.sessions.id,
+          db.detectedQuestions.sessionId,
+        ),
+      );
+
+  $$DetectedQuestionsTableProcessedTableManager get detectedQuestionsRefs {
+    final manager = $$DetectedQuestionsTableTableManager(
+      $_db,
+      $_db.detectedQuestions,
+    ).filter((f) => f.sessionId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _detectedQuestionsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$SessionsTableFilterComposer
@@ -1354,6 +2852,21 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
     column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get calendarEventId => $composableBuilder(
+    column: $table.calendarEventId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get calendarEventTitle => $composableBuilder(
+    column: $table.calendarEventTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get attendees => $composableBuilder(
+    column: $table.attendees,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1406,6 +2919,31 @@ class $$SessionsTableFilterComposer
     );
     return f(composer);
   }
+
+  Expression<bool> detectedQuestionsRefs(
+    Expression<bool> Function($$DetectedQuestionsTableFilterComposer f) f,
+  ) {
+    final $$DetectedQuestionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.detectedQuestions,
+      getReferencedColumn: (t) => t.sessionId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DetectedQuestionsTableFilterComposer(
+            $db: $db,
+            $table: $db.detectedQuestions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$SessionsTableOrderingComposer
@@ -1446,6 +2984,21 @@ class $$SessionsTableOrderingComposer
     column: $table.status,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get calendarEventId => $composableBuilder(
+    column: $table.calendarEventId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get calendarEventTitle => $composableBuilder(
+    column: $table.calendarEventTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get attendees => $composableBuilder(
+    column: $table.attendees,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SessionsTableAnnotationComposer
@@ -1476,6 +3029,19 @@ class $$SessionsTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get calendarEventId => $composableBuilder(
+    column: $table.calendarEventId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get calendarEventTitle => $composableBuilder(
+    column: $table.calendarEventTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get attendees =>
+      $composableBuilder(column: $table.attendees, builder: (column) => column);
 
   Expression<T> transcriptSegmentsRefs<T extends Object>(
     Expression<T> Function($$TranscriptSegmentsTableAnnotationComposer a) f,
@@ -1527,6 +3093,32 @@ class $$SessionsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> detectedQuestionsRefs<T extends Object>(
+    Expression<T> Function($$DetectedQuestionsTableAnnotationComposer a) f,
+  ) {
+    final $$DetectedQuestionsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.detectedQuestions,
+          getReferencedColumn: (t) => t.sessionId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$DetectedQuestionsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.detectedQuestions,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$SessionsTableTableManager
@@ -1545,6 +3137,7 @@ class $$SessionsTableTableManager
           PrefetchHooks Function({
             bool transcriptSegmentsRefs,
             bool summariesRefs,
+            bool detectedQuestionsRefs,
           })
         > {
   $$SessionsTableTableManager(_$AppDatabase db, $SessionsTable table)
@@ -1566,6 +3159,9 @@ class $$SessionsTableTableManager
                 Value<String> updatedAt = const Value.absent(),
                 Value<int?> durationSeconds = const Value.absent(),
                 Value<String> status = const Value.absent(),
+                Value<String?> calendarEventId = const Value.absent(),
+                Value<String?> calendarEventTitle = const Value.absent(),
+                Value<String?> attendees = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SessionsCompanion(
                 id: id,
@@ -1574,6 +3170,9 @@ class $$SessionsTableTableManager
                 updatedAt: updatedAt,
                 durationSeconds: durationSeconds,
                 status: status,
+                calendarEventId: calendarEventId,
+                calendarEventTitle: calendarEventTitle,
+                attendees: attendees,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1584,6 +3183,9 @@ class $$SessionsTableTableManager
                 required String updatedAt,
                 Value<int?> durationSeconds = const Value.absent(),
                 required String status,
+                Value<String?> calendarEventId = const Value.absent(),
+                Value<String?> calendarEventTitle = const Value.absent(),
+                Value<String?> attendees = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SessionsCompanion.insert(
                 id: id,
@@ -1592,6 +3194,9 @@ class $$SessionsTableTableManager
                 updatedAt: updatedAt,
                 durationSeconds: durationSeconds,
                 status: status,
+                calendarEventId: calendarEventId,
+                calendarEventTitle: calendarEventTitle,
+                attendees: attendees,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -1603,12 +3208,17 @@ class $$SessionsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({transcriptSegmentsRefs = false, summariesRefs = false}) {
+              ({
+                transcriptSegmentsRefs = false,
+                summariesRefs = false,
+                detectedQuestionsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (transcriptSegmentsRefs) db.transcriptSegments,
                     if (summariesRefs) db.summaries,
+                    if (detectedQuestionsRefs) db.detectedQuestions,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -1655,6 +3265,27 @@ class $$SessionsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (detectedQuestionsRefs)
+                        await $_getPrefetchedData<
+                          Session,
+                          $SessionsTable,
+                          DetectedQuestion
+                        >(
+                          currentTable: table,
+                          referencedTable: $$SessionsTableReferences
+                              ._detectedQuestionsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$SessionsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).detectedQuestionsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.sessionId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -1675,7 +3306,11 @@ typedef $$SessionsTableProcessedTableManager =
       $$SessionsTableUpdateCompanionBuilder,
       (Session, $$SessionsTableReferences),
       Session,
-      PrefetchHooks Function({bool transcriptSegmentsRefs, bool summariesRefs})
+      PrefetchHooks Function({
+        bool transcriptSegmentsRefs,
+        bool summariesRefs,
+        bool detectedQuestionsRefs,
+      })
     >;
 typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
     TranscriptSegmentsCompanion Function({
@@ -1685,6 +3320,7 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       required String textContent,
       required int timestampMs,
       required String createdAt,
+      Value<String?> speaker,
       Value<int> rowid,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
@@ -1695,6 +3331,7 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<String> textContent,
       Value<int> timestampMs,
       Value<String> createdAt,
+      Value<String?> speaker,
       Value<int> rowid,
     });
 
@@ -1765,6 +3402,11 @@ class $$TranscriptSegmentsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get speaker => $composableBuilder(
+    column: $table.speaker,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$SessionsTableFilterComposer get sessionId {
     final $$SessionsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -1823,6 +3465,11 @@ class $$TranscriptSegmentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get speaker => $composableBuilder(
+    column: $table.speaker,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$SessionsTableOrderingComposer get sessionId {
     final $$SessionsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -1874,6 +3521,9 @@ class $$TranscriptSegmentsTableAnnotationComposer
 
   GeneratedColumn<String> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get speaker =>
+      $composableBuilder(column: $table.speaker, builder: (column) => column);
 
   $$SessionsTableAnnotationComposer get sessionId {
     final $$SessionsTableAnnotationComposer composer = $composerBuilder(
@@ -1938,6 +3588,7 @@ class $$TranscriptSegmentsTableTableManager
                 Value<String> textContent = const Value.absent(),
                 Value<int> timestampMs = const Value.absent(),
                 Value<String> createdAt = const Value.absent(),
+                Value<String?> speaker = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
@@ -1946,6 +3597,7 @@ class $$TranscriptSegmentsTableTableManager
                 textContent: textContent,
                 timestampMs: timestampMs,
                 createdAt: createdAt,
+                speaker: speaker,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1956,6 +3608,7 @@ class $$TranscriptSegmentsTableTableManager
                 required String textContent,
                 required int timestampMs,
                 required String createdAt,
+                Value<String?> speaker = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
@@ -1964,6 +3617,7 @@ class $$TranscriptSegmentsTableTableManager
                 textContent: textContent,
                 timestampMs: timestampMs,
                 createdAt: createdAt,
+                speaker: speaker,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2354,6 +4008,1015 @@ typedef $$SummariesTableProcessedTableManager =
       Summary,
       PrefetchHooks Function({bool sessionId})
     >;
+typedef $$DetectedQuestionsTableCreateCompanionBuilder =
+    DetectedQuestionsCompanion Function({
+      required String id,
+      required String sessionId,
+      Value<String?> segmentId,
+      required String question,
+      required int timestampMs,
+      Value<String?> answer,
+      Value<String?> answerModel,
+      Value<String?> sources,
+      required String createdAt,
+      Value<int> rowid,
+    });
+typedef $$DetectedQuestionsTableUpdateCompanionBuilder =
+    DetectedQuestionsCompanion Function({
+      Value<String> id,
+      Value<String> sessionId,
+      Value<String?> segmentId,
+      Value<String> question,
+      Value<int> timestampMs,
+      Value<String?> answer,
+      Value<String?> answerModel,
+      Value<String?> sources,
+      Value<String> createdAt,
+      Value<int> rowid,
+    });
+
+final class $$DetectedQuestionsTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $DetectedQuestionsTable,
+          DetectedQuestion
+        > {
+  $$DetectedQuestionsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $SessionsTable _sessionIdTable(_$AppDatabase db) =>
+      db.sessions.createAlias(
+        $_aliasNameGenerator(db.detectedQuestions.sessionId, db.sessions.id),
+      );
+
+  $$SessionsTableProcessedTableManager get sessionId {
+    final $_column = $_itemColumn<String>('session_id')!;
+
+    final manager = $$SessionsTableTableManager(
+      $_db,
+      $_db.sessions,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_sessionIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DetectedQuestionsTableFilterComposer
+    extends Composer<_$AppDatabase, $DetectedQuestionsTable> {
+  $$DetectedQuestionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get segmentId => $composableBuilder(
+    column: $table.segmentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get question => $composableBuilder(
+    column: $table.question,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get timestampMs => $composableBuilder(
+    column: $table.timestampMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get answerModel => $composableBuilder(
+    column: $table.answerModel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sources => $composableBuilder(
+    column: $table.sources,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$SessionsTableFilterComposer get sessionId {
+    final $$SessionsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.sessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SessionsTableFilterComposer(
+            $db: $db,
+            $table: $db.sessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DetectedQuestionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DetectedQuestionsTable> {
+  $$DetectedQuestionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get segmentId => $composableBuilder(
+    column: $table.segmentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get question => $composableBuilder(
+    column: $table.question,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get timestampMs => $composableBuilder(
+    column: $table.timestampMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get answerModel => $composableBuilder(
+    column: $table.answerModel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sources => $composableBuilder(
+    column: $table.sources,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$SessionsTableOrderingComposer get sessionId {
+    final $$SessionsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.sessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SessionsTableOrderingComposer(
+            $db: $db,
+            $table: $db.sessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DetectedQuestionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DetectedQuestionsTable> {
+  $$DetectedQuestionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get segmentId =>
+      $composableBuilder(column: $table.segmentId, builder: (column) => column);
+
+  GeneratedColumn<String> get question =>
+      $composableBuilder(column: $table.question, builder: (column) => column);
+
+  GeneratedColumn<int> get timestampMs => $composableBuilder(
+    column: $table.timestampMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get answer =>
+      $composableBuilder(column: $table.answer, builder: (column) => column);
+
+  GeneratedColumn<String> get answerModel => $composableBuilder(
+    column: $table.answerModel,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sources =>
+      $composableBuilder(column: $table.sources, builder: (column) => column);
+
+  GeneratedColumn<String> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$SessionsTableAnnotationComposer get sessionId {
+    final $$SessionsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.sessionId,
+      referencedTable: $db.sessions,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$SessionsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.sessions,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DetectedQuestionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DetectedQuestionsTable,
+          DetectedQuestion,
+          $$DetectedQuestionsTableFilterComposer,
+          $$DetectedQuestionsTableOrderingComposer,
+          $$DetectedQuestionsTableAnnotationComposer,
+          $$DetectedQuestionsTableCreateCompanionBuilder,
+          $$DetectedQuestionsTableUpdateCompanionBuilder,
+          (DetectedQuestion, $$DetectedQuestionsTableReferences),
+          DetectedQuestion,
+          PrefetchHooks Function({bool sessionId})
+        > {
+  $$DetectedQuestionsTableTableManager(
+    _$AppDatabase db,
+    $DetectedQuestionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DetectedQuestionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DetectedQuestionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DetectedQuestionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> sessionId = const Value.absent(),
+                Value<String?> segmentId = const Value.absent(),
+                Value<String> question = const Value.absent(),
+                Value<int> timestampMs = const Value.absent(),
+                Value<String?> answer = const Value.absent(),
+                Value<String?> answerModel = const Value.absent(),
+                Value<String?> sources = const Value.absent(),
+                Value<String> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DetectedQuestionsCompanion(
+                id: id,
+                sessionId: sessionId,
+                segmentId: segmentId,
+                question: question,
+                timestampMs: timestampMs,
+                answer: answer,
+                answerModel: answerModel,
+                sources: sources,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String sessionId,
+                Value<String?> segmentId = const Value.absent(),
+                required String question,
+                required int timestampMs,
+                Value<String?> answer = const Value.absent(),
+                Value<String?> answerModel = const Value.absent(),
+                Value<String?> sources = const Value.absent(),
+                required String createdAt,
+                Value<int> rowid = const Value.absent(),
+              }) => DetectedQuestionsCompanion.insert(
+                id: id,
+                sessionId: sessionId,
+                segmentId: segmentId,
+                question: question,
+                timestampMs: timestampMs,
+                answer: answer,
+                answerModel: answerModel,
+                sources: sources,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DetectedQuestionsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({sessionId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (sessionId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.sessionId,
+                                referencedTable:
+                                    $$DetectedQuestionsTableReferences
+                                        ._sessionIdTable(db),
+                                referencedColumn:
+                                    $$DetectedQuestionsTableReferences
+                                        ._sessionIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DetectedQuestionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DetectedQuestionsTable,
+      DetectedQuestion,
+      $$DetectedQuestionsTableFilterComposer,
+      $$DetectedQuestionsTableOrderingComposer,
+      $$DetectedQuestionsTableAnnotationComposer,
+      $$DetectedQuestionsTableCreateCompanionBuilder,
+      $$DetectedQuestionsTableUpdateCompanionBuilder,
+      (DetectedQuestion, $$DetectedQuestionsTableReferences),
+      DetectedQuestion,
+      PrefetchHooks Function({bool sessionId})
+    >;
+typedef $$DocumentsTableCreateCompanionBuilder =
+    DocumentsCompanion Function({
+      required String id,
+      required String title,
+      required String path,
+      required String addedAt,
+      Value<int> rowid,
+    });
+typedef $$DocumentsTableUpdateCompanionBuilder =
+    DocumentsCompanion Function({
+      Value<String> id,
+      Value<String> title,
+      Value<String> path,
+      Value<String> addedAt,
+      Value<int> rowid,
+    });
+
+final class $$DocumentsTableReferences
+    extends BaseReferences<_$AppDatabase, $DocumentsTable, Document> {
+  $$DocumentsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$DocumentChunksTable, List<DocumentChunk>>
+  _documentChunksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.documentChunks,
+    aliasName: $_aliasNameGenerator(
+      db.documents.id,
+      db.documentChunks.documentId,
+    ),
+  );
+
+  $$DocumentChunksTableProcessedTableManager get documentChunksRefs {
+    final manager = $$DocumentChunksTableTableManager(
+      $_db,
+      $_db.documentChunks,
+    ).filter((f) => f.documentId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_documentChunksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$DocumentsTableFilterComposer
+    extends Composer<_$AppDatabase, $DocumentsTable> {
+  $$DocumentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> documentChunksRefs(
+    Expression<bool> Function($$DocumentChunksTableFilterComposer f) f,
+  ) {
+    final $$DocumentChunksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.documentChunks,
+      getReferencedColumn: (t) => t.documentId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentChunksTableFilterComposer(
+            $db: $db,
+            $table: $db.documentChunks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$DocumentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DocumentsTable> {
+  $$DocumentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DocumentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DocumentsTable> {
+  $$DocumentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  GeneratedColumn<String> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  Expression<T> documentChunksRefs<T extends Object>(
+    Expression<T> Function($$DocumentChunksTableAnnotationComposer a) f,
+  ) {
+    final $$DocumentChunksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.documentChunks,
+      getReferencedColumn: (t) => t.documentId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentChunksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.documentChunks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$DocumentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DocumentsTable,
+          Document,
+          $$DocumentsTableFilterComposer,
+          $$DocumentsTableOrderingComposer,
+          $$DocumentsTableAnnotationComposer,
+          $$DocumentsTableCreateCompanionBuilder,
+          $$DocumentsTableUpdateCompanionBuilder,
+          (Document, $$DocumentsTableReferences),
+          Document,
+          PrefetchHooks Function({bool documentChunksRefs})
+        > {
+  $$DocumentsTableTableManager(_$AppDatabase db, $DocumentsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DocumentsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DocumentsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DocumentsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> path = const Value.absent(),
+                Value<String> addedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DocumentsCompanion(
+                id: id,
+                title: title,
+                path: path,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String title,
+                required String path,
+                required String addedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => DocumentsCompanion.insert(
+                id: id,
+                title: title,
+                path: path,
+                addedAt: addedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DocumentsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({documentChunksRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (documentChunksRefs) db.documentChunks,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (documentChunksRefs)
+                    await $_getPrefetchedData<
+                      Document,
+                      $DocumentsTable,
+                      DocumentChunk
+                    >(
+                      currentTable: table,
+                      referencedTable: $$DocumentsTableReferences
+                          ._documentChunksRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$DocumentsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).documentChunksRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.documentId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DocumentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DocumentsTable,
+      Document,
+      $$DocumentsTableFilterComposer,
+      $$DocumentsTableOrderingComposer,
+      $$DocumentsTableAnnotationComposer,
+      $$DocumentsTableCreateCompanionBuilder,
+      $$DocumentsTableUpdateCompanionBuilder,
+      (Document, $$DocumentsTableReferences),
+      Document,
+      PrefetchHooks Function({bool documentChunksRefs})
+    >;
+typedef $$DocumentChunksTableCreateCompanionBuilder =
+    DocumentChunksCompanion Function({
+      required String id,
+      required String documentId,
+      required int position,
+      required String content,
+      Value<int> rowid,
+    });
+typedef $$DocumentChunksTableUpdateCompanionBuilder =
+    DocumentChunksCompanion Function({
+      Value<String> id,
+      Value<String> documentId,
+      Value<int> position,
+      Value<String> content,
+      Value<int> rowid,
+    });
+
+final class $$DocumentChunksTableReferences
+    extends BaseReferences<_$AppDatabase, $DocumentChunksTable, DocumentChunk> {
+  $$DocumentChunksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $DocumentsTable _documentIdTable(_$AppDatabase db) =>
+      db.documents.createAlias(
+        $_aliasNameGenerator(db.documentChunks.documentId, db.documents.id),
+      );
+
+  $$DocumentsTableProcessedTableManager get documentId {
+    final $_column = $_itemColumn<String>('document_id')!;
+
+    final manager = $$DocumentsTableTableManager(
+      $_db,
+      $_db.documents,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_documentIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DocumentChunksTableFilterComposer
+    extends Composer<_$AppDatabase, $DocumentChunksTable> {
+  $$DocumentChunksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$DocumentsTableFilterComposer get documentId {
+    final $$DocumentsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.documentId,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableFilterComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DocumentChunksTableOrderingComposer
+    extends Composer<_$AppDatabase, $DocumentChunksTable> {
+  $$DocumentChunksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get content => $composableBuilder(
+    column: $table.content,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$DocumentsTableOrderingComposer get documentId {
+    final $$DocumentsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.documentId,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableOrderingComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DocumentChunksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DocumentChunksTable> {
+  $$DocumentChunksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+
+  GeneratedColumn<String> get content =>
+      $composableBuilder(column: $table.content, builder: (column) => column);
+
+  $$DocumentsTableAnnotationComposer get documentId {
+    final $$DocumentsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.documentId,
+      referencedTable: $db.documents,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DocumentsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.documents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DocumentChunksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DocumentChunksTable,
+          DocumentChunk,
+          $$DocumentChunksTableFilterComposer,
+          $$DocumentChunksTableOrderingComposer,
+          $$DocumentChunksTableAnnotationComposer,
+          $$DocumentChunksTableCreateCompanionBuilder,
+          $$DocumentChunksTableUpdateCompanionBuilder,
+          (DocumentChunk, $$DocumentChunksTableReferences),
+          DocumentChunk,
+          PrefetchHooks Function({bool documentId})
+        > {
+  $$DocumentChunksTableTableManager(
+    _$AppDatabase db,
+    $DocumentChunksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DocumentChunksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DocumentChunksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DocumentChunksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> documentId = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<String> content = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DocumentChunksCompanion(
+                id: id,
+                documentId: documentId,
+                position: position,
+                content: content,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String documentId,
+                required int position,
+                required String content,
+                Value<int> rowid = const Value.absent(),
+              }) => DocumentChunksCompanion.insert(
+                id: id,
+                documentId: documentId,
+                position: position,
+                content: content,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DocumentChunksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({documentId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (documentId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.documentId,
+                                referencedTable: $$DocumentChunksTableReferences
+                                    ._documentIdTable(db),
+                                referencedColumn:
+                                    $$DocumentChunksTableReferences
+                                        ._documentIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DocumentChunksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DocumentChunksTable,
+      DocumentChunk,
+      $$DocumentChunksTableFilterComposer,
+      $$DocumentChunksTableOrderingComposer,
+      $$DocumentChunksTableAnnotationComposer,
+      $$DocumentChunksTableCreateCompanionBuilder,
+      $$DocumentChunksTableUpdateCompanionBuilder,
+      (DocumentChunk, $$DocumentChunksTableReferences),
+      DocumentChunk,
+      PrefetchHooks Function({bool documentId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2364,4 +5027,10 @@ class $AppDatabaseManager {
       $$TranscriptSegmentsTableTableManager(_db, _db.transcriptSegments);
   $$SummariesTableTableManager get summaries =>
       $$SummariesTableTableManager(_db, _db.summaries);
+  $$DetectedQuestionsTableTableManager get detectedQuestions =>
+      $$DetectedQuestionsTableTableManager(_db, _db.detectedQuestions);
+  $$DocumentsTableTableManager get documents =>
+      $$DocumentsTableTableManager(_db, _db.documents);
+  $$DocumentChunksTableTableManager get documentChunks =>
+      $$DocumentChunksTableTableManager(_db, _db.documentChunks);
 }

@@ -21,6 +21,7 @@ export 'domain/repositories/audio.repository.dart';
 export 'domain/repositories/session.repository.dart';
 export 'domain/repositories/transcript.repository.dart';
 // Domain Services
+export 'domain/services/document_chunker.dart';
 export 'domain/services/session_history.service.dart';
 export 'domain/services/transcription.service.dart';
 // Domain Use Cases

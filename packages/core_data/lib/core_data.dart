@@ -4,6 +4,7 @@ library;
 export 'clients/websocket_client.dart';
 // Database
 export 'database/app_database.dart';
+export 'database/dao/document.dao.dart';
 export 'database/dao/session.dao.dart';
 export 'database/dao/transcript_segment.dao.dart';
 export 'datasources/local/impl/session.local.data_source.impl.dart';
