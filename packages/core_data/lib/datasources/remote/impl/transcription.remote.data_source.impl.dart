@@ -429,7 +429,14 @@ final class TranscriptionRemoteDataSourceImpl
   Stream<AudioGap> get audioGaps => _gapSubject.stream;
 
   /// RMS d'un chunk, ou null s'il a trop peu d'échantillons forts.
-  double? _speechRms(Uint8List data) {
+  /// Vrai si [chunk] (PCM16 16 kHz) passe la porte de parole, au seuil de
+  /// continuation : sert à couper un PCM aux silences sans couper un mot.
+  static bool isSpeechChunk(Uint8List chunk) {
+    final double? rms = _speechRms(chunk);
+    return rms != null && rms >= _voiceContinueRms;
+  }
+
+  static double? _speechRms(Uint8List data) {
     final ByteData bd = ByteData.sublistView(data);
     int sampleCount = 0;
     int loudSampleCount = 0;
