@@ -4,9 +4,22 @@ import 'package:ici_transcript/core/platform/owned_processes.dart';
 
 final int _appPid = pid;
 
+int? _groupOf(int pid) {
+  final ProcessResult result = Process.runSync('/bin/ps', <String>[
+    '-o',
+    'pgid=',
+    '-p',
+    '$pid',
+  ]);
+  return int.tryParse((result.stdout as String).trim());
+}
+
+final int _appGroup = _groupOf(_appPid) ?? _appPid;
+
 /// Chaque serveur part dans son propre groupe de processus (perl `setpgrp`
 /// puis `exec`, même PID) : arrêter le groupe arrête aussi les enfants
-/// (`uv` → `python`) sans jamais toucher au groupe de l'app.
+/// (`uv` → `python`), même meneur parti, sans jamais toucher au groupe de
+/// l'app.
 const String _perl = '/usr/bin/perl';
 const String _ownGroupThenExec =
     r'setpgrp(0, 0); exec { $ARGV[0] } @ARGV or die "exec $ARGV[0]: $!\n"';
@@ -14,7 +27,7 @@ const String _ownGroupThenExec =
 // lstart : « Sun Nov 22 10:00:00 2026 », jour éventuellement complété d'un
 // espace ; gardé tel quel (comparé à une valeur lue de la même façon).
 final RegExp _psLine = RegExp(
-  r'^\s*(\d+)\s+(\S+\s+\S+\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$',
+  r'^\s*(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+[\d:]+\s+\d{4})\s+(.*)$',
 );
 
 /// Le vrai système. Seul fichier qui lance ou signale un processus.
@@ -50,11 +63,11 @@ final class SystemProcessHost implements ProcessHost {
 
   @override
   Future<List<RunningProcess>> running() async {
-    final ProcessResult result = await Process.run('/bin/ps', <String>[
-      '-axww',
-      '-o',
-      'pid=,lstart=,command=',
-    ], environment: <String, String>{'LC_ALL': 'C'});
+    final ProcessResult result = await Process.run(
+      '/bin/ps',
+      <String>['-axww', '-o', 'pid=,pgid=,lstart=,command='],
+      environment: <String, String>{'LC_ALL': 'C'},
+    );
     if (result.exitCode != 0) {
       throw ProcessException('/bin/ps', const <String>[], '${result.stderr}');
     }
@@ -63,36 +76,39 @@ final class SystemProcessHost implements ProcessHost {
         if (_psLine.firstMatch(line) case final RegExpMatch m)
           RunningProcess(
             pid: int.parse(m[1]!),
-            startTime: m[2]!,
-            command: m[3]!,
+            groupId: int.parse(m[2]!),
+            startTime: m[3]!,
+            command: m[4]!,
           ),
     ];
   }
 
-  /// Signale le groupe de [pid] seulement s'il le mène (groupe créé au
-  /// lancement) ; sinon le PID seul. Jamais l'app elle-même.
+  @override
+  int get appGroupId => _appGroup;
+
+  /// Le seul PID ; jamais l'app ni init.
   @override
   bool kill(int pid, [ProcessSignal signal = ProcessSignal.sigterm]) {
     if (pid <= 1 || pid == _appPid) return false;
-    final String target = _groupOf(pid) == pid ? '-$pid' : '$pid';
-    final ProcessResult result = Process.runSync('/bin/kill', <String>[
-      '-s',
-      signal.toString().replaceFirst('SIG', ''),
-      '--',
-      target,
-    ]);
-    return result.exitCode == 0;
+    return _send(signal, '$pid');
   }
 
-  int? _groupOf(int pid) {
-    final ProcessResult result = Process.runSync('/bin/ps', <String>[
-      '-o',
-      'pgid=',
-      '-p',
-      '$pid',
-    ]);
-    return int.tryParse((result.stdout as String).trim());
+  /// Tout le groupe ; jamais un groupe ≤ 1 ni celui de l'app (le registre
+  /// ne passe que des groupes qu'il a notés).
+  @override
+  bool killGroup(int groupId, [ProcessSignal signal = ProcessSignal.sigterm]) {
+    if (groupId <= 1 || groupId == _appGroup) return false;
+    return _send(signal, '-$groupId');
   }
+
+  bool _send(ProcessSignal signal, String target) =>
+      Process.runSync('/bin/kill', <String>[
+        '-s',
+        signal.toString().replaceFirst('SIG', ''),
+        '--',
+        target,
+      ]).exitCode ==
+      0;
 
   /// Une connexion à 127.0.0.1 qui aboutit = quelqu'un écoute (un bind
   /// d'essai peut réussir à côté d'une écoute sur 0.0.0.0).

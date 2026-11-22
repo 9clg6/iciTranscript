@@ -10,12 +10,16 @@ final class RunningProcess {
   /// Cree un [RunningProcess].
   const RunningProcess({
     required this.pid,
+    this.groupId = 0,
     required this.startTime,
     required this.command,
   });
 
   /// PID.
   final int pid;
+
+  /// Groupe de processus (0 : inconnu).
+  final int groupId;
 
   /// Heure de démarrage telle que l'OS la donne (`ps -o lstart=`).
   final String startTime;
@@ -30,6 +34,7 @@ final class OwnedProcess {
   const OwnedProcess({
     required this.role,
     required this.pid,
+    this.groupId = 0,
     required this.startTime,
     required this.command,
   });
@@ -37,8 +42,11 @@ final class OwnedProcess {
   /// Rôle (transcription, diarization…), un processus par rôle.
   final String role;
 
-  /// PID au lancement.
+  /// PID du meneur au lancement.
   final int pid;
+
+  /// Groupe lu au lancement (0 : inconnu, jamais signalé comme groupe).
+  final int groupId;
 
   /// Heure de démarrage lue au lancement.
   final String startTime;
@@ -49,6 +57,7 @@ final class OwnedProcess {
   Map<String, Object> _toJson() => <String, Object>{
     'role': role,
     'pid': pid,
+    'groupId': groupId,
     'startTime': startTime,
     'command': command,
   };
@@ -56,27 +65,90 @@ final class OwnedProcess {
   static OwnedProcess _fromJson(Map<String, dynamic> json) => OwnedProcess(
     role: json['role'] as String,
     pid: json['pid'] as int,
+    groupId: json['groupId'] as int? ?? 0,
     startTime: json['startTime'] as String,
     command: json['command'] as String,
   );
 
-  /// Même PID, même heure de démarrage, et la commande vue finit par celle
-  /// lancée (un `exec` en chaîne, ex. `uvx` → `uv tool uvx`, garde la fin).
+  /// Le meneur : même PID, même heure de démarrage, et la commande vue finit
+  /// par celle lancée (un `exec` en chaîne, ex. `uvx` → `uv tool uvx`, garde
+  /// la fin).
   bool isSameAs(RunningProcess running) =>
       running.pid == pid &&
       running.startTime == startTime &&
       running.command.endsWith(command);
+
+  /// Le meneur, ou un membre cohérent de son groupe : même groupe (jamais
+  /// celui de l'app ni ≤ 1), démarré au plus tôt avec le meneur, même
+  /// programme et mêmes arguments (éventuellement derrière un interpréteur,
+  /// ex. `python …/voxmlx-serve --port 8100`). Un groupe ne peut être
+  /// réutilisé qu'une fois vide : un membre cohérent prouve qu'il est à nous.
+  bool owns(RunningProcess running, {required int appGroupId}) {
+    if (isSameAs(running)) return true;
+    if (!isSignallableGroup(groupId, appGroupId: appGroupId)) return false;
+    if (running.groupId != groupId) return false;
+    final DateTime? started = _parseLstart(running.startTime);
+    final DateTime? recorded = _parseLstart(startTime);
+    if (started == null || recorded == null || started.isBefore(recorded)) {
+      return false;
+    }
+    return _sameProgram(running.command, command);
+  }
 }
 
-/// Restes notés qui tournent encore avec la même identité : les seuls que
-/// l'app a le droit d'arrêter au lancement.
+/// Un groupe que l'app peut signaler : connu, ni ≤ 1, ni le sien.
+bool isSignallableGroup(int groupId, {required int appGroupId}) =>
+    groupId > 1 && groupId != appGroupId;
+
+/// Restes notés qui tournent encore (meneur ou membre cohérent de son
+/// groupe) : les seuls que l'app a le droit d'arrêter au lancement.
 List<OwnedProcess> leftoversToKill(
   List<OwnedProcess> recorded,
-  List<RunningProcess> running,
-) => <OwnedProcess>[
+  List<RunningProcess> running, {
+  int appGroupId = 0,
+}) => <OwnedProcess>[
   for (final OwnedProcess p in recorded)
-    if (running.any(p.isSameAs)) p,
+    if (running.any((RunningProcess r) => p.owns(r, appGroupId: appGroupId))) p,
 ];
+
+const List<String> _months = <String>[
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// `Sun Nov 22 10:00:00 2026` (ps -o lstart=, LC_ALL=C) ; null si illisible.
+DateTime? _parseLstart(String value) {
+  final List<String> t = value.trim().split(RegExp(r'\s+'));
+  if (t.length != 5) return null;
+  final int month = _months.indexOf(t[1]) + 1;
+  final List<int?> hms = t[3].split(':').map(int.tryParse).toList();
+  final int? day = int.tryParse(t[2]);
+  final int? year = int.tryParse(t[4]);
+  if (month == 0 || hms.length != 3 || hms.contains(null)) return null;
+  if (day == null || year == null) return null;
+  return DateTime(year, month, day, hms[0]!, hms[1]!, hms[2]!);
+}
+
+String _base(String token) => token.split('/').last;
+
+/// [seen] lance le même programme que [launched] avec les mêmes arguments,
+/// directement ou derrière un interpréteur (premier mot ignoré).
+bool _sameProgram(String seen, String launched) {
+  final List<String> c = seen.trim().split(RegExp(r'\s+'));
+  final List<String> r = launched.split(' ');
+  for (int i = 0; i <= 1 && i < c.length; i++) {
+    final List<String> tail = c.sublist(i);
+    if (tail.length < 2 || tail.length > r.length) continue;
+    final List<String> expected = r.sublist(r.length - tail.length);
+    if (_base(tail.first) != _base(expected.first)) continue;
+    bool same = true;
+    for (int k = 1; k < tail.length && same; k++) {
+      same = tail[k] == expected[k];
+    }
+    if (same) return true;
+  }
+  return false;
+}
 
 /// Le port voulu est pris par un programme que l'app n'a pas lancé.
 final class PortInUseException implements Exception {
@@ -107,8 +179,14 @@ abstract interface class ProcessHost {
   /// Table des processus vivants.
   Future<List<RunningProcess>> running();
 
-  /// Envoie [signal] au processus [pid] (et à son groupe s'il le mène).
+  /// Envoie [signal] au seul processus [pid].
   bool kill(int pid, [ProcessSignal signal = ProcessSignal.sigterm]);
+
+  /// Envoie [signal] à tout le groupe [groupId].
+  bool killGroup(int groupId, [ProcessSignal signal = ProcessSignal.sigterm]);
+
+  /// Groupe de processus de l'app elle-même (jamais signalé).
+  int get appGroupId;
 
   /// Vrai si rien n'écoute sur 127.0.0.1:[port].
   Future<bool> isPortFree(int port);
@@ -121,9 +199,19 @@ abstract interface class ProcessHost {
 /// (un build de dev et la release ont chacun le leur).
 String ownedProcessesFile() => '${appDataDirectory()}/servers.json';
 
-/// Serveurs lancés par l'app : note PID + identité de chacun, les arrête
-/// (SIGTERM, puis SIGKILL après [grace]) et nettoie au lancement les restes
-/// d'un arrêt brutal. Ne touche jamais un processus qu'elle n'a pas lancé.
+final class _Live {
+  _Live(this.process, this.port, this.record);
+
+  final Process process;
+  final int port;
+  final OwnedProcess? record;
+  bool exited = false;
+}
+
+/// Serveurs lancés par l'app : note PID, groupe et identité de chacun, les
+/// arrête en vidant leur groupe (SIGTERM, puis SIGKILL après [grace]) et
+/// nettoie au lancement les restes d'un arrêt brutal. Ne touche jamais un
+/// processus ni un groupe qu'elle n'a pas lancé.
 final class OwnedProcessRegistry {
   /// Cree un [OwnedProcessRegistry].
   OwnedProcessRegistry({required ProcessHost host, required String stateFile})
@@ -133,15 +221,16 @@ final class OwnedProcessRegistry {
   /// Délai entre SIGTERM et SIGKILL.
   static const Duration grace = Duration(seconds: 5);
 
+  static const Duration _poll = Duration(milliseconds: 100);
+
   final ProcessHost _host;
   final File _stateFile;
   final Log _log = Log.named('OwnedProcessRegistry');
-  final Map<String, ({Process process, int port})> _live =
-      <String, ({Process process, int port})>{};
+  final Map<String, _Live> _live = <String, _Live>{};
 
-  /// Lance [executable] pour [role] sur [port] et le note. Lève
-  /// [PortInUseException] si un autre programme tient déjà [port] : rien
-  /// n'est alors tué, lancé ni noté.
+  /// Lance [executable] pour [role] sur [port] et le note. Arrête d'abord un
+  /// serveur de [role] encore à nous. Lève [PortInUseException] si un autre
+  /// programme tient [port] : rien n'est alors tué, lancé ni noté.
   Future<Process> start(
     String role,
     String executable,
@@ -149,40 +238,44 @@ final class OwnedProcessRegistry {
     required int port,
     Map<String, String>? environment,
   }) async {
+    if (_live.containsKey(role)) await stop(role);
     if (!await _host.isPortFree(port)) throw PortInUseException(port);
     final Process process = await _host.start(
       executable,
       arguments,
       environment: environment,
     );
-    _live[role] = (process: process, port: port);
-    await _record(
+    final OwnedProcess? record = await _record(
       role,
       process.pid,
       <String>[executable.split('/').last, ...arguments].join(' '),
     );
-    unawaited(
-      process.exitCode.then((_) {
-        if (identical(_live[role]?.process, process)) {
-          _live.remove(role);
-          _forget(role);
-        }
-      }),
-    );
+    final _Live live = _Live(process, port, record);
+    _live[role] = live;
+    unawaited(process.exitCode.then((_) => _onLeaderExit(role, live)));
     return process;
   }
 
   /// Arrête le serveur de [role] lancé par ce registre ; sinon ne fait rien.
-  /// Attend ensuite (borné) que son port se libère.
+  /// Vide son groupe, puis attend (borné) que son port se libère.
   Future<void> stop(String role) async {
-    final ({Process process, int port})? live = _live.remove(role);
+    final _Live? live = _live.remove(role);
     if (live == null) return;
-    final Process process = live.process;
-    _host.kill(process.pid);
-    if (!await _exited(process)) {
-      _log.warning('$role ignore SIGTERM, SIGKILL (pid ${process.pid})');
-      _host.kill(process.pid, ProcessSignal.sigkill);
-      await _exited(process);
+    final OwnedProcess? record = live.record;
+    final int pid = live.process.pid;
+    final bool group = _signallable(record);
+    if (group) {
+      _host.killGroup(record!.groupId);
+    } else if (!live.exited) {
+      _host.kill(pid);
+    }
+    if (!await _waitUntil(() async => !await _liveAlive(live))) {
+      _log.warning('$role encore vivant après SIGTERM, SIGKILL (pid $pid)');
+      if (!live.exited) _host.kill(pid, ProcessSignal.sigkill);
+      if (group && await _groupPopulated(record!)) {
+        _host.killGroup(record.groupId, ProcessSignal.sigkill);
+      }
+      await _waitUntil(() async => !await _liveAlive(live));
     }
     _forget(role);
     for (int i = 0; i < 20 && !await _host.isPortFree(live.port); i++) {
@@ -193,8 +286,8 @@ final class OwnedProcessRegistry {
   /// Sonde de santé, par l'hôte.
   Future<bool> isHealthy(Uri url) => _host.isHealthy(url);
 
-  /// Au lancement : arrête les restes notés qui ont encore la même identité.
-  /// Ne lève jamais.
+  /// Au lancement : arrête les restes notés (meneur de même identité, ou
+  /// membre cohérent de leur groupe). Ne lève jamais.
   Future<void> cleanUpLeftovers() async {
     final List<OwnedProcess> recorded;
     try {
@@ -211,61 +304,122 @@ final class OwnedProcessRegistry {
       _log.warning('Table des processus illisible, rien nettoyé: $e');
       return;
     }
-    for (final OwnedProcess p in leftoversToKill(recorded, running)) {
+    final int app = _host.appGroupId;
+    for (final OwnedProcess p in leftoversToKill(
+      recorded,
+      running,
+      appGroupId: app,
+    )) {
       _log.info('Reste du lancement précédent: ${p.role} (pid ${p.pid})');
       await _terminateLeftover(p);
     }
     _write(<OwnedProcess>[
       for (final OwnedProcess p in _readOrEmpty())
-        if (_live.containsKey(p.role) && _live[p.role]!.process.pid == p.pid) p,
+        if (_live[p.role]?.process.pid == p.pid) p,
     ]);
   }
 
   // ---------------------------------------------------------------------------
 
-  Future<bool> _exited(Process process) => process.exitCode
-      .then((_) => true)
-      .timeout(grace, onTimeout: () => false);
+  bool _signallable(OwnedProcess? p) =>
+      p != null && isSignallableGroup(p.groupId, appGroupId: _host.appGroupId);
 
-  Future<void> _terminateLeftover(OwnedProcess p) async {
-    _host.kill(p.pid);
-    final Stopwatch watch = Stopwatch()..start();
-    while (true) {
-      final List<RunningProcess> running;
-      try {
-        running = await _host.running();
-      } on Object {
-        return;
-      }
-      if (!running.any(p.isSameAs)) return;
-      if (watch.elapsed >= grace) break;
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-    }
-    _host.kill(p.pid, ProcessSignal.sigkill);
+  /// Le meneur vit encore, ou son groupe a encore un membre.
+  Future<bool> _liveAlive(_Live live) async {
+    if (!live.exited) return true;
+    final OwnedProcess? record = live.record;
+    return _signallable(record) && await _groupPopulated(record!);
   }
 
-  Future<void> _record(String role, int pid, String command) async {
+  Future<bool> _groupPopulated(OwnedProcess p) async {
+    try {
+      return (await _host.running()).any(
+        (RunningProcess r) => r.groupId == p.groupId,
+      );
+    } on Object {
+      return false;
+    }
+  }
+
+  /// Vrai si [done] devient vrai avant [grace].
+  Future<bool> _waitUntil(Future<bool> Function() done) async {
+    // Compté en sondes (pas d'horloge réelle) : borné à [grace].
+    for (int i = 0; i * _poll.inMilliseconds < grace.inMilliseconds; i++) {
+      if (await done()) return true;
+      await Future<void>.delayed(_poll);
+    }
+    return done();
+  }
+
+  Future<void> _onLeaderExit(String role, _Live live) async {
+    live.exited = true;
+    if (!identical(_live[role], live)) return;
+    // Meneur parti seul : l'entrée reste tant que son groupe a un membre
+    // (stop ou le lancement suivant le videra).
+    if (await _liveAlive(live)) return;
+    if (!identical(_live[role], live)) return;
+    _live.remove(role);
+    _forget(role);
+  }
+
+  Future<void> _terminateLeftover(OwnedProcess p) async {
+    final bool group = _signallable(p);
+    Future<List<RunningProcess>?> ours() async {
+      try {
+        final int app = _host.appGroupId;
+        return <RunningProcess>[
+          for (final RunningProcess r in await _host.running())
+            if (p.owns(r, appGroupId: app)) r,
+        ];
+      } on Object {
+        return null;
+      }
+    }
+
+    if (group) {
+      _host.killGroup(p.groupId);
+    } else {
+      _host.kill(p.pid);
+    }
+    bool unreadable = false;
+    final bool gone = await _waitUntil(() async {
+      final List<RunningProcess>? left = await ours();
+      unreadable = left == null;
+      return left == null || left.isEmpty;
+    });
+    if (gone || unreadable) return;
+    final List<RunningProcess> left = await ours() ?? <RunningProcess>[];
+    if (left.any(p.isSameAs)) _host.kill(p.pid, ProcessSignal.sigkill);
+    if (group && left.isNotEmpty) {
+      _host.killGroup(p.groupId, ProcessSignal.sigkill);
+    }
+  }
+
+  Future<OwnedProcess?> _record(String role, int pid, String command) async {
     final List<RunningProcess> running;
     try {
       running = await _host.running();
     } on Object catch (e) {
       _log.warning('Identité de $role (pid $pid) illisible, non notée: $e');
-      return;
+      return null;
     }
     final RunningProcess? seen = running
         .where((RunningProcess r) => r.pid == pid)
         .firstOrNull;
-    if (seen == null) return; // Déjà terminé : rien à nettoyer plus tard.
+    if (seen == null) return null; // Déjà terminé : rien à nettoyer.
+    final OwnedProcess record = OwnedProcess(
+      role: role,
+      pid: pid,
+      groupId: seen.groupId,
+      startTime: seen.startTime,
+      command: command,
+    );
     _write(<OwnedProcess>[
       for (final OwnedProcess p in _readOrEmpty())
         if (p.role != role) p,
-      OwnedProcess(
-        role: role,
-        pid: pid,
-        startTime: seen.startTime,
-        command: command,
-      ),
+      record,
     ]);
+    return record;
   }
 
   void _forget(String role) => _write(<OwnedProcess>[
