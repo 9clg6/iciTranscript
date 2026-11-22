@@ -29,8 +29,8 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>iciTranscript needs microphone access to transcribe your voice</string>
+	<string>Oats needs microphone access to transcribe your voice</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>iciTranscript needs screen capture permission to capture system audio for transcription</string>
+	<string>Oats needs screen capture permission to capture system audio for transcription</string>
 </dict>
 </plist>
