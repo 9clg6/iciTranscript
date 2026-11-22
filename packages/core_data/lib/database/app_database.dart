@@ -164,21 +164,21 @@ class DocumentChunks extends Table {
 // trigger de suppression (sans `recursive_triggers`) : ligne FTS en double.
 // Reecrire un morceau par upsert ou suppression puis insertion.
 const List<String> _searchSchema = <String>[
-  'CREATE VIRTUAL TABLE document_chunks_fts USING fts5('
+  'CREATE VIRTUAL TABLE IF NOT EXISTS document_chunks_fts USING fts5('
       'chunk_id UNINDEXED, content, '
       "tokenize = 'unicode61 remove_diacritics 2')",
-  'CREATE TRIGGER document_chunks_ai AFTER INSERT ON document_chunks BEGIN '
+  'CREATE TRIGGER IF NOT EXISTS document_chunks_ai AFTER INSERT ON document_chunks BEGIN '
       'INSERT INTO document_chunks_fts (chunk_id, content) '
       'VALUES (new.id, new.content); END',
-  'CREATE TRIGGER document_chunks_ad AFTER DELETE ON document_chunks BEGIN '
+  'CREATE TRIGGER IF NOT EXISTS document_chunks_ad AFTER DELETE ON document_chunks BEGIN '
       'DELETE FROM document_chunks_fts WHERE chunk_id = old.id; END',
-  'CREATE TRIGGER document_chunks_au AFTER UPDATE ON document_chunks BEGIN '
+  'CREATE TRIGGER IF NOT EXISTS document_chunks_au AFTER UPDATE ON document_chunks BEGIN '
       'DELETE FROM document_chunks_fts WHERE chunk_id = old.id; '
       'INSERT INTO document_chunks_fts (chunk_id, content) '
       'VALUES (new.id, new.content); END',
-  'CREATE TRIGGER documents_ad AFTER DELETE ON documents BEGIN '
+  'CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN '
       'DELETE FROM document_chunks WHERE document_id = old.id; END',
-  'CREATE TRIGGER sessions_ad AFTER DELETE ON sessions BEGIN '
+  'CREATE TRIGGER IF NOT EXISTS sessions_ad AFTER DELETE ON sessions BEGIN '
       'DELETE FROM detected_questions WHERE session_id = old.id; END',
 ];
 
@@ -208,17 +208,41 @@ class AppDatabase extends _$AppDatabase {
     },
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
-        await m.addColumn(sessions, sessions.calendarEventId);
-        await m.addColumn(sessions, sessions.calendarEventTitle);
-        await m.addColumn(sessions, sessions.attendees);
-        await m.addColumn(transcriptSegments, transcriptSegments.speaker);
+        // Rejouable : une base peut deja contenir tout ou partie de la v2
+        // avec `user_version = 1`.
+        await _addColumnIfMissing(m, sessions, sessions.calendarEventId);
+        await _addColumnIfMissing(m, sessions, sessions.calendarEventTitle);
+        await _addColumnIfMissing(m, sessions, sessions.attendees);
+        await _addColumnIfMissing(
+          m,
+          transcriptSegments,
+          transcriptSegments.speaker,
+        );
+        // `createTable` emet `CREATE TABLE IF NOT EXISTS`.
         await m.createTable(detectedQuestions);
         await m.createTable(documents);
         await m.createTable(documentChunks);
         await _createSearchSchema();
+        await customStatement(
+          'INSERT INTO document_chunks_fts (chunk_id, content) '
+          'SELECT id, content FROM document_chunks WHERE id NOT IN '
+          '(SELECT chunk_id FROM document_chunks_fts)',
+        );
       }
     },
   );
+
+  Future<void> _addColumnIfMissing(
+    Migrator m,
+    TableInfo<Table, dynamic> table,
+    GeneratedColumn<Object> column,
+  ) async {
+    final List<QueryRow> info = await customSelect(
+      'PRAGMA table_info("${table.actualTableName}")',
+    ).get();
+    if (info.any((QueryRow r) => r.data['name'] == column.name)) return;
+    await m.addColumn(table, column);
+  }
 
   Future<void> _createSearchSchema() async {
     for (final String statement in _searchSchema) {
