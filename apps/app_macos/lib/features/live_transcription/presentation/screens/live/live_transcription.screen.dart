@@ -297,12 +297,15 @@ class _LiveTranscriptionScreenState
       ),
       child: Row(
         children: <Widget>[
-          Flexible(
-            child: ServerStatusWidget(
-              serverState: state.serverState,
-              portInUse: state.serverPortInUse,
+          // Pendant la finalisation, l'état du serveur n'apporte rien : la
+          // place va au libellé de finalisation.
+          if (state.finalisingRemaining == null)
+            Flexible(
+              child: ServerStatusWidget(
+                serverState: state.serverState,
+                portInUse: state.serverPortInUse,
+              ),
             ),
-          ),
           Expanded(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,

@@ -70,6 +70,7 @@
       "pause": "Pause",
       "resume": "Reprendre",
       "finalising": "Finalisation de la transcription…",
+      "finalising_short": "Finalisation…",
       "finalising_remaining": "~{} s",
       "skip_finalising": "Passer",
       "recording_time": "Durée d'enregistrement",

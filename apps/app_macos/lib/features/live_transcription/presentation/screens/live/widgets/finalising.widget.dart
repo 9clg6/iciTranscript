@@ -34,12 +34,30 @@ class FinalisingWidget extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2, color: o.muted),
           ),
           const SizedBox(width: OatsSpace.sm),
+          // Libellé long s'il tient, sinon le court : jamais d'ellipse
+          // tant que le court tient.
           Flexible(
-            child: Text(
-              LocaleKeys.transcription_live_finalising.tr(),
-              style: o.ui,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints box) {
+                final String full = LocaleKeys.transcription_live_finalising
+                    .tr();
+                final TextPainter painter = TextPainter(
+                  text: TextSpan(text: full, style: o.ui),
+                  maxLines: 1,
+                  textDirection: Directionality.of(context),
+                  textScaler: MediaQuery.textScalerOf(context),
+                )..layout();
+                final bool fits = painter.width <= box.maxWidth;
+                painter.dispose();
+                return Text(
+                  fits
+                      ? full
+                      : LocaleKeys.transcription_live_finalising_short.tr(),
+                  style: o.ui,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                );
+              },
             ),
           ),
           const SizedBox(width: OatsSpace.sm),
