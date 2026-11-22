@@ -10,19 +10,19 @@ part of 'settings.view_model.dart';
 // ignore_for_file: type=lint, type=warning
 /// ViewModel de l'ecran des reglages.
 ///
-/// Gere la configuration audio, serveur ML, raccourcis et stockage.
+/// Gere la configuration audio, serveur ML, raccourcis, stockage et IA.
 
 @ProviderFor(SettingsViewModel)
 const settingsViewModelProvider = SettingsViewModelProvider._();
 
 /// ViewModel de l'ecran des reglages.
 ///
-/// Gere la configuration audio, serveur ML, raccourcis et stockage.
+/// Gere la configuration audio, serveur ML, raccourcis, stockage et IA.
 final class SettingsViewModelProvider
     extends $NotifierProvider<SettingsViewModel, SettingsState> {
   /// ViewModel de l'ecran des reglages.
   ///
-  /// Gere la configuration audio, serveur ML, raccourcis et stockage.
+  /// Gere la configuration audio, serveur ML, raccourcis, stockage et IA.
   const SettingsViewModelProvider._()
     : super(
         from: null,
@@ -50,11 +50,11 @@ final class SettingsViewModelProvider
   }
 }
 
-String _$settingsViewModelHash() => r'0fc947bf0e5b8070f66550a5d89a205fee04651f';
+String _$settingsViewModelHash() => r'824b3dac18842dea15248f8d7a759c7146b462dd';
 
 /// ViewModel de l'ecran des reglages.
 ///
-/// Gere la configuration audio, serveur ML, raccourcis et stockage.
+/// Gere la configuration audio, serveur ML, raccourcis, stockage et IA.
 
 abstract class _$SettingsViewModel extends $Notifier<SettingsState> {
   SettingsState build();

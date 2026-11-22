@@ -8,16 +8,20 @@ part of 'active_llm_provider.provider.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// Fournisseur LLM actif, construit avec sa cle du trousseau.
+/// Fournisseur LLM actif : choix de Réglages (prefs.json) et clé du
+/// trousseau, avec le repli de [LlmProviderSelection].
 ///
-/// A invalider apres l'ecriture ou la suppression d'une cle.
+/// Lu une fois puis gardé : Réglages l'invalide après chaque changement de
+/// clé, de fournisseur, de modèle ou d'autorisation d'envoi.
 
 @ProviderFor(activeLlmProvider)
 const activeLlmProviderProvider = ActiveLlmProviderProvider._();
 
-/// Fournisseur LLM actif, construit avec sa cle du trousseau.
+/// Fournisseur LLM actif : choix de Réglages (prefs.json) et clé du
+/// trousseau, avec le repli de [LlmProviderSelection].
 ///
-/// A invalider apres l'ecriture ou la suppression d'une cle.
+/// Lu une fois puis gardé : Réglages l'invalide après chaque changement de
+/// clé, de fournisseur, de modèle ou d'autorisation d'envoi.
 
 final class ActiveLlmProviderProvider
     extends
@@ -27,9 +31,11 @@ final class ActiveLlmProviderProvider
           FutureOr<LlmProvider>
         >
     with $FutureModifier<LlmProvider>, $FutureProvider<LlmProvider> {
-  /// Fournisseur LLM actif, construit avec sa cle du trousseau.
+  /// Fournisseur LLM actif : choix de Réglages (prefs.json) et clé du
+  /// trousseau, avec le repli de [LlmProviderSelection].
   ///
-  /// A invalider apres l'ecriture ou la suppression d'une cle.
+  /// Lu une fois puis gardé : Réglages l'invalide après chaque changement de
+  /// clé, de fournisseur, de modèle ou d'autorisation d'envoi.
   const ActiveLlmProviderProvider._()
     : super(
         from: null,
@@ -56,4 +62,4 @@ final class ActiveLlmProviderProvider
   }
 }
 
-String _$activeLlmProviderHash() => r'9103a6eec5b18aebd614dbaa8e865881d3161bbd';
+String _$activeLlmProviderHash() => r'0e616c4f82b74d0078741d8e96da56e9de6ae01d';
