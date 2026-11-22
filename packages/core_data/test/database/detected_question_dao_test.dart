@@ -12,13 +12,17 @@ import 'package:test/test.dart';
 ///
 /// API supposée (lib/database/dao/detected_question.dao.dart) :
 /// `DetectedQuestionDao(AppDatabase db)` avec
-/// - `Future<void> insertDetected({required String id, required String sessionId, String? segmentId, required String question, required int timestampMs, required DateTime createdAt})`
-/// - `Future<void> saveAnswer(String id, {required String answer, required String model, required List<({String documentId, String title, String excerpt})> sources})`
-///   (sources rangées en JSON `[{documentId, title, excerpt}]`)
+/// - `Future<void> insertDetected({required String id, required String sessionId, String? segmentId, required String question, required int timestampMs, required DateTime createdAt, String? speaker, String? source})`
+///   (status 'unanswered')
+/// - `Future<void> saveAnswer(String id, {required String answer, required String model, required List<({String documentId, String title, String excerpt})> sources, bool truncated = false})`
+///   (sources rangées en JSON `[{documentId, title, excerpt}]` ; status
+///   'answered', ou 'truncated' si [truncated])
+/// - `Future<void> setStatus(String id, String status)` : 'declined', 'failed'
 /// - `Future<List<DetectedQuestion>> forSession(String sessionId)`, par
 ///   `timestampMs` croissant
 /// - `Future<void> deleteById(String id)`
-/// « Sans réponse » = `answer` null (pas de colonne d'état : schéma v2 gardé).
+/// Colonne `status` du schéma v3 : unanswered, answered, declined, truncated,
+/// failed.
 void main() {
   late AppDatabase db;
   late DetectedQuestionDao dao;
@@ -38,10 +42,14 @@ void main() {
     String session = 's1',
     int at = 1000,
     String? segmentId,
+    String? speaker,
+    String? source,
   }) => dao.insertDetected(
     id: id,
     sessionId: session,
     segmentId: segmentId,
+    speaker: speaker,
+    source: source,
     question: 'Question $id ?',
     timestampMs: at,
     createdAt: DateTime(2026, 11, 22, 10),
@@ -66,33 +74,80 @@ void main() {
     expect(q.timestampMs, 65000);
     expect(q.answer, isNull);
     expect(q.answerModel, isNull);
+    expect(q.status, 'unanswered');
   });
 
-  test('la réponse, le modèle et les sources complètent la même ligne',
-      () async {
+  test('qui l\'a posée : locuteur et source gardés', () async {
+    await detect('q1', speaker: '1', source: 'output');
+    await detect('q2', at: 2000, source: 'input');
+
+    final List<DetectedQuestion> all = await dao.forSession('s1');
+    expect(all[0].speaker, '1');
+    expect(all[0].source, 'output');
+    expect(all[1].speaker, isNull);
+    expect(all[1].source, 'input');
+  });
+
+  test('réponse coupée : status truncated, texte gardé', () async {
     await detect('q1');
 
     await dao.saveAnswer(
       'q1',
-      answer: 'Le 12 mars.',
-      model: 'claude-haiku-5-5',
-      sources: const <({String documentId, String title, String excerpt})>[
-        (documentId: 'doc-1', title: 'Contrat', excerpt: 'Livraison le 12 mars.'),
-      ],
+      answer: 'La livraison est prévue pour le',
+      model: 'm',
+      sources: const <({String documentId, String title, String excerpt})>[],
+      truncated: true,
     );
 
-    final List<DetectedQuestion> all = await dao.forSession('s1');
-    expect(all, hasLength(1));
-    expect(all.single.answer, 'Le 12 mars.');
-    expect(all.single.answerModel, 'claude-haiku-5-5');
-    expect(jsonDecode(all.single.sources!), <Map<String, String>>[
-      <String, String>{
-        'documentId': 'doc-1',
-        'title': 'Contrat',
-        'excerpt': 'Livraison le 12 mars.',
-      },
-    ]);
+    final DetectedQuestion q = (await dao.forSession('s1')).single;
+    expect(q.status, 'truncated');
+    expect(q.answer, 'La livraison est prévue pour le');
   });
+
+  for (final String status in <String>['declined', 'failed']) {
+    test('$status : rangé, sans réponse', () async {
+      await detect('q1');
+
+      await dao.setStatus('q1', status);
+
+      final DetectedQuestion q = (await dao.forSession('s1')).single;
+      expect(q.status, status);
+      expect(q.answer, isNull);
+    });
+  }
+
+  test(
+    'la réponse, le modèle et les sources complètent la même ligne',
+    () async {
+      await detect('q1');
+
+      await dao.saveAnswer(
+        'q1',
+        answer: 'Le 12 mars.',
+        model: 'claude-haiku-5-5',
+        sources: const <({String documentId, String title, String excerpt})>[
+          (
+            documentId: 'doc-1',
+            title: 'Contrat',
+            excerpt: 'Livraison le 12 mars.',
+          ),
+        ],
+      );
+
+      final List<DetectedQuestion> all = await dao.forSession('s1');
+      expect(all, hasLength(1));
+      expect(all.single.answer, 'Le 12 mars.');
+      expect(all.single.answerModel, 'claude-haiku-5-5');
+      expect(all.single.status, 'answered');
+      expect(jsonDecode(all.single.sources!), <Map<String, String>>[
+        <String, String>{
+          'documentId': 'doc-1',
+          'title': 'Contrat',
+          'excerpt': 'Livraison le 12 mars.',
+        },
+      ]);
+    },
+  );
 
   test('par session, dans l\'ordre de la réunion', () async {
     await detect('late', at: 90000);
