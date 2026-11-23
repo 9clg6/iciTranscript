@@ -20,8 +20,9 @@ class _LiveVm extends LiveTranscriptionViewModel {
   LiveTranscriptionState build() => LiveTranscriptionState.initial();
 }
 
-/// Coach de fin d'appel par le fournisseur actif (besoin B7) ; API
-/// existante : `coachAfterCall(micTranscript, sessionId:)`.
+/// Coach de fin d'appel par le fournisseur actif (besoin B7) ; API :
+/// `coachAfterCall(segments, sessionId:)` (segments de la note ; avant :
+/// texte du micro).
 void main() {
   late AppDatabase db;
   late RecordingHttpAdapter adapter;
@@ -61,7 +62,7 @@ void main() {
 
   Future<void> coach(ProviderContainer c) => c
       .read(liveTranscriptionViewModelProvider.notifier)
-      .coachAfterCall('I am agree with you.', sessionId: 's1');
+      .coachAfterCall(kShortMeeting, sessionId: 's1');
 
   test('Claude configuré et autorisé, modèle local absent : le coach passe '
       'par Claude, le retour est montré et rangé', () async {

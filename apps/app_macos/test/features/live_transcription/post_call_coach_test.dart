@@ -29,9 +29,9 @@ class _LiveVm extends LiveTranscriptionViewModel {
 
 /// Coach de fin d'enregistrement (interrupteur coach activé).
 ///
-/// API supposée : `LiveTranscriptionViewModel.coachAfterCall(micTranscript,
-/// sessionId:)`, l'étape coach de `stopSession` rendue publique
-/// (@visibleForTesting) — aujourd'hui `_analyzeEnglish`.
+/// API supposée : `LiveTranscriptionViewModel.coachAfterCall(segments,
+/// sessionId:)` (segments de la note ; avant : texte du micro), l'étape
+/// coach de `stopSession` rendue publique (@visibleForTesting).
 ///
 /// Besoin B7 : le modèle local répond par le fournisseur Ollama, donc par
 /// `llmDioProvider` (transport factice), plus par `analyzeEnglish`.
@@ -89,7 +89,7 @@ void main() {
 
     await c
         .read(liveTranscriptionViewModelProvider.notifier)
-        .coachAfterCall('I am agree with you.', sessionId: 's1');
+        .coachAfterCall(kShortMeeting, sessionId: 's1');
 
     expect(ollama.ensureReadyCalls, 0, reason: 'téléchargement silencieux');
     expect(ollama.analyzeCalls, 0);
@@ -106,7 +106,7 @@ void main() {
 
     await c
         .read(liveTranscriptionViewModelProvider.notifier)
-        .coachAfterCall('I am agree with you.', sessionId: 's1');
+        .coachAfterCall(kShortMeeting, sessionId: 's1');
 
     expect(adapter.lastHost, kProviderHost[LlmProviderId.ollama]);
     expect(c.read(liveTranscriptionViewModelProvider).feedback, isNotNull);
