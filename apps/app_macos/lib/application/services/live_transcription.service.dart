@@ -404,8 +404,8 @@ final class LiveTranscriptionService {
       _subscribeToAudio();
       _log.info('Audio subscription active, en attente de chunks...');
       _running = true;
-      _gapSources.clear();
-      _orphanPhrases.clear();
+      _lossOfPhrase.clear();
+      _lastSealed.clear();
       _provisionalTimer = Timer.periodic(
         const Duration(seconds: 1),
         (_) => _updateProvisionalMarkers(),
@@ -514,16 +514,6 @@ final class LiveTranscriptionService {
     }
     _checkpointTimers.clear();
 
-    // Sauvegarder les phrases restantes si le serveur n'a pas répondu à temps.
-    final SessionEntity? currentSession = currentSessionStream.valueOrNull;
-    if (currentSession != null) {
-      for (final AudioSource source in AudioSource.values) {
-        final String text = _phrase[source]!.toString().trim();
-        if (text.isEmpty) continue;
-        await _finalizeSegment(currentSession, source, text);
-      }
-    }
-
     if (_pendingFinalizations.isNotEmpty) {
       await Future.wait<void>(List<Future<void>>.from(_pendingFinalizations));
     }
@@ -552,6 +542,18 @@ final class LiveTranscriptionService {
     // ponytail: un tour de boucle suffit à livrer la perte (PublishSubject
     // asynchrone). Faire rendre les pertes par disconnect() si cela change.
     await Future<void>.delayed(Duration.zero);
+
+    // Repli : phrases restantes si le serveur n'a pas répondu à temps. Après
+    // la déconnexion, pour que la perte de l'arrêt soit connue et place la
+    // phrase à l'heure de son audio (sonde 6 : 223,9 s, pas 410,8 s).
+    final SessionEntity? currentSession = currentSessionStream.valueOrNull;
+    if (currentSession != null) {
+      for (final AudioSource source in AudioSource.values) {
+        final String text = _phrase[source]!.toString().trim();
+        if (text.isEmpty) continue;
+        await _finalizeSegment(currentSession, source, text);
+      }
+    }
     if (_pendingFinalizations.isNotEmpty) {
       await Future.wait<void>(List<Future<void>>.from(_pendingFinalizations));
     }
@@ -848,8 +850,16 @@ final class LiveTranscriptionService {
   void _onAudioGap(AudioGap gap) {
     final SessionEntity? session = currentSessionStream.valueOrNull;
     if (session == null) return;
-    _gapSources.add(gap.source);
     final int startMs = _offsetOf(session, gap.startMs);
+    // La phrase en cours de cette source est emportée par la perte : son
+    // audio commence au début de la perte.
+    if (_phraseId.containsKey(gap.source)) {
+      _lossOfPhrase[gap.source] = startMs;
+    } else if (_lastSealed.remove(gap.source)
+        case final TranscriptSegmentEntity sealed
+        when startMs < sealed.timestampMs) {
+      _savePartial(sealed.copyWith(timestampMs: startMs));
+    }
     final TranscriptSegmentEntity marker = TranscriptSegmentEntity(
       id: _newSegmentId(session, gap.source),
       sessionId: session.id,
@@ -1058,7 +1068,8 @@ final class LiveTranscriptionService {
           clock.now().millisecondsSinceEpoch,
         );
         _phraseId[source] = _newSegmentId(currentSession, source);
-        if (_orphanText(source)) _orphanPhrases.add(source);
+        _lossOfPhrase.remove(source);
+        _lastSealed.remove(source);
       }
       _phrase[source]!.write(delta);
 
@@ -1091,10 +1102,7 @@ final class LiveTranscriptionService {
   /// retranscrit. Il devient sa propre ligne, telle quelle ; le `done`
   /// suivant ouvre une nouvelle phrase. Le repère de perte vient à part.
   void _sealPhrase(SessionEntity session, AudioSource source) {
-    final String? id = _orphanPhrases.remove(source)
-        ? null
-        : _phraseId.remove(source);
-    _phraseId.remove(source);
+    final String? id = _phraseId.remove(source);
     _checkpointTimers.remove(source)?.cancel();
     final Future<void>? provisionalWrite = _provisionalWrites.remove(source);
     final String text = TranscriptTextNormalizer.normalize(
@@ -1116,11 +1124,24 @@ final class LiveTranscriptionService {
       sessionId: session.id,
       source: source,
       text: text,
-      timestampMs: _phraseStart[source]!,
+      timestampMs: _currentPhraseStart(source),
       createdAt: clock.now(),
     );
+    _lossOfPhrase.remove(source);
+    // La perte qui l'emporte peut arriver juste après (autre flux) : elle
+    // replacera alors cette phrase à l'heure de son audio.
+    _lastSealed[source] = segment;
+    _savePartial(segment, after: provisionalWrite);
+  }
+
+  /// Dernière phrase scellée de chaque source, tant qu'aucune autre phrase
+  /// n'a commencé : la perte déclarée ensuite la replace à son début.
+  final Map<AudioSource, TranscriptSegmentEntity> _lastSealed =
+      <AudioSource, TranscriptSegmentEntity>{};
+
+  void _savePartial(TranscriptSegmentEntity segment, {Future<void>? after}) {
     late final Future<void> task;
-    task = (provisionalWrite ?? Future<void>.value())
+    task = (after ?? Future<void>.value())
         .then((_) => _transcriptionService.saveSegment(segment))
         .then((_) => _sortAndDedupeSegments())
         .whenComplete(() => _pendingFinalizations.remove(task));
@@ -1129,19 +1150,20 @@ final class LiveTranscriptionService {
 
   static final RegExp _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
-  // Sources dont une perte a été déclarée pendant cette session, et phrases
-  // en cours ouvertes par un texte tardif d'une de ces sources.
-  final Set<AudioSource> _gapSources = <AudioSource>{};
-  final Set<AudioSource> _orphanPhrases = <AudioSource>{};
+  // Début (heure de réunion) de la perte déclarée pendant que la phrase en
+  // cours de chaque source était dite : c'est là que son AUDIO commence,
+  // pas à l'arrivée de son premier delta (sonde 6 : sous retard, minutes
+  // plus tard). La perte d'une source part de son plus vieil audio sans
+  // `done`, celui de la phrase en cours.
+  final Map<AudioSource, int> _lossOfPhrase = <AudioSource, int>{};
 
-  /// Un texte de [source] sans phrase en attente côté serveur, après une
-  /// perte déclarée pour elle, est un reste tardif de cette perte.
-  // ponytail: le protocole n'a pas d'identifiant de phrase ; un `done`
-  // spontané légitime arrivé dans ces conditions est écarté aussi (le
-  // rattrapage depuis le WAV couvre l'intervalle perdu).
-  bool _orphanText(AudioSource source) =>
-      _gapSources.contains(source) &&
-      !_transcriptionRemoteDataSource.activeSources.contains(source);
+  /// Heure de la phrase en cours de [source] : celle de son premier delta,
+  /// ou plus tôt le début de la perte qui l'a emportée.
+  int _currentPhraseStart(AudioSource source) {
+    final int fromDelta = _phraseStart[source]!;
+    final int? loss = _lossOfPhrase[source];
+    return loss != null && loss < fromDelta ? loss : fromDelta;
+  }
 
   static final RegExp _wordRun = RegExp(r'[\p{L}\p{N}]+', unicode: true);
   static int _wordCount(String text) => _wordRun.allMatches(text).length;
@@ -1155,7 +1177,6 @@ final class LiveTranscriptionService {
     );
     // Sans lettre ni chiffre (« … » pendant le traitement), rien à garder.
     if (id == null ||
-        _orphanPhrases.contains(source) ||
         !_wordChar.hasMatch(text) ||
         TranscriptTextNormalizer.isForeignScript(text)) {
       return;
@@ -1165,7 +1186,7 @@ final class LiveTranscriptionService {
       sessionId: session.id,
       source: source,
       text: text,
-      timestampMs: _phraseStart[source]!,
+      timestampMs: _currentPhraseStart(source),
       createdAt: clock.now(),
     );
     // Écritures chaînées : un provisoire tardif n'écrase jamais la finale.
@@ -1194,13 +1215,6 @@ final class LiveTranscriptionService {
     final String? provisionalId = _phraseId.remove(source);
     _checkpointTimers.remove(source)?.cancel();
     final Future<void>? provisionalWrite = _provisionalWrites.remove(source);
-    // Texte tardif d'une source déjà en perte, sans fenêtre : le rattrapage
-    // depuis le WAV possède cet intervalle (sonde 6 : ces textes arrivaient
-    // tronqués, après la réunion, et doublaient les phrases rattrapées).
-    final bool orphan =
-        window == null &&
-        (_orphanPhrases.remove(source) ||
-            (provisionalId == null && _orphanText(source)));
     // Phrase coupée par l'arrêt : un texte final plus court que ce qui a
     // déjà été dit n'efface pas la phrase plus complète (sonde 6).
     final String said = TranscriptTextNormalizer.normalize(
@@ -1212,8 +1226,9 @@ final class LiveTranscriptionService {
     final int phraseStart = window != null
         ? _offsetOf(session, window.startMs)
         : provisionalId != null
-        ? _phraseStart[source]!
+        ? _currentPhraseStart(source)
         : _offsetOf(session, clock.now().millisecondsSinceEpoch);
+    _lossOfPhrase.remove(source);
     _phrase[source] = StringBuffer();
     final String normalized = TranscriptTextNormalizer.normalize(finalText);
     final List<String> recent = _recentFinals[source]!;
@@ -1221,16 +1236,6 @@ final class LiveTranscriptionService {
     recent.add(normalized);
     if (recent.length > 2) recent.removeAt(0);
     _transcriptionService.segmentsStream.add(segs);
-
-    if (orphan) {
-      _log.info('Texte tardif d une source en perte, écarté: $normalized');
-      await provisionalWrite;
-      if (provisionalWrite != null && provisionalId != null) {
-        await _transcriptionService.discardProvisional(provisionalId);
-      }
-      _sortAndDedupeSegments();
-      return;
-    }
 
     String? text;
     // Écriture non latine ou langue non attendue : avec de la parole, ce
@@ -1323,7 +1328,7 @@ final class LiveTranscriptionService {
       sessionId: session.id,
       source: source,
       text: text,
-      timestampMs: _phraseStart[source]!,
+      timestampMs: _currentPhraseStart(source),
       createdAt: clock.now(),
     );
 
