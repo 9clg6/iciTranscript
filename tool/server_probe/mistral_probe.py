@@ -64,8 +64,15 @@ def ref_text(sched, a, b):
 
 
 async def session(log, api_key, model=RT_MODEL, delay_ms=480):
-    ws = await connect(WS.format(model=model), additional_headers={"Authorization": f"Bearer {api_key}"},
-                       max_size=None, open_timeout=20, ping_interval=None)
+    try:
+        ws = await connect(WS.format(model=model), additional_headers={"Authorization": f"Bearer {api_key}"},
+                           max_size=None, open_timeout=20, ping_interval=None)
+    except InvalidStatus as e:
+        r = e.response
+        log.w(dir="http_reject", status=r.status_code, reason=r.reason_phrase,
+              headers={h: v for h, v in r.headers.raw_items() if h.lower() != "set-cookie"},
+              body=r.body.decode(errors="replace")[:2000])
+        raise
     log.w(dir="open", model=model)
 
     async def reader():
@@ -195,11 +202,18 @@ def t_batch(a, k):  # 6: 30 s WAV, segment timestamps
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("test", choices=["stream", "flush", "fast", "badkey", "model2602", "batch"])
+    p.add_argument("test", choices=["all", "stream", "flush", "fast", "badkey", "model2602", "batch"])
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
-    k = None if a.test == "badkey" else key()
+    k = None if a.test == "badkey" else key()  # one keychain call per run
+    if a.test == "all":
+        print("key read", flush=True)  # never the key itself
+        for t in ("stream", "flush", "fast", "model2602"):
+            print("test", t, flush=True)
+            asyncio.run(globals()[f"t_{t}"](a, k))
+        print("test batch", flush=True)
+        return t_batch(a, k)
     if a.test == "batch":
         return t_batch(a, k)
     asyncio.run(globals()[f"t_{a.test}"](a, k))
