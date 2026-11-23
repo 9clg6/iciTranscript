@@ -31,8 +31,12 @@ class SessionDetailScreen extends ConsumerStatefulWidget {
   const SessionDetailScreen({
     required this.sessionId,
     required this.onClose,
+    this.focusCoach = false,
     super.key,
   });
+
+  /// Ouvre la note sur sa section « Coach anglais » (page du coach).
+  final bool focusCoach;
 
   /// Identifiant de la note.
   final String sessionId;
@@ -47,6 +51,20 @@ class SessionDetailScreen extends ConsumerStatefulWidget {
 
 class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   final TextEditingController _titleController = TextEditingController();
+  final GlobalKey _coachSection = GlobalKey();
+  bool _coachFocused = false;
+
+  /// Une fois, dès que la section coach est construite : la faire défiler
+  /// en haut de la vue.
+  void _focusCoach() {
+    if (!widget.focusCoach || _coachFocused) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final BuildContext? section = _coachSection.currentContext;
+      if (section == null || _coachFocused || !mounted) return;
+      _coachFocused = true;
+      Scrollable.ensureVisible(section);
+    });
+  }
 
   SessionDetailViewModel get _vm => ref.read(
     sessionDetailViewModelProvider(sessionId: widget.sessionId).notifier,
@@ -80,12 +98,16 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
               icon: Icons.error_outline,
               message: LocaleKeys.common_error_generic.tr(),
             ),
-            data: (SessionDetailState s) => s.session == null
-                ? OatsEmptyState(
-                    icon: Icons.description_outlined,
-                    message: LocaleKeys.history_detail_no_session.tr(),
-                  )
-                : _content(s, s.session!),
+            data: (SessionDetailState s) {
+              if (s.session == null) {
+                return OatsEmptyState(
+                  icon: Icons.description_outlined,
+                  message: LocaleKeys.history_detail_no_session.tr(),
+                );
+              }
+              _focusCoach();
+              return _content(s, s.session!);
+            },
           ),
         ),
       ],
@@ -217,6 +239,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                   state.feedback != null ||
                   state.feedbackError != null)
                 _section(
+                  key: _coachSection,
                   title: LocaleKeys.history_detail_english_coach.tr(),
                   onDelete: state.feedback == null
                       ? null
@@ -337,6 +360,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   }
 
   Widget _section({
+    Key? key,
     required String title,
     required Widget child,
     VoidCallback? onDelete,
@@ -344,6 +368,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
   }) {
     final Oats o = context.oats;
     return Padding(
+      key: key,
       padding: const EdgeInsets.only(top: OatsSpace.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
