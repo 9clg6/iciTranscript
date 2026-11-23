@@ -54,6 +54,20 @@ void main() {
 
       final plan = GapBackfillService.plan(h.segments.store.values.toList());
       expect(plan.where((p) => p.source == AudioSource.output), hasLength(1));
+
+      // Revue PR #25, point 4 : l'écran aussi ne liste qu'un repère.
+      final List<TranscriptSegmentEntity> listed = h
+          .transcription
+          .segmentsStream
+          .value
+          .where(
+            (TranscriptSegmentEntity x) =>
+                x.source == AudioSource.output &&
+                x.text.startsWith(LiveTranscriptionService.gapMarkerPrefix),
+          )
+          .toList();
+      expect(listed, hasLength(1), reason: 'un seul repère à l écran');
+      expect(listed.single.text, marker.text);
     });
   });
 
