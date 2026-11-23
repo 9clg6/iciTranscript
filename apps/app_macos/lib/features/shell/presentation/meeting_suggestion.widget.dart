@@ -10,6 +10,20 @@ import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 /// Largeur de l'invite de réunion.
 const double kMeetingSuggestionWidth = 340;
 
+/// Titre d'une suggestion : l'événement, ou « Appel détecté ».
+String suggestionTitle(MeetingSuggestion s) => switch (s.source) {
+  MeetingSource.calendar => s.event?.title ?? '',
+  MeetingSource.call => LocaleKeys.meeting_suggestion_call_title.tr(),
+};
+
+/// Détail d'une suggestion : « 10:00–10:30 », ou le nom de l'app d'appel.
+String suggestionDetail(MeetingSuggestion s) => switch (s.source) {
+  MeetingSource.calendar when s.event != null =>
+    '${formatStartTime(s.event!.start)}–${formatStartTime(s.event!.end)}',
+  MeetingSource.call => s.appName ?? '',
+  _ => '',
+};
+
 /// Invite non bloquante « Démarrer la note / Ignorer », en bas à droite du
 /// contenu ; rien quand il n'y a pas de suggestion.
 class MeetingSuggestionPrompt extends ConsumerWidget {
@@ -24,16 +38,8 @@ class MeetingSuggestionPrompt extends ConsumerWidget {
       meetingSuggestionControllerProvider.notifier,
     );
     final Oats o = context.oats;
-    final String title = switch (s.source) {
-      MeetingSource.calendar => s.event?.title ?? '',
-      MeetingSource.call => LocaleKeys.meeting_suggestion_call_title.tr(),
-    };
-    final String detail = switch (s.source) {
-      MeetingSource.calendar when s.event != null =>
-        '${formatStartTime(s.event!.start)}–${formatStartTime(s.event!.end)}',
-      MeetingSource.call => s.appName ?? '',
-      _ => '',
-    };
+    final String title = suggestionTitle(s);
+    final String detail = suggestionDetail(s);
     return Semantics(
       liveRegion: true,
       container: true,
