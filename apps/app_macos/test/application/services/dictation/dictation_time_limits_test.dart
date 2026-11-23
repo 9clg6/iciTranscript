@@ -11,9 +11,12 @@ import '../../../helpers/dictation_fakes.dart';
 /// une bascule oubliée. Vaut pour tous les raccourcis.
 ///
 /// Bornes, en un seul endroit (`DictationController`) :
-/// - `noSpeechTimeout` = 8 s : aucune parole depuis le début de la dictée →
-///   elle finit sans bruit : capture arrêtée, rien collé ni copié, pas
-///   d'erreur, Échap libérée ;
+/// - `noSpeechTimeout` = 8 s, SEULEMENT avant la première parole : personne
+///   n'a parlé → la dictée finit sans bruit : capture arrêtée, rien collé ni
+///   copié, pas d'erreur, Échap libérée. Après une parole, aucune pause,
+///   même longue, ne l'arrête (décision du coordinateur, 2026-11-23) : seuls
+///   le relâchement, le second appui, Échap ou la durée maximale la
+///   terminent ;
 /// - `maxDictationDuration` = 3 min : la capture s'arrête, le texte dit
 ///   jusque-là est produit une fois ; un relâchement tardif ne fait rien de
 ///   plus.
@@ -96,6 +99,30 @@ void main() {
 
         expect(d.state, isA<DictationListening>());
         expect(d.audio.stopCalls, 0);
+      });
+    });
+
+    test('une fois la parole entendue, une pause de 20 s n arrête pas : une '
+        'seule dictée avec les deux parties', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        d.press();
+        d.release();
+
+        d.say(10);
+        d.remote.pauseDetected();
+        d.remote.emitDone('Première partie.');
+        d.say(200, voiced: false);
+        expect(d.state, isA<DictationListening>());
+        expect(d.audio.stopCalls, 0);
+        d.say(10);
+        d.press();
+        d.release();
+        d.remote.emitDone('Seconde partie.');
+        async.elapse(Duration.zero);
+
+        expect(d.output.copies, <String>['Première partie. Seconde partie.']);
+        expect(d.audio.startCalls, 1);
       });
     });
   });
