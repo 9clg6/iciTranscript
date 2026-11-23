@@ -125,6 +125,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             : (_) => liveVm.toggleCoach(),
                       ),
                     ),
+                    // En ligne seulement : en local, la transcription
+                    // ralentirait (rien n'est envoyé pendant la réunion).
+                    _Row(
+                      label: LocaleKeys.coach_live_option.tr(),
+                      subtitle: state.llmActive == LlmProviderId.ollama
+                          ? LocaleKeys.coach_live_unavailable.tr()
+                          : LocaleKeys.coach_live_description.tr(),
+                      trailing: OatsSwitch(
+                        value: live.isLiveCoachEnabled,
+                        onChanged:
+                            live.isRecording ||
+                                state.llmActive == LlmProviderId.ollama
+                            ? null
+                            : (_) => liveVm.toggleLiveCoach(),
+                      ),
+                    ),
                     _Row(
                       label: LocaleKeys.settings_recording_speakers.tr(),
                       subtitle: LocaleKeys

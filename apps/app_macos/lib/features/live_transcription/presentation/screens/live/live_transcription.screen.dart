@@ -13,6 +13,8 @@ import 'package:ici_transcript/features/live_transcription/presentation/screens/
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/server_status.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/finalising.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/live_answers_panel.widget.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/live_coach_block.widget.dart';
+import 'package:ici_transcript/core/providers/services/live_coach.service.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/session_controls.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
@@ -215,6 +217,7 @@ class _LiveTranscriptionScreenState
                 onChanged: (_) => _vm.toggleCoach(),
               ),
               const SizedBox(width: OatsSpace.lg),
+              ..._liveCoachOption(state),
               Tooltip(
                 message: LocaleKeys.transcription_live_speakers_tooltip.tr(),
                 child: _optionLabel(
@@ -253,6 +256,40 @@ class _LiveTranscriptionScreenState
         ),
       ),
     );
+  }
+
+  /// « Coach en direct » : disponible seulement avec un fournisseur en
+  /// ligne configuré et autorisé ; sinon désactivé, et la raison est dite.
+  List<Widget> _liveCoachOption(LiveTranscriptionState state) {
+    final Oats o = context.oats;
+    final bool available =
+        ref.watch(liveCoachAvailableProvider).value ?? false;
+    return <Widget>[
+      MergeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _optionLabel(
+              Icons.bolt_outlined,
+              LocaleKeys.coach_live_option.tr(),
+            ),
+            OatsSwitch(
+              value: available && state.isLiveCoachEnabled,
+              onChanged: available ? (_) => _vm.toggleLiveCoach() : null,
+            ),
+          ],
+        ),
+      ),
+      if (!available &&
+          ref.watch(liveCoachAvailableProvider).hasValue) ...<Widget>[
+        const SizedBox(width: OatsSpace.xs),
+        Text(
+          LocaleKeys.coach_live_unavailable.tr(),
+          style: o.meta.copyWith(color: o.faint),
+        ),
+      ],
+      const SizedBox(width: OatsSpace.lg),
+    ];
   }
 
   static const Map<String, String> _langs = <String, String>{
@@ -375,7 +412,18 @@ class _LiveTranscriptionScreenState
           VerticalDivider(width: 1, thickness: 1, color: o.line),
           SizedBox(
             width: (c.maxWidth * 0.4).clamp(280, 400),
-            child: const LiveAnswersPanel(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                const Expanded(child: LiveAnswersPanel()),
+                if (ref.watch(
+                  liveTranscriptionViewModelProvider.select(
+                    (LiveTranscriptionState s) => s.isLiveCoachEnabled,
+                  ),
+                ))
+                  const LiveCoachBlock(),
+              ],
+            ),
           ),
         ],
       ),

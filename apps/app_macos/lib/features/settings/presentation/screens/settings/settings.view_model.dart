@@ -10,6 +10,7 @@ import 'package:ici_transcript/core/providers/services/active_llm_provider.provi
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/llm_dio.provider.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
+import 'package:ici_transcript/core/providers/services/live_coach.service.provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'settings.view_model.g.dart';
@@ -237,6 +238,7 @@ class SettingsViewModel extends _$SettingsViewModel {
   /// montre celui réellement utilisé.
   Future<void> _llmChanged() async {
     ref.invalidate(activeLlmProviderProvider);
+    ref.invalidate(liveCoachAvailableProvider);
     final LlmProviderId active = await _resolve(_settings);
     if (ref.mounted) state = state.copyWith(llmActive: active);
   }
