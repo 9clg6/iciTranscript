@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:clock/clock.dart';
+
 import 'package:core_data/clients/websocket_client.dart';
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
@@ -34,6 +36,11 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
   /// Point d'entrée du serveur de transcription (ports de ce lancement).
   final String url;
   final WebSocketClient Function() _createClient;
+
+  // Poignées de main expirées de suite : allongent la suivante, comme la
+  // reconnexion en direct (sonde 13 : serveur occupé par l'arriéré de la
+  // réunion, accepte en 15–30 s).
+  int _slowAccepts = 0;
 
   /// Durée maximale d'un morceau : un démarrage n'attend qu'environ un
   /// morceau sur le serveur séquentiel (sonde 4 : 8,8 s avec 30 s).
@@ -120,12 +127,22 @@ final class WebSocketPcmTranscriber implements PcmTranscriber {
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
     if (_shouldYield()) throw const TranscriberUnavailable('enregistrement');
-    final WebSocketClient client = _createClient();
+    final WebSocketClient client = _createClient()
+      ..handshakeTimeout = WebSocketClient.handshakeBound(_slowAccepts);
+    final DateTime asked = clock.now();
     try {
       await client.connect(url);
+    } on TimeoutException catch (e) {
+      _slowAccepts++;
+      await client.dispose();
+      throw TranscriberUnavailable('connexion refusée ($e)');
     } on Exception catch (e) {
       await client.dispose();
       throw TranscriberUnavailable('connexion refusée ($e)');
+    }
+    // Un serveur qui a accepté lentement l'est encore : la borne reste.
+    if (clock.now().difference(asked) <= WebSocketClient.connectTimeout) {
+      _slowAccepts = 0;
     }
     try {
       final List<({int offsetMs, String text})> pieces =
