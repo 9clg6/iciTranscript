@@ -25,7 +25,12 @@ import '../../helpers/localized_app.dart';
 //   pendant un flux de texte, le dernier état toujours envoyé), et en
 //   entier en réponse à `ready` ;
 // - `showWindow` : montrer la fenêtre principale (au premier plan) ;
-// - `terminate` : quitter l'app (après l'arrêt d'une note en cours).
+// - `terminate` : quitter l'app (après l'arrêt d'une note en cours) ;
+// - `suggest` {`key`, `kind`, `title`, `detail`} (mêmes valeurs que
+//   `suggestion` ci-dessous, `key` = MeetingSuggestion.key) : une NOUVELLE
+//   suggestion à remarquer pendant un appel, le natif ouvre le panneau sans
+//   activer l'app ; une fois par clé, jamais pendant un enregistrement ou
+//   une dictée, fenêtre masquée comprise (status_panel_suggest_test.dart).
 //
 // Swift → Dart (clics du panneau, sans argument sauf mention)
 // - `ready` : le panneau vient de s'ouvrir, renvoyer l'instantané entier ;
@@ -65,7 +70,10 @@ import '../../helpers/localized_app.dart';
 // - `suggestion` : la suggestion du shell, ou null : {`kind`: `calendar` |
 //   `call`, `title`: String (titre de l'événement ou « Appel détecté »),
 //   `detail`: String (« 10:00–10:30 » ou nom de l'app d'appel)} ;
-// - `dictating` : bool, une dictée est en cours.
+// - `dictating` : bool, une dictée est en cours ;
+// - `showStart` : bool, le bouton générique « Démarrer la note » est
+//   visible : vrai seulement au repos SANS suggestion (une suggestion
+//   affichée porte son propre « Démarrer la note » : un seul à l'écran).
 // Les textes affichables arrivent déjà en français (fr.json) ; Swift
 // n'a que ses propres libellés de boutons.
 //
@@ -160,6 +168,7 @@ void main() {
         'question': null,
         'suggestion': null,
         'dictating': false,
+        'showStart': true,
       });
     });
 
@@ -497,6 +506,44 @@ void main() {
       final Map<Object?, Object?> q = s['question']! as Map<Object?, Object?>;
       expect(q['id'], 'q2');
       expect(q['text'], 'Qui valide le budget ?');
+    });
+  });
+
+  group('bouton générique « Démarrer la note »', () {
+    const MeetingSuggestion call = MeetingSuggestion(
+      source: MeetingSource.call,
+      key: 'call:us.zoom.xos',
+      appName: 'Zoom',
+    );
+
+    test('au repos sans suggestion : visible', () {
+      expect(snap()['showStart'], isTrue);
+    });
+
+    test('une suggestion est affichée : masqué (un seul « Démarrer la '
+        'note »)', () {
+      expect(snap(suggestion: call)['showStart'], isFalse);
+    });
+
+    test('la suggestion disparaît : de nouveau visible', () {
+      expect(snap(suggestion: call)['showStart'], isFalse);
+      expect(snap()['showStart'], isTrue);
+    });
+
+    test('une note enregistre, en pause ou se finalise : masqué', () {
+      expect(snap(live: recording())['showStart'], isFalse);
+      expect(
+        snap(live: recording().copyWith(isPaused: true))['showStart'],
+        isFalse,
+      );
+      expect(
+        snap(
+          live: LiveTranscriptionState.initial().copyWith(
+            finalisingRemaining: const Duration(seconds: 5),
+          ),
+        )['showStart'],
+        isFalse,
+      );
     });
   });
 
