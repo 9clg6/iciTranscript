@@ -20,7 +20,10 @@ mixin _$EnglishCorrectionEntity {
  String get corrected;/// Categorie libre renvoyee par le modele
 /// (ex: conjugation, vocabulary, expression, grammar).
  String get category;/// Explication courte de la correction (en francais).
- String get explanation;
+ String get explanation;/// Heure, dans la note, de la phrase qui contient [original] (ms depuis
+/// le début, comme `TranscriptSegmentEntity.timestampMs`) ; null si
+/// inconnue (retour d'avant, phrase introuvable).
+ int? get timestampMs;
 /// Create a copy of EnglishCorrectionEntity
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -33,16 +36,16 @@ $EnglishCorrectionEntityCopyWith<EnglishCorrectionEntity> get copyWith => _$Engl
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnglishCorrectionEntity&&(identical(other.original, original) || other.original == original)&&(identical(other.corrected, corrected) || other.corrected == corrected)&&(identical(other.category, category) || other.category == category)&&(identical(other.explanation, explanation) || other.explanation == explanation));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnglishCorrectionEntity&&(identical(other.original, original) || other.original == original)&&(identical(other.corrected, corrected) || other.corrected == corrected)&&(identical(other.category, category) || other.category == category)&&(identical(other.explanation, explanation) || other.explanation == explanation)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,original,corrected,category,explanation);
+int get hashCode => Object.hash(runtimeType,original,corrected,category,explanation,timestampMs);
 
 @override
 String toString() {
-  return 'EnglishCorrectionEntity(original: $original, corrected: $corrected, category: $category, explanation: $explanation)';
+  return 'EnglishCorrectionEntity(original: $original, corrected: $corrected, category: $category, explanation: $explanation, timestampMs: $timestampMs)';
 }
 
 
@@ -53,7 +56,7 @@ abstract mixin class $EnglishCorrectionEntityCopyWith<$Res>  {
   factory $EnglishCorrectionEntityCopyWith(EnglishCorrectionEntity value, $Res Function(EnglishCorrectionEntity) _then) = _$EnglishCorrectionEntityCopyWithImpl;
 @useResult
 $Res call({
- String original, String corrected, String category, String explanation
+ String original, String corrected, String category, String explanation, int? timestampMs
 });
 
 
@@ -70,13 +73,14 @@ class _$EnglishCorrectionEntityCopyWithImpl<$Res>
 
 /// Create a copy of EnglishCorrectionEntity
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? original = null,Object? corrected = null,Object? category = null,Object? explanation = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? original = null,Object? corrected = null,Object? category = null,Object? explanation = null,Object? timestampMs = freezed,}) {
   return _then(_self.copyWith(
 original: null == original ? _self.original : original // ignore: cast_nullable_to_non_nullable
 as String,corrected: null == corrected ? _self.corrected : corrected // ignore: cast_nullable_to_non_nullable
 as String,category: null == category ? _self.category : category // ignore: cast_nullable_to_non_nullable
 as String,explanation: null == explanation ? _self.explanation : explanation // ignore: cast_nullable_to_non_nullable
-as String,
+as String,timestampMs: freezed == timestampMs ? _self.timestampMs : timestampMs // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -161,10 +165,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String original,  String corrected,  String category,  String explanation)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String original,  String corrected,  String category,  String explanation,  int? timestampMs)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _EnglishCorrectionEntity() when $default != null:
-return $default(_that.original,_that.corrected,_that.category,_that.explanation);case _:
+return $default(_that.original,_that.corrected,_that.category,_that.explanation,_that.timestampMs);case _:
   return orElse();
 
 }
@@ -182,10 +186,10 @@ return $default(_that.original,_that.corrected,_that.category,_that.explanation)
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String original,  String corrected,  String category,  String explanation)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String original,  String corrected,  String category,  String explanation,  int? timestampMs)  $default,) {final _that = this;
 switch (_that) {
 case _EnglishCorrectionEntity():
-return $default(_that.original,_that.corrected,_that.category,_that.explanation);case _:
+return $default(_that.original,_that.corrected,_that.category,_that.explanation,_that.timestampMs);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -202,10 +206,10 @@ return $default(_that.original,_that.corrected,_that.category,_that.explanation)
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String original,  String corrected,  String category,  String explanation)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String original,  String corrected,  String category,  String explanation,  int? timestampMs)?  $default,) {final _that = this;
 switch (_that) {
 case _EnglishCorrectionEntity() when $default != null:
-return $default(_that.original,_that.corrected,_that.category,_that.explanation);case _:
+return $default(_that.original,_that.corrected,_that.category,_that.explanation,_that.timestampMs);case _:
   return null;
 
 }
@@ -217,7 +221,7 @@ return $default(_that.original,_that.corrected,_that.category,_that.explanation)
 @JsonSerializable()
 
 class _EnglishCorrectionEntity implements EnglishCorrectionEntity {
-  const _EnglishCorrectionEntity({required this.original, required this.corrected, required this.category, required this.explanation});
+  const _EnglishCorrectionEntity({required this.original, required this.corrected, required this.category, required this.explanation, this.timestampMs});
   factory _EnglishCorrectionEntity.fromJson(Map<String, dynamic> json) => _$EnglishCorrectionEntityFromJson(json);
 
 /// Phrase ou tournure telle que prononcee par l'utilisateur.
@@ -229,6 +233,10 @@ class _EnglishCorrectionEntity implements EnglishCorrectionEntity {
 @override final  String category;
 /// Explication courte de la correction (en francais).
 @override final  String explanation;
+/// Heure, dans la note, de la phrase qui contient [original] (ms depuis
+/// le début, comme `TranscriptSegmentEntity.timestampMs`) ; null si
+/// inconnue (retour d'avant, phrase introuvable).
+@override final  int? timestampMs;
 
 /// Create a copy of EnglishCorrectionEntity
 /// with the given fields replaced by the non-null parameter values.
@@ -243,16 +251,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnglishCorrectionEntity&&(identical(other.original, original) || other.original == original)&&(identical(other.corrected, corrected) || other.corrected == corrected)&&(identical(other.category, category) || other.category == category)&&(identical(other.explanation, explanation) || other.explanation == explanation));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnglishCorrectionEntity&&(identical(other.original, original) || other.original == original)&&(identical(other.corrected, corrected) || other.corrected == corrected)&&(identical(other.category, category) || other.category == category)&&(identical(other.explanation, explanation) || other.explanation == explanation)&&(identical(other.timestampMs, timestampMs) || other.timestampMs == timestampMs));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,original,corrected,category,explanation);
+int get hashCode => Object.hash(runtimeType,original,corrected,category,explanation,timestampMs);
 
 @override
 String toString() {
-  return 'EnglishCorrectionEntity(original: $original, corrected: $corrected, category: $category, explanation: $explanation)';
+  return 'EnglishCorrectionEntity(original: $original, corrected: $corrected, category: $category, explanation: $explanation, timestampMs: $timestampMs)';
 }
 
 
@@ -263,7 +271,7 @@ abstract mixin class _$EnglishCorrectionEntityCopyWith<$Res> implements $English
   factory _$EnglishCorrectionEntityCopyWith(_EnglishCorrectionEntity value, $Res Function(_EnglishCorrectionEntity) _then) = __$EnglishCorrectionEntityCopyWithImpl;
 @override @useResult
 $Res call({
- String original, String corrected, String category, String explanation
+ String original, String corrected, String category, String explanation, int? timestampMs
 });
 
 
@@ -280,13 +288,14 @@ class __$EnglishCorrectionEntityCopyWithImpl<$Res>
 
 /// Create a copy of EnglishCorrectionEntity
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? original = null,Object? corrected = null,Object? category = null,Object? explanation = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? original = null,Object? corrected = null,Object? category = null,Object? explanation = null,Object? timestampMs = freezed,}) {
   return _then(_EnglishCorrectionEntity(
 original: null == original ? _self.original : original // ignore: cast_nullable_to_non_nullable
 as String,corrected: null == corrected ? _self.corrected : corrected // ignore: cast_nullable_to_non_nullable
 as String,category: null == category ? _self.category : category // ignore: cast_nullable_to_non_nullable
 as String,explanation: null == explanation ? _self.explanation : explanation // ignore: cast_nullable_to_non_nullable
-as String,
+as String,timestampMs: freezed == timestampMs ? _self.timestampMs : timestampMs // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 
@@ -299,7 +308,9 @@ mixin _$EnglishFeedbackEntity {
 
 /// Liste des corrections proposees.
  List<EnglishCorrectionEntity> get corrections;/// Appreciation globale du niveau (optionnelle).
- String? get overall;
+ String? get overall;/// Phrases (ids de segments) dont la partie n'a pas pu être analysée
+/// (lot en échec) : la note propose de réessayer.
+ List<String> get unanalyzedSegmentIds;
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -312,16 +323,16 @@ $EnglishFeedbackEntityCopyWith<EnglishFeedbackEntity> get copyWith => _$EnglishF
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other.corrections, corrections)&&(identical(other.overall, overall) || other.overall == overall));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other.corrections, corrections)&&(identical(other.overall, overall) || other.overall == overall)&&const DeepCollectionEquality().equals(other.unanalyzedSegmentIds, unanalyzedSegmentIds));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(corrections),overall);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(corrections),overall,const DeepCollectionEquality().hash(unanalyzedSegmentIds));
 
 @override
 String toString() {
-  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall)';
+  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall, unanalyzedSegmentIds: $unanalyzedSegmentIds)';
 }
 
 
@@ -332,7 +343,7 @@ abstract mixin class $EnglishFeedbackEntityCopyWith<$Res>  {
   factory $EnglishFeedbackEntityCopyWith(EnglishFeedbackEntity value, $Res Function(EnglishFeedbackEntity) _then) = _$EnglishFeedbackEntityCopyWithImpl;
 @useResult
 $Res call({
- List<EnglishCorrectionEntity> corrections, String? overall
+ List<EnglishCorrectionEntity> corrections, String? overall, List<String> unanalyzedSegmentIds
 });
 
 
@@ -349,11 +360,12 @@ class _$EnglishFeedbackEntityCopyWithImpl<$Res>
 
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? corrections = null,Object? overall = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? corrections = null,Object? overall = freezed,Object? unanalyzedSegmentIds = null,}) {
   return _then(_self.copyWith(
 corrections: null == corrections ? _self.corrections : corrections // ignore: cast_nullable_to_non_nullable
 as List<EnglishCorrectionEntity>,overall: freezed == overall ? _self.overall : overall // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,unanalyzedSegmentIds: null == unanalyzedSegmentIds ? _self.unanalyzedSegmentIds : unanalyzedSegmentIds // ignore: cast_nullable_to_non_nullable
+as List<String>,
   ));
 }
 
@@ -438,10 +450,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _EnglishFeedbackEntity() when $default != null:
-return $default(_that.corrections,_that.overall);case _:
+return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case _:
   return orElse();
 
 }
@@ -459,10 +471,10 @@ return $default(_that.corrections,_that.overall);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds)  $default,) {final _that = this;
 switch (_that) {
 case _EnglishFeedbackEntity():
-return $default(_that.corrections,_that.overall);case _:
+return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -479,10 +491,10 @@ return $default(_that.corrections,_that.overall);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<EnglishCorrectionEntity> corrections,  String? overall)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds)?  $default,) {final _that = this;
 switch (_that) {
 case _EnglishFeedbackEntity() when $default != null:
-return $default(_that.corrections,_that.overall);case _:
+return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case _:
   return null;
 
 }
@@ -494,7 +506,7 @@ return $default(_that.corrections,_that.overall);case _:
 @JsonSerializable()
 
 class _EnglishFeedbackEntity implements EnglishFeedbackEntity {
-  const _EnglishFeedbackEntity({final  List<EnglishCorrectionEntity> corrections = const <EnglishCorrectionEntity>[], this.overall}): _corrections = corrections;
+  const _EnglishFeedbackEntity({final  List<EnglishCorrectionEntity> corrections = const <EnglishCorrectionEntity>[], this.overall, final  List<String> unanalyzedSegmentIds = const <String>[]}): _corrections = corrections,_unanalyzedSegmentIds = unanalyzedSegmentIds;
   factory _EnglishFeedbackEntity.fromJson(Map<String, dynamic> json) => _$EnglishFeedbackEntityFromJson(json);
 
 /// Liste des corrections proposees.
@@ -508,6 +520,17 @@ class _EnglishFeedbackEntity implements EnglishFeedbackEntity {
 
 /// Appreciation globale du niveau (optionnelle).
 @override final  String? overall;
+/// Phrases (ids de segments) dont la partie n'a pas pu être analysée
+/// (lot en échec) : la note propose de réessayer.
+ final  List<String> _unanalyzedSegmentIds;
+/// Phrases (ids de segments) dont la partie n'a pas pu être analysée
+/// (lot en échec) : la note propose de réessayer.
+@override@JsonKey() List<String> get unanalyzedSegmentIds {
+  if (_unanalyzedSegmentIds is EqualUnmodifiableListView) return _unanalyzedSegmentIds;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_unanalyzedSegmentIds);
+}
+
 
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
@@ -522,16 +545,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other._corrections, _corrections)&&(identical(other.overall, overall) || other.overall == overall));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other._corrections, _corrections)&&(identical(other.overall, overall) || other.overall == overall)&&const DeepCollectionEquality().equals(other._unanalyzedSegmentIds, _unanalyzedSegmentIds));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_corrections),overall);
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_corrections),overall,const DeepCollectionEquality().hash(_unanalyzedSegmentIds));
 
 @override
 String toString() {
-  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall)';
+  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall, unanalyzedSegmentIds: $unanalyzedSegmentIds)';
 }
 
 
@@ -542,7 +565,7 @@ abstract mixin class _$EnglishFeedbackEntityCopyWith<$Res> implements $EnglishFe
   factory _$EnglishFeedbackEntityCopyWith(_EnglishFeedbackEntity value, $Res Function(_EnglishFeedbackEntity) _then) = __$EnglishFeedbackEntityCopyWithImpl;
 @override @useResult
 $Res call({
- List<EnglishCorrectionEntity> corrections, String? overall
+ List<EnglishCorrectionEntity> corrections, String? overall, List<String> unanalyzedSegmentIds
 });
 
 
@@ -559,11 +582,12 @@ class __$EnglishFeedbackEntityCopyWithImpl<$Res>
 
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? corrections = null,Object? overall = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? corrections = null,Object? overall = freezed,Object? unanalyzedSegmentIds = null,}) {
   return _then(_EnglishFeedbackEntity(
 corrections: null == corrections ? _self._corrections : corrections // ignore: cast_nullable_to_non_nullable
 as List<EnglishCorrectionEntity>,overall: freezed == overall ? _self.overall : overall // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,unanalyzedSegmentIds: null == unanalyzedSegmentIds ? _self._unanalyzedSegmentIds : unanalyzedSegmentIds // ignore: cast_nullable_to_non_nullable
+as List<String>,
   ));
 }
 
