@@ -283,10 +283,10 @@ void main() {
   ) async {
     await pumpLive(tester);
     await ask(tester);
-    h.llm.last.reply('La livraison est prévue pour le lot 1 au début du mo');
+    h.llm.last.reply('La livraison est prévue pour le lot 1 au début du');
     await settle(tester);
 
-    expect(find.textContaining('au début du mo'), findsOneWidget);
+    expect(find.textContaining('au début du'), findsOneWidget);
     expect(find.text('live_answers.truncated'.tr()), findsOneWidget);
   });
 

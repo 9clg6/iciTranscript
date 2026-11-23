@@ -1,0 +1,1530 @@
+{
+ "source": "mistral 7B via Ollama, live answers probe, 2026-11-23 (invented meeting content)",
+ "outputs": [
+  {
+   "key": "contract/fr1-a1#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Est-ce que tu sais quel est le préavis de résiliation du contrat d'hébergement de l'ancien outil ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a1-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    },
+    {
+     "documentId": "fr1-a1-S2",
+     "documentTitle": "Contrat d'hébergement",
+     "text": "Le contrat est conclu pour une durée d'un an, renouvelable tacitement. Chaque partie peut le résilier par lettre recommandée avec un préavis de 90 jours avant l'échéance."
+    }
+   ],
+   "raw": " The user can find the notice period for termination of the old tool's hosting contract in the contract document.\n\n- The hosting contract is for a duration of one year [S2]\n- The termination notice period is 90 days [S2]"
+  },
+  {
+   "key": "contract/fr1-a2#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Et la nouvelle offre, elle coûte combien par utilisateur ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a2-S1",
+     "documentTitle": "Grille tarifaire du prestataire",
+     "text": "Offre standard : 4,20 € par utilisateur et par mois, facturés à l'année. La formation initiale et la fiche de prise en main sont incluses."
+    },
+    {
+     "documentId": "fr1-a2-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " The new offer costs 4.20 euros per user and per month, billed annually [S1].\n\n- The cost per user is stated in the tariff grid provided by the vendor.\n- The cost includes initial training and a user guide.\n- The annual billing is based on a 12-month period."
+  },
+  {
+   "key": "contract/fr1-b#0",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Tu me rappelles combien de personnes participent au pilote ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-b-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " Participants in the pilot: 40 people, divided between the 2nd and 3rd floor [S1]"
+  },
+  {
+   "key": "contract/fr1-c#0",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quelle est la date prévue pour la recette avec le prestataire ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-c-S1",
+     "documentTitle": "Planning du projet",
+     "text": "La recette aura lieu après la phase pilote, à une date à confirmer avec le prestataire. La généralisation suivra la recette."
+    },
+    {
+     "documentId": "fr1-c-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " Meeting Recap: New Room Booking Tool\n- The meeting is about discussing the replacement of the current room booking tool.\n- The main criticism of the current tool is that it does not export reservations to calendars.\n- A demo of the new tool was shown last week, and the export to calendars works, but only one-way.\n- The pilot test will include 40 people from the second and third floors.\n- Three short training sessions will be held a week before the launch, each session lasts half an hour.\n- The meeting with the supplier to discuss the implementation details will happen after the pilot phase, date to be confirmed.\n- The goal is to replace the current tool before the end of the year. [S2]\n- The budget per user needs to be determined before generalizing the new tool. [S1]"
+  },
+  {
+   "key": "contract/fr2-a#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Le gîte demande combien d'acompte à la signature du devis ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-a-S1",
+     "documentTitle": "Devis du gîte",
+     "text": "Hébergement de 45 personnes maximum et location de la grande salle pour deux jours : 5 500 €. Un acompte de 30 %, soit 1 650 €, est demandé à la signature."
+    },
+    {
+     "documentId": "fr2-a-S2",
+     "documentTitle": "Programme provisoire",
+     "text": "Jeudi : arrivée à 10 h, atelier l'après-midi. Vendredi : matinée libre, dîner de clôture."
+    }
+   ],
+   "raw": " The gîte requires a 30% deposit, or 1650€, at the signature of the devis. [S1]"
+  },
+  {
+   "key": "contract/fr2-b#0",
+   "kind": "b",
+   "lang": "fr",
+   "question": "On a combien de participants confirmés pour l'instant ?",
+   "excerpts": [],
+   "raw": " Confirmations: Thirty-five participants confirmed [S3]\nResponse: Thirty-five participants have confirmed their attendance so far. [S3]\n[S39] The gîte can accommodate up to forty-five people, so there is room for more. [S2]\n\nIf needed: There are still some responses awaiting [S3] and the total number of participants might increase. [S39]"
+  },
+  {
+   "key": "contract/fr2-c#0",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel traiteur on a retenu pour le dîner du vendredi ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-c-S1",
+     "documentTitle": "Informations du gîte",
+     "text": "Restauration : le gîte tient à disposition une liste de traiteurs partenaires. Le choix du traiteur doit être communiqué au plus tard un mois avant l'arrivée."
+    }
+   ],
+   "raw": " Choosing the caterer for the Friday dinner\n- The user should check the list of partner caterers provided by the lodge, as stated in document S1.\n- The choice of the caterer must be communicated at least one month before arrival.\n- The user should confirm the selected caterer and communicate it to the group."
+  },
+  {
+   "key": "contract/fr2-d#0",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Franchement, qui aurait cru qu'on arriverait un jour à caler une date avec tout le monde ?",
+   "excerpts": [],
+   "raw": " Who managed to schedule a date with everyone?\n\n- The team has confirmed the dates for the seminar: Thursday 12th and Friday 13th of June\n- Thirty-five participants have confirmed their attendance, with more responses pending\n- The user is arranging transportation by car and expects to receive two quotes by the following week\n- The team needs to decide on a caterer for the Friday dinner\n- The user has saved the quote from the gîte for accommodation and room rental in a shared folder\n- A first version of the program will be prepared and sent by the user in the upcoming week\n- The user reminds that the gîte's reservation is not guaranteed unless the invoice is signed before the end of the month"
+  },
+  {
+   "key": "contract/fr3-a#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Tu sais quelle est la taille maximale autorisée pour les pièces jointes ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-a-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    },
+    {
+     "documentId": "fr3-a-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    },
+    {
+     "documentId": "fr3-a-S3",
+     "documentTitle": "Politique de sécurité mobile",
+     "text": "Les pièces jointes envoyées depuis l'application sont limitées à 15 Mo par fichier. Les fichiers exécutables sont refusés."
+    }
+   ],
+   "raw": " Taille maximale autorisée pour les pièces jointes : 15 Mo par fichier [S3]\n- The policy on mobile security restricts file sizes for attachments sent from the application.\n- The limit is 15 MB per file.\n- This information can be found in the mobile security policy document."
+  },
+  {
+   "key": "contract/fr3-b#0",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Combien de tickets l'équipe a fermés sur ce sprint ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-b-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    }
+   ],
+   "raw": " L'équipe a fermé dix-huit tickets dans le dernier sprint [S1]."
+  },
+  {
+   "key": "contract/fr3-c#0",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel est le taux de crash de la version 2.4 en production ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-c-S1",
+     "documentTitle": "Suivi qualité",
+     "text": "Le taux de crash est mesuré chaque semaine sur la version en production et présenté au point qualité mensuel."
+    },
+    {
+     "documentId": "fr3-c-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    }
+   ],
+   "raw": " Taux de crash de la version 2.4 en production\n- Le taux de crash est mesuré chaque semaine sur la version en production.\n- Il sera présenté au point qualité mensuel.\n- Les chiffres n'ont pas été mentionnés dans le contexte de la réunion."
+  },
+  {
+   "key": "contract/fr3-d#0",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Comment on a corrigé le bug de synchro je vous le montre juste après sur l'écran partagé",
+   "excerpts": [],
+   "raw": " How to address the bug of synchronization:\n- The user mentioned that the corrective for the synchronization bug is ready and is currently under review.\n- The user did not specify the details of how the corrective was made.\n- The user will show the solution to the bug after the current presentation. [S2]"
+  },
+  {
+   "key": "contract/en1-a1#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "Do you know how much notice we have to give on the current lease?",
+   "excerpts": [
+    {
+     "documentId": "en1-a1-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a1-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " Notice on the current lease requires six months [S2]."
+  },
+  {
+   "key": "contract/en1-a2#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "How many meeting rooms does the new floor have?",
+   "excerpts": [
+    {
+     "documentId": "en1-a2-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a2-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " The new floor has nine meeting rooms [S1]."
+  },
+  {
+   "key": "contract/en1-b#0",
+   "kind": "b",
+   "lang": "en",
+   "question": "Remind me, how many parking spaces did we get in the new building?",
+   "excerpts": [
+    {
+     "documentId": "en1-b-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " User's response:\nThe new building offers 25 parking spaces. [S1]"
+  },
+  {
+   "key": "contract/en1-c#0",
+   "kind": "c",
+   "lang": "en",
+   "question": "What's the total budget approved for the new furniture?",
+   "excerpts": [
+    {
+     "documentId": "en1-c-S1",
+     "documentTitle": "Furniture plan",
+     "text": "Quotes for desks and chairs are expected from three suppliers by the end of the month. The furniture budget will then be approved by the steering group."
+    },
+    {
+     "documentId": "en1-c-S2",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " Approved furniture budget is not determined yet [S1]."
+  },
+  {
+   "key": "contract/en2-a#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "What does our support policy say about weekend coverage?",
+   "excerpts": [
+    {
+     "documentId": "en2-a-S1",
+     "documentTitle": "Support policy",
+     "text": "Weekend coverage is limited to priority-one incidents. These receive a first response within 8 hours on Saturdays and Sundays."
+    },
+    {
+     "documentId": "en2-a-S2",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Our support policy states weekend coverage is limited to priority-one incidents. [S1]"
+  },
+  {
+   "key": "contract/en2-b#0",
+   "kind": "b",
+   "lang": "en",
+   "question": "What was our average first response time last month?",
+   "excerpts": [
+    {
+     "documentId": "en2-b-S1",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Average first response time last month was four hours [S2]."
+  },
+  {
+   "key": "contract/en2-c#0",
+   "kind": "c",
+   "lang": "en",
+   "question": "How much does the chatbot vendor charge per conversation?",
+   "excerpts": [
+    {
+     "documentId": "en2-c-S1",
+     "documentTitle": "Chatbot pilot brief",
+     "text": "The pilot covers billing questions only. Pricing is usage-based; the vendor will share its price list at the end of the pilot."
+    }
+   ],
+   "raw": " Chatbot Vendor Pricing [S1]\n- The cost per conversation is not provided in the given excerpt.\n- The vendor will share its price list at the end of the pilot.\n- It is recommended to wait for the full pilot data before making decisions on extending or evaluating the cost."
+  },
+  {
+   "key": "contract/en2-d#0",
+   "kind": "d",
+   "lang": "en",
+   "question": "Can everyone see the shared dashboard on their side now?",
+   "excerpts": [],
+   "raw": " User: Yes, here's how to access it:\n- Open the shared folder on the collaboration platform\n- Look for the document named \"Shared Dashboard\"\n- Click on the link to open the dashboard\n- If prompted, sign in with your work credentials\n- Refresh the page if needed for the latest data to load."
+  },
+  {
+   "key": "contract/en3-a#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "How long do we keep raw event data according to the policy?",
+   "excerpts": [
+    {
+     "documentId": "en3-a-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    },
+    {
+     "documentId": "en3-a-S2",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    },
+    {
+     "documentId": "en3-a-S3",
+     "documentTitle": "Data retention policy",
+     "text": "Raw event data is kept for 13 months and then deleted. Aggregated data is kept for five years."
+    }
+   ],
+   "raw": " We keep raw event data for 13 months according to the data retention policy [S3]."
+  },
+  {
+   "key": "contract/en3-b#0",
+   "kind": "b",
+   "lang": "en",
+   "question": "How many engineers are assigned to the warehouse migration?",
+   "excerpts": [
+    {
+     "documentId": "en3-b-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    }
+   ],
+   "raw": " Two engineers are assigned to the warehouse migration full time. [00:00:52]"
+  },
+  {
+   "key": "contract/en3-c#0",
+   "kind": "c",
+   "lang": "en",
+   "question": "What will the new warehouse cost us per terabyte?",
+   "excerpts": [
+    {
+     "documentId": "en3-c-S1",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    }
+   ],
+   "raw": " The new warehouse cost per terabyte is not explicitly stated in the provided information. [S1] mentions that the detailed rate card is an annex of the contract, so the cost per terabyte can be found there."
+  },
+  {
+   "key": "contract/en3-d#0",
+   "kind": "d",
+   "lang": "en",
+   "question": "What I want us to remember from this quarter is that the migration comes first",
+   "excerpts": [],
+   "raw": " Migration is the top priority this quarter.\n- The goal is to move everything to the new warehouse by the end of the second quarter.\n- Two engineers are assigned to the warehouse migration full time, with the analytics team assisting with testing."
+  },
+  {
+   "key": "contract/fr1-a1#1",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Est-ce que tu sais quel est le préavis de résiliation du contrat d'hébergement de l'ancien outil ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a1-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    },
+    {
+     "documentId": "fr1-a1-S2",
+     "documentTitle": "Contrat d'hébergement",
+     "text": "Le contrat est conclu pour une durée d'un an, renouvelable tacitement. Chaque partie peut le résilier par lettre recommandée avec un préavis de 90 jours avant l'échéance."
+    }
+   ],
+   "raw": " The contract notice period for the old tool's hosting agreement is 90 days.\n- [S2] indicates the contract duration and termination notice\n- The contract is for a year, renewable tacitly\n- Each party can terminate the contract with a 90-day notice before the end date."
+  },
+  {
+   "key": "contract/fr1-a2#1",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Et la nouvelle offre, elle coûte combien par utilisateur ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a2-S1",
+     "documentTitle": "Grille tarifaire du prestataire",
+     "text": "Offre standard : 4,20 € par utilisateur et par mois, facturés à l'année. La formation initiale et la fiche de prise en main sont incluses."
+    },
+    {
+     "documentId": "fr1-a2-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " The cost of the new offer is 4.20 € per user per month, billed annually, as per the pricing grid of the provider [S1]."
+  },
+  {
+   "key": "contract/fr1-b#1",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Tu me rappelles combien de personnes participent au pilote ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-b-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " The user's pilot involves 40 participants, divided between the second and third floors. [S1]"
+  },
+  {
+   "key": "contract/fr1-c#1",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quelle est la date prévue pour la recette avec le prestataire ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-c-S1",
+     "documentTitle": "Planning du projet",
+     "text": "La recette aura lieu après la phase pilote, à une date à confirmer avec le prestataire. La généralisation suivra la recette."
+    },
+    {
+     "documentId": "fr1-c-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " Date of meeting with vendor for review [S1]\n- The meeting with the vendor for review is scheduled after the pilot phase, date to be confirmed with the vendor.\n- The generalization of the new tool follows the review.\n- The current plan aims to replace the current booking tool by the end of the year [S2]."
+  },
+  {
+   "key": "contract/fr2-a#1",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Le gîte demande combien d'acompte à la signature du devis ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-a-S1",
+     "documentTitle": "Devis du gîte",
+     "text": "Hébergement de 45 personnes maximum et location de la grande salle pour deux jours : 5 500 €. Un acompte de 30 %, soit 1 650 €, est demandé à la signature."
+    },
+    {
+     "documentId": "fr2-a-S2",
+     "documentTitle": "Programme provisoire",
+     "text": "Jeudi : arrivée à 10 h, atelier l'après-midi. Vendredi : matinée libre, dîner de clôture."
+    }
+   ],
+   "raw": " The gîte demands a 30% deposit, which is 1650 €, at the signature of the devis [S1]."
+  },
+  {
+   "key": "contract/fr2-b#1",
+   "kind": "b",
+   "lang": "fr",
+   "question": "On a combien de participants confirmés pour l'instant ?",
+   "excerpts": [],
+   "raw": " Confirmed participants: Thirty-five\n[00:00:39] Speaker 1: Côté inscriptions, j'ai relancé tout le monde lundi. Pour l'instant on a trente-cinq participants confirmés, et quelques réponses en attente."
+  },
+  {
+   "key": "contract/fr2-c#1",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel traiteur on a retenu pour le dîner du vendredi ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-c-S1",
+     "documentTitle": "Informations du gîte",
+     "text": "Restauration : le gîte tient à disposition une liste de traiteurs partenaires. Le choix du traiteur doit être communiqué au plus tard un mois avant l'arrivée."
+    }
+   ],
+   "raw": " Choosing a caterer for the Friday dinner\n- Refer to document [S1] for the list of partner caterers\n- Decision on the caterer should be made at least one month before arrival\n- User should communicate the chosen caterer as soon as possible"
+  },
+  {
+   "key": "contract/fr2-d#1",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Franchement, qui aurait cru qu'on arriverait un jour à caler une date avec tout le monde ?",
+   "excerpts": [],
+   "raw": " Who managed to coordinate a date with everyone?\n\n- The team successfully agreed on the dates for the seminar: Thursday 12th and Friday 13th of June\n- The devis for the lodge's accommodation and meeting room is in the shared folder\n- It is important to sign the lodge's devis before the end of the month to secure the reservation"
+  },
+  {
+   "key": "contract/fr3-a#1",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Tu sais quelle est la taille maximale autorisée pour les pièces jointes ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-a-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    },
+    {
+     "documentId": "fr3-a-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    },
+    {
+     "documentId": "fr3-a-S3",
+     "documentTitle": "Politique de sécurité mobile",
+     "text": "Les pièces jointes envoyées depuis l'application sont limitées à 15 Mo par fichier. Les fichiers exécutables sont refusés."
+    }
+   ],
+   "raw": " Taille maximale pour les pièces jointes : 15 Mo par fichier [S3]\n- The maximum size for attached files is 15 MB per file.\n- Files executables are refused in the mobile security policy.\n- This limit is stated in the \"Politique de sécurité mobile\"."
+  },
+  {
+   "key": "contract/fr3-b#1",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Combien de tickets l'équipe a fermés sur ce sprint ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-b-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    }
+   ],
+   "raw": " Number of tickets the team has closed in this sprint:\n- 18 tickets [S1]\n- Three tickets were postponed for the next sprint [00:00:13]\n- No new tickets were answered since the question was not addressed to the user [NO_ANSWER]"
+  },
+  {
+   "key": "contract/fr3-c#1",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel est le taux de crash de la version 2.4 en production ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-c-S1",
+     "documentTitle": "Suivi qualité",
+     "text": "Le taux de crash est mesuré chaque semaine sur la version en production et présenté au point qualité mensuel."
+    },
+    {
+     "documentId": "fr3-c-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    }
+   ],
+   "raw": " Taux de crash de la version 2.4 en production n'est pas donné ici [S1]. Il sera présenté au prochain point qualité mensuel [S1]."
+  },
+  {
+   "key": "contract/fr3-d#1",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Comment on a corrigé le bug de synchro je vous le montre juste après sur l'écran partagé",
+   "excerpts": [],
+   "raw": " How to explain the fix for the synchronization bug:\n- Mention the cause found yesterday [S2]\n- Explain that the fix is currently under review [S2]\n- Show the fix during the presentation on the shared screen [S1, S4]"
+  },
+  {
+   "key": "contract/en1-a1#1",
+   "kind": "a",
+   "lang": "en",
+   "question": "Do you know how much notice we have to give on the current lease?",
+   "excerpts": [
+    {
+     "documentId": "en1-a1-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a1-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " Notice for current lease is six months [S2]."
+  },
+  {
+   "key": "contract/en1-a2#1",
+   "kind": "a",
+   "lang": "en",
+   "question": "How many meeting rooms does the new floor have?",
+   "excerpts": [
+    {
+     "documentId": "en1-a2-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a2-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " The new floor has nine meeting rooms. [S1]"
+  },
+  {
+   "key": "contract/en1-b#1",
+   "kind": "b",
+   "lang": "en",
+   "question": "Remind me, how many parking spaces did we get in the new building?",
+   "excerpts": [
+    {
+     "documentId": "en1-b-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " Number of parking spaces in the new building: 25 [00:01:18]\n- The building manager provided this information last week.\n- This was mentioned during the meeting.\n- It is stated in the floor plan notes of the user's documents."
+  },
+  {
+   "key": "contract/en1-c#1",
+   "kind": "c",
+   "lang": "en",
+   "question": "What's the total budget approved for the new furniture?",
+   "excerpts": [
+    {
+     "documentId": "en1-c-S1",
+     "documentTitle": "Furniture plan",
+     "text": "Quotes for desks and chairs are expected from three suppliers by the end of the month. The furniture budget will then be approved by the steering group."
+    },
+    {
+     "documentId": "en1-c-S2",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " The total budget approved for the new furniture is not yet available. [S1]"
+  },
+  {
+   "key": "contract/en2-a#1",
+   "kind": "a",
+   "lang": "en",
+   "question": "What does our support policy say about weekend coverage?",
+   "excerpts": [
+    {
+     "documentId": "en2-a-S1",
+     "documentTitle": "Support policy",
+     "text": "Weekend coverage is limited to priority-one incidents. These receive a first response within 8 hours on Saturdays and Sundays."
+    },
+    {
+     "documentId": "en2-a-S2",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Our support policy covers weekend service with a first response within 8 hours for priority-one incidents only [S1].\n\n- The support policy does not specify general weekend coverage for all inquiries.\n- Priority-one incidents are the only inquiries guaranteed a response during weekends.\n- It is important to clarify this when addressing customer inquiries about weekend service."
+  },
+  {
+   "key": "contract/en2-b#1",
+   "kind": "b",
+   "lang": "en",
+   "question": "What was our average first response time last month?",
+   "excerpts": [
+    {
+     "documentId": "en2-b-S1",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Average first response time last month was four hours. [S0:00:13]"
+  },
+  {
+   "key": "contract/en2-c#1",
+   "kind": "c",
+   "lang": "en",
+   "question": "How much does the chatbot vendor charge per conversation?",
+   "excerpts": [
+    {
+     "documentId": "en2-c-S1",
+     "documentTitle": "Chatbot pilot brief",
+     "text": "The pilot covers billing questions only. Pricing is usage-based; the vendor will share its price list at the end of the pilot."
+    }
+   ],
+   "raw": " Chatbot Vendor Pricing [S1]\n- The pricing for the chatbot vendor is usage-based.\n- The vendor will share its price list at the end of the pilot.\n- No specific information about the cost per conversation is available yet."
+  },
+  {
+   "key": "contract/en2-d#1",
+   "kind": "d",
+   "lang": "en",
+   "question": "Can everyone see the shared dashboard on their side now?",
+   "excerpts": [],
+   "raw": " Everyone can see the shared dashboard now.\n\n- Check that the dashboard is visible for all participants\n- Confirm if any issues are reported\n- If any, address and ensure visibility for all"
+  },
+  {
+   "key": "contract/en3-a#1",
+   "kind": "a",
+   "lang": "en",
+   "question": "How long do we keep raw event data according to the policy?",
+   "excerpts": [
+    {
+     "documentId": "en3-a-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    },
+    {
+     "documentId": "en3-a-S2",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    },
+    {
+     "documentId": "en3-a-S3",
+     "documentTitle": "Data retention policy",
+     "text": "Raw event data is kept for 13 months and then deleted. Aggregated data is kept for five years."
+    }
+   ],
+   "raw": " Warehouse migration priority [00:00:26]\n- Two engineers and the analytics team assigned\n- Goal: complete by the end of the second quarter\n\nPipeline cleanup [00:01:44]\n- List forty jobs and give two weeks for teams to claim ownership\n- Deprecated reporting dashboard in April\n\nData retention policy [S3]\n- Keep raw event data for 13 months and then delete\n- Aggregated data kept for five years"
+  },
+  {
+   "key": "contract/en3-b#1",
+   "kind": "b",
+   "lang": "en",
+   "question": "How many engineers are assigned to the warehouse migration?",
+   "excerpts": [
+    {
+     "documentId": "en3-b-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    }
+   ],
+   "raw": " Two engineers are assigned to the warehouse migration full time. [00:00:52]"
+  },
+  {
+   "key": "contract/en3-c#1",
+   "kind": "c",
+   "lang": "en",
+   "question": "What will the new warehouse cost us per terabyte?",
+   "excerpts": [
+    {
+     "documentId": "en3-c-S1",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    }
+   ],
+   "raw": " The new warehouse cost per terabyte can be found in the detailed rate card, which is an annex of the contract. [S1]"
+  },
+  {
+   "key": "contract/en3-d#1",
+   "kind": "d",
+   "lang": "en",
+   "question": "What I want us to remember from this quarter is that the migration comes first",
+   "excerpts": [],
+   "raw": " Migration is the top priority for this quarter.\n- Focus on the warehouse migration first.\n- Goal: Move everything to the new warehouse by the end of the second quarter.\n- Two engineers and the analytics team are assigned to the migration. [00:00:26, 00:00:39, 00:00:52]"
+  },
+  {
+   "key": "contract/fr1-a1#2",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Est-ce que tu sais quel est le préavis de résiliation du contrat d'hébergement de l'ancien outil ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a1-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    },
+    {
+     "documentId": "fr1-a1-S2",
+     "documentTitle": "Contrat d'hébergement",
+     "text": "Le contrat est conclu pour une durée d'un an, renouvelable tacitement. Chaque partie peut le résilier par lettre recommandée avec un préavis de 90 jours avant l'échéance."
+    }
+   ],
+   "raw": " The user knows the notice period for termination of the old tool's hosting contract.\n- The contract duration is one year, renewable tacitly.\n- Each party can terminate the contract with a 90-day notice before the expiration date [S2]."
+  },
+  {
+   "key": "contract/fr1-a2#2",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Et la nouvelle offre, elle coûte combien par utilisateur ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a2-S1",
+     "documentTitle": "Grille tarifaire du prestataire",
+     "text": "Offre standard : 4,20 € par utilisateur et par mois, facturés à l'année. La formation initiale et la fiche de prise en main sont incluses."
+    },
+    {
+     "documentId": "fr1-a2-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " La nouvelle offre coûte 4,20 € par utilisateur et par mois, facturés à l'année [S1]."
+  },
+  {
+   "key": "contract/fr1-b#2",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Tu me rappelles combien de personnes participent au pilote ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-b-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " Number of participants in the pilot: 40 people\n\n- The pilot involves 40 users, distributed between the second and third floors.\n- The list of participants will be shared after the meeting.\n- The information is found in the project alignment note [S1]."
+  },
+  {
+   "key": "contract/fr1-c#2",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quelle est la date prévue pour la recette avec le prestataire ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-c-S1",
+     "documentTitle": "Planning du projet",
+     "text": "La recette aura lieu après la phase pilote, à une date à confirmer avec le prestataire. La généralisation suivra la recette."
+    },
+    {
+     "documentId": "fr1-c-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " Date of the meeting with the vendor ([S1]) is yet to be confirmed."
+  },
+  {
+   "key": "contract/fr2-a#2",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Le gîte demande combien d'acompte à la signature du devis ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-a-S1",
+     "documentTitle": "Devis du gîte",
+     "text": "Hébergement de 45 personnes maximum et location de la grande salle pour deux jours : 5 500 €. Un acompte de 30 %, soit 1 650 €, est demandé à la signature."
+    },
+    {
+     "documentId": "fr2-a-S2",
+     "documentTitle": "Programme provisoire",
+     "text": "Jeudi : arrivée à 10 h, atelier l'après-midi. Vendredi : matinée libre, dîner de clôture."
+    }
+   ],
+   "raw": " The gîte requires a 30% deposit, or 1,650 €, at the signature of the devis [S1]."
+  },
+  {
+   "key": "contract/fr2-b#2",
+   "kind": "b",
+   "lang": "fr",
+   "question": "On a combien de participants confirmés pour l'instant ?",
+   "excerpts": [],
+   "raw": " Participants Confirmed\n- The user mentioned 35 participants are confirmed.\n- A few more responses are awaited.\n- The user suggested signing the gîte's reservation before the end of the month to ensure confirmation. [User, 00:02:36]"
+  },
+  {
+   "key": "contract/fr2-c#2",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel traiteur on a retenu pour le dîner du vendredi ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-c-S1",
+     "documentTitle": "Informations du gîte",
+     "text": "Restauration : le gîte tient à disposition une liste de traiteurs partenaires. Le choix du traiteur doit être communiqué au plus tard un mois avant l'arrivée."
+    }
+   ],
+   "raw": " Choosing a caterer for the Friday dinner\n- The user should check their documents for a list of partner caterers [S1]\n- They should communicate the choice of caterer to the gite at least one month before the arrival\n- The user should send the decision to the group for confirmation"
+  },
+  {
+   "key": "contract/fr2-d#2",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Franchement, qui aurait cru qu'on arriverait un jour à caler une date avec tout le monde ?",
+   "excerpts": [],
+   "raw": " The question is a comment, not a question. Here's a possible response for the user if they wanted to respond:\n\n- Achieving a consensus on the dates took some time\n- Everyone's schedules had to be coordinated\n- The agreed-upon dates are June 12th and 13th, with arrival on the 12th at 10:00 AM\n\n[S1: 00:00:39, 00:00:26]"
+  },
+  {
+   "key": "contract/fr3-a#2",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Tu sais quelle est la taille maximale autorisée pour les pièces jointes ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-a-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    },
+    {
+     "documentId": "fr3-a-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    },
+    {
+     "documentId": "fr3-a-S3",
+     "documentTitle": "Politique de sécurité mobile",
+     "text": "Les pièces jointes envoyées depuis l'application sont limitées à 15 Mo par fichier. Les fichiers exécutables sont refusés."
+    }
+   ],
+   "raw": " The maximum authorized size for attached files is 15 MB, according to the Mobile Security Policy [S3]."
+  },
+  {
+   "key": "contract/fr3-b#2",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Combien de tickets l'équipe a fermés sur ce sprint ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-b-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    }
+   ],
+   "raw": " The number of tickets the team closed in this sprint is eighteen. [S1] does not contain the answer."
+  },
+  {
+   "key": "contract/fr3-c#2",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel est le taux de crash de la version 2.4 en production ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-c-S1",
+     "documentTitle": "Suivi qualité",
+     "text": "Le taux de crash est mesuré chaque semaine sur la version en production et présenté au point qualité mensuel."
+    },
+    {
+     "documentId": "fr3-c-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    }
+   ],
+   "raw": " Taux de crash de la version 2.4 en production\n- Ne connaît pas le taux actuel [00:02:36]\n- Le taux est mesuré chaque semaine [S1]\n- Le taux sera vu au prochain point [00:02:49]"
+  },
+  {
+   "key": "contract/fr3-d#2",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Comment on a corrigé le bug de synchro je vous le montre juste après sur l'écran partagé",
+   "excerpts": [],
+   "raw": " Solution has been prepared, currently under review\n\n- The bug of synchronization was found to be caused by two recordings arriving out of order.\n- A corrective has been prepared and is currently under review.\n- It will be demonstrated after the current presentation on the shared screen."
+  },
+  {
+   "key": "contract/en1-a1#2",
+   "kind": "a",
+   "lang": "en",
+   "question": "Do you know how much notice we have to give on the current lease?",
+   "excerpts": [
+    {
+     "documentId": "en1-a1-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a1-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " Notice period for the current lease is six months. [S2]"
+  },
+  {
+   "key": "contract/en1-a2#2",
+   "kind": "a",
+   "lang": "en",
+   "question": "How many meeting rooms does the new floor have?",
+   "excerpts": [
+    {
+     "documentId": "en1-a2-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a2-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " The new floor has nine meeting rooms [S1]."
+  },
+  {
+   "key": "contract/en1-b#2",
+   "kind": "b",
+   "lang": "en",
+   "question": "Remind me, how many parking spaces did we get in the new building?",
+   "excerpts": [
+    {
+     "documentId": "en1-b-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " Number of parking spaces in the new building: 25 [00:01:18]\n\n- The building manager informed about the parking spaces last week.\n- Twenty-five spaces are available in the underground car park.\n- The user mentioned this information earlier in the meeting."
+  },
+  {
+   "key": "contract/en1-c#2",
+   "kind": "c",
+   "lang": "en",
+   "question": "What's the total budget approved for the new furniture?",
+   "excerpts": [
+    {
+     "documentId": "en1-c-S1",
+     "documentTitle": "Furniture plan",
+     "text": "Quotes for desks and chairs are expected from three suppliers by the end of the month. The furniture budget will then be approved by the steering group."
+    },
+    {
+     "documentId": "en1-c-S2",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " Total budget for new furniture is not yet approved. [S1]"
+  },
+  {
+   "key": "contract/en2-a#2",
+   "kind": "a",
+   "lang": "en",
+   "question": "What does our support policy say about weekend coverage?",
+   "excerpts": [
+    {
+     "documentId": "en2-a-S1",
+     "documentTitle": "Support policy",
+     "text": "Weekend coverage is limited to priority-one incidents. These receive a first response within 8 hours on Saturdays and Sundays."
+    },
+    {
+     "documentId": "en2-a-S2",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Support policy states weekend coverage is limited to priority-one incidents [S1]."
+  },
+  {
+   "key": "contract/en2-b#2",
+   "kind": "b",
+   "lang": "en",
+   "question": "What was our average first response time last month?",
+   "excerpts": [
+    {
+     "documentId": "en2-b-S1",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Average first response time last month was four hours [S1] (User, 00:00:01)"
+  },
+  {
+   "key": "contract/en2-c#2",
+   "kind": "c",
+   "lang": "en",
+   "question": "How much does the chatbot vendor charge per conversation?",
+   "excerpts": [
+    {
+     "documentId": "en2-c-S1",
+     "documentTitle": "Chatbot pilot brief",
+     "text": "The pilot covers billing questions only. Pricing is usage-based; the vendor will share its price list at the end of the pilot."
+    }
+   ],
+   "raw": " Chatbot Vendor Charges per Usage [S1]\n- The pricing for the chatbot is usage-based\n- The vendor will share its price list at the end of the pilot\n- No specific cost per conversation is given yet."
+  },
+  {
+   "key": "contract/en2-d#2",
+   "kind": "d",
+   "lang": "en",
+   "question": "Can everyone see the shared dashboard on their side now?",
+   "excerpts": [],
+   "raw": " User: Yes, everyone should be able to see the shared dashboard now.\n[00:02:49] Speaker 1: Can everyone see the shared dashboard on their side now?\n- The shared dashboard is accessible.\n- It contains the customer support tooling review data.\n- Everyone can follow the progress of the chatbot pilot."
+  },
+  {
+   "key": "contract/en3-a#2",
+   "kind": "a",
+   "lang": "en",
+   "question": "How long do we keep raw event data according to the policy?",
+   "excerpts": [
+    {
+     "documentId": "en3-a-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    },
+    {
+     "documentId": "en3-a-S2",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    },
+    {
+     "documentId": "en3-a-S3",
+     "documentTitle": "Data retention policy",
+     "text": "Raw event data is kept for 13 months and then deleted. Aggregated data is kept for five years."
+    }
+   ],
+   "raw": " Data Retention Policy Length [S3]\n- Raw event data is kept for 13 months and then deleted."
+  },
+  {
+   "key": "contract/en3-b#2",
+   "kind": "b",
+   "lang": "en",
+   "question": "How many engineers are assigned to the warehouse migration?",
+   "excerpts": [
+    {
+     "documentId": "en3-b-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    }
+   ],
+   "raw": " Two engineers are assigned to the warehouse migration [S1]."
+  },
+  {
+   "key": "contract/en3-c#2",
+   "kind": "c",
+   "lang": "en",
+   "question": "What will the new warehouse cost us per terabyte?",
+   "excerpts": [
+    {
+     "documentId": "en3-c-S1",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    }
+   ],
+   "raw": " New warehouse cost per terabyte not provided in the provided excerpts.\n\n- Review the detailed rate card in the contract for the storage cost per terabyte.\n- The pricing summary only provides a summary, not the actual table.\n- Share the detailed rate card with the necessary team members to obtain the required cost information."
+  },
+  {
+   "key": "contract/en3-d#2",
+   "kind": "d",
+   "lang": "en",
+   "question": "What I want us to remember from this quarter is that the migration comes first",
+   "excerpts": [],
+   "raw": " Migration is the top priority for this quarter.\n- The goal is to move everything to the new warehouse by the end of the second quarter.\n- Two engineers are assigned full time to the warehouse migration, with the analytics team providing assistance for testing."
+  },
+  {
+   "key": "clean/fr1-a1#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Est-ce que tu sais quel est le préavis de résiliation du contrat d'hébergement de l'ancien outil ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a1-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    },
+    {
+     "documentId": "fr1-a1-S2",
+     "documentTitle": "Contrat d'hébergement",
+     "text": "Le contrat est conclu pour une durée d'un an, renouvelable tacitement. Chaque partie peut le résilier par lettre recommandée avec un préavis de 90 jours avant l'échéance."
+    }
+   ],
+   "raw": " The user knows the notice period for termination of the old tool's hosting contract.\n\n- The term is 90 days, according to the Hosting Contract document [S2].\n- The user should check the specific notice requirements in the contract.\n- The new tool's pilot is scheduled for March 14th."
+  },
+  {
+   "key": "clean/fr1-a2#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Et la nouvelle offre, elle coûte combien par utilisateur ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a2-S1",
+     "documentTitle": "Grille tarifaire du prestataire",
+     "text": "Offre standard : 4,20 € par utilisateur et par mois, facturés à l'année. La formation initiale et la fiche de prise en main sont incluses."
+    },
+    {
+     "documentId": "fr1-a2-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " The new offer costs 4.20 € per user per month, billed annually according to the pricing grid of the provider [S1].\n\n- The cost includes initial training and a user guide.\n- The per-user cost does not include any additional fees for the pilot or further training sessions.\n- The cost is subject to annual billing."
+  },
+  {
+   "key": "clean/fr1-b#0",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Tu me rappelles combien de personnes participent au pilote ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-b-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " User participates in the pilot with 40 people, split between the 2nd and 3rd floor [S1]."
+  },
+  {
+   "key": "clean/fr1-c#0",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quelle est la date prévue pour la recette avec le prestataire ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-c-S1",
+     "documentTitle": "Planning du projet",
+     "text": "La recette aura lieu après la phase pilote, à une date à confirmer avec le prestataire. La généralisation suivra la recette."
+    },
+    {
+     "documentId": "fr1-c-S2",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    }
+   ],
+   "raw": " Date de la recette avec le prestataire non spécifiée, à confirmer [S1].\n- La recette aura lieu après la phase pilote.\n- La généralisation du nouveau outil de réservation de salles suivra la recette."
+  },
+  {
+   "key": "clean/fr2-a#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Le gîte demande combien d'acompte à la signature du devis ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-a-S1",
+     "documentTitle": "Devis du gîte",
+     "text": "Hébergement de 45 personnes maximum et location de la grande salle pour deux jours : 5 500 €. Un acompte de 30 %, soit 1 650 €, est demandé à la signature."
+    },
+    {
+     "documentId": "fr2-a-S2",
+     "documentTitle": "Programme provisoire",
+     "text": "Jeudi : arrivée à 10 h, atelier l'après-midi. Vendredi : matinée libre, dîner de clôture."
+    }
+   ],
+   "raw": " The gîte requires a deposit of 1650 € at the signing of the devis. [S1]"
+  },
+  {
+   "key": "clean/fr2-b#0",
+   "kind": "b",
+   "lang": "fr",
+   "question": "On a combien de participants confirmés pour l'instant ?",
+   "excerpts": [],
+   "raw": " Confirmation of Participants:\n- Thirty-five participants have confirmed their attendance.\n- Some responses are still pending.\n- The total capacity of the lodge is forty-five people, leaving room for more attendees."
+  },
+  {
+   "key": "clean/fr2-c#0",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel traiteur on a retenu pour le dîner du vendredi ?",
+   "excerpts": [
+    {
+     "documentId": "fr2-c-S1",
+     "documentTitle": "Informations du gîte",
+     "text": "Restauration : le gîte tient à disposition une liste de traiteurs partenaires. Le choix du traiteur doit être communiqué au plus tard un mois avant l'arrivée."
+    }
+   ],
+   "raw": " The user has not chosen a caterer for the dinner on Friday. [S1]\n\n- User needs to choose a caterer from the list provided by the lodge.\n- The choice of caterer should be communicated to the lodge at least one month before arrival.\n- User should communicate the decision to the group as soon as possible."
+  },
+  {
+   "key": "clean/fr2-d#0",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Franchement, qui aurait cru qu'on arriverait un jour à caler une date avec tout le monde ?",
+   "excerpts": [],
+   "raw": " The question is a comment, not a question directed to the user.\n\n* NO_ANSWER\n* No answer is needed as it is a comment expressing surprise that everyone could agree on a date."
+  },
+  {
+   "key": "clean/fr3-a#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Tu sais quelle est la taille maximale autorisée pour les pièces jointes ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-a-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    },
+    {
+     "documentId": "fr3-a-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    },
+    {
+     "documentId": "fr3-a-S3",
+     "documentTitle": "Politique de sécurité mobile",
+     "text": "Les pièces jointes envoyées depuis l'application sont limitées à 15 Mo par fichier. Les fichiers exécutables sont refusés."
+    }
+   ],
+   "raw": " La taille maximale autorisée pour les pièces jointes est de 15 Mo par fichier [S3]."
+  },
+  {
+   "key": "clean/fr3-b#0",
+   "kind": "b",
+   "lang": "fr",
+   "question": "Combien de tickets l'équipe a fermés sur ce sprint ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-b-S1",
+     "documentTitle": "Charte de développement",
+     "text": "Chaque correctif passe en relecture par une deuxième personne avant d'être fusionné. Les tickets reportés sont revus au début du sprint suivant."
+    }
+   ],
+   "raw": " Number of tickets closed by the team in this sprint\n- User mentioned that 18 tickets were closed [00:00:13]\n- Three tickets were postponed to the next sprint [00:00:26]\n- Therefore, 15 tickets were actually closed during this sprint [NO_ANSWER]"
+  },
+  {
+   "key": "clean/fr3-c#0",
+   "kind": "c",
+   "lang": "fr",
+   "question": "Quel est le taux de crash de la version 2.4 en production ?",
+   "excerpts": [
+    {
+     "documentId": "fr3-c-S1",
+     "documentTitle": "Suivi qualité",
+     "text": "Le taux de crash est mesuré chaque semaine sur la version en production et présenté au point qualité mensuel."
+    },
+    {
+     "documentId": "fr3-c-S2",
+     "documentTitle": "Notes de version 2.4",
+     "text": "Nouveau formulaire de saisie, mode sombre, amélioration de la recherche. Version en test interne."
+    }
+   ],
+   "raw": " Taux de crash de la version 2.4 en production non disponible pour le moment [S1]. Il sera présenté au prochain point de suivi qualité. [S1]"
+  },
+  {
+   "key": "clean/fr3-d#0",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Comment on a corrigé le bug de synchro je vous le montre juste après sur l'écran partagé",
+   "excerpts": [],
+   "raw": " The bug of synchronization was corrected\n- The cause was found yesterday\n- A fix is ready and currently under review\n- It will be demonstrated shortly during the screen share"
+  },
+  {
+   "key": "clean/en1-a1#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "Do you know how much notice we have to give on the current lease?",
+   "excerpts": [
+    {
+     "documentId": "en1-a1-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a1-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " Notice for the current lease requires six months [S2]."
+  },
+  {
+   "key": "clean/en1-a2#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "How many meeting rooms does the new floor have?",
+   "excerpts": [
+    {
+     "documentId": "en1-a2-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    },
+    {
+     "documentId": "en1-a2-S2",
+     "documentTitle": "Lease summary",
+     "text": "The lease runs until the end of next year. Either party may terminate it early with six months' written notice to the other party."
+    }
+   ],
+   "raw": " The new floor has nine meeting rooms. [S1]"
+  },
+  {
+   "key": "clean/en1-b#0",
+   "kind": "b",
+   "lang": "en",
+   "question": "Remind me, how many parking spaces did we get in the new building?",
+   "excerpts": [
+    {
+     "documentId": "en1-b-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " User: The new building has 25 parking spaces. [S2]"
+  },
+  {
+   "key": "clean/en1-c#0",
+   "kind": "c",
+   "lang": "en",
+   "question": "What's the total budget approved for the new furniture?",
+   "excerpts": [
+    {
+     "documentId": "en1-c-S1",
+     "documentTitle": "Furniture plan",
+     "text": "Quotes for desks and chairs are expected from three suppliers by the end of the month. The furniture budget will then be approved by the steering group."
+    },
+    {
+     "documentId": "en1-c-S2",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " Total budget for new furniture is not yet approved. [S1]"
+  },
+  {
+   "key": "clean/en2-a#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "What does our support policy say about weekend coverage?",
+   "excerpts": [
+    {
+     "documentId": "en2-a-S1",
+     "documentTitle": "Support policy",
+     "text": "Weekend coverage is limited to priority-one incidents. These receive a first response within 8 hours on Saturdays and Sundays."
+    },
+    {
+     "documentId": "en2-a-S2",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Support policy states weekend coverage is limited to priority-one incidents, with a first response within 8 hours on Saturdays and Sundays. [S1]"
+  },
+  {
+   "key": "clean/en2-b#0",
+   "kind": "b",
+   "lang": "en",
+   "question": "What was our average first response time last month?",
+   "excerpts": [
+    {
+     "documentId": "en2-b-S1",
+     "documentTitle": "Onboarding plan",
+     "text": "New support agents spend two weeks shadowing senior colleagues before taking tickets on their own."
+    }
+   ],
+   "raw": " Average first response time last month was four hours [S0:00:13]."
+  },
+  {
+   "key": "clean/en2-c#0",
+   "kind": "c",
+   "lang": "en",
+   "question": "How much does the chatbot vendor charge per conversation?",
+   "excerpts": [
+    {
+     "documentId": "en2-c-S1",
+     "documentTitle": "Chatbot pilot brief",
+     "text": "The pilot covers billing questions only. Pricing is usage-based; the vendor will share its price list at the end of the pilot."
+    }
+   ],
+   "raw": " Chatbot Vendor's Charge Per Conversation (based on [S1])\n- The pilot's pricing is usage-based\n- The vendor will share its price list at the end of the pilot"
+  },
+  {
+   "key": "clean/en2-d#0",
+   "kind": "d",
+   "lang": "en",
+   "question": "Can everyone see the shared dashboard on their side now?",
+   "excerpts": [],
+   "raw": " User can check if everyone can see the shared dashboard by asking them to confirm.\n\n- Ask participants to confirm they can see the shared dashboard.\n- If anyone is unable to view it, help them resolve the issue.\n- Verify that everyone can access the dashboard."
+  },
+  {
+   "key": "clean/en3-a#0",
+   "kind": "a",
+   "lang": "en",
+   "question": "How long do we keep raw event data according to the policy?",
+   "excerpts": [
+    {
+     "documentId": "en3-a-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    },
+    {
+     "documentId": "en3-a-S2",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    },
+    {
+     "documentId": "en3-a-S3",
+     "documentTitle": "Data retention policy",
+     "text": "Raw event data is kept for 13 months and then deleted. Aggregated data is kept for five years."
+    }
+   ],
+   "raw": " Warehouse data retention according to policy [S3]\n- Raw event data is kept for 13 months\n- Then deleted after that period"
+  },
+  {
+   "key": "clean/en3-b#0",
+   "kind": "b",
+   "lang": "en",
+   "question": "How many engineers are assigned to the warehouse migration?",
+   "excerpts": [
+    {
+     "documentId": "en3-b-S1",
+     "documentTitle": "Platform roadmap",
+     "text": "Second quarter: complete the warehouse migration and retire the old reporting dashboard."
+    }
+   ],
+   "raw": " Two engineers are assigned to the warehouse migration. [S1]"
+  },
+  {
+   "key": "clean/en3-c#0",
+   "kind": "c",
+   "lang": "en",
+   "question": "What will the new warehouse cost us per terabyte?",
+   "excerpts": [
+    {
+     "documentId": "en3-c-S1",
+     "documentTitle": "Warehouse pricing summary",
+     "text": "Storage and compute are billed separately. The detailed rate card is an annex of the contract."
+    }
+   ],
+   "raw": " New warehouse cost per terabyte is not provided in the provided excerpt. [S1] Only mentions a detailed rate card in the contract, not the actual number."
+  },
+  {
+   "key": "clean/en3-d#0",
+   "kind": "d",
+   "lang": "en",
+   "question": "What I want us to remember from this quarter is that the migration comes first",
+   "excerpts": [],
+   "raw": " Migration Priorities:\n- The warehouse migration comes first\n- The goal is to move everything to the new warehouse by the end of the second quarter\n- Two engineers and the analytics team are assigned to the warehouse migration"
+  },
+  {
+   "key": "cold/fr1-a1#0",
+   "kind": "a",
+   "lang": "fr",
+   "question": "Est-ce que tu sais quel est le préavis de résiliation du contrat d'hébergement de l'ancien outil ?",
+   "excerpts": [
+    {
+     "documentId": "fr1-a1-S1",
+     "documentTitle": "Note de cadrage",
+     "text": "Le projet vise à remplacer l'outil de réservation des salles avant la fin de l'année. Le pilote réunit des utilisateurs de deux étages."
+    },
+    {
+     "documentId": "fr1-a1-S2",
+     "documentTitle": "Contrat d'hébergement",
+     "text": "Le contrat est conclu pour une durée d'un an, renouvelable tacitement. Chaque partie peut le résilier par lettre recommandée avec un préavis de 90 jours avant l'échéance."
+    }
+   ],
+   "raw": " The notice period for termination of the old tool's hosting contract is 90 days, as stated in the hosting contract [S2]."
+  },
+  {
+   "key": "cold/fr2-d#1",
+   "kind": "d",
+   "lang": "fr",
+   "question": "Franchement, qui aurait cru qu'on arriverait un jour à caler une date avec tout le monde ?",
+   "excerpts": [],
+   "raw": " Who would have thought we would ever agree on a date with everyone?\n- The dates for the seminar have been confirmed: Thursday 12th and Friday 13th June.\n- Thirty-five participants have confirmed their attendance, with a few more still waiting for a response.\n- The deadline for signing the lodge's reservation is at the end of the month."
+  },
+  {
+   "key": "cold/en1-b#2",
+   "kind": "b",
+   "lang": "en",
+   "question": "Remind me, how many parking spaces did we get in the new building?",
+   "excerpts": [
+    {
+     "documentId": "en1-b-S1",
+     "documentTitle": "Floor plan notes",
+     "text": "The fourth floor has nine meeting rooms, two of them with video equipment, and an open kitchen next to the lifts."
+    }
+   ],
+   "raw": " User's response:\n\nThe new building provides twenty-five parking spaces. [02:23 S1]"
+  }
+ ]
+}
