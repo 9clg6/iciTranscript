@@ -858,18 +858,24 @@ final class LiveTranscriptionService {
     final int startMs = _offsetOf(session, gap.startMs);
     // La phrase en cours de cette source est emportée par la perte : son
     // audio commence au début de la perte.
-    if (_phraseId.containsKey(gap.source)) {
+    if (gap.endMs <= gap.startMs) {
+      // Signalement vide : la perte qui dure s'étend, rien n'est encore perdu.
+    } else if (_phraseId.containsKey(gap.source)) {
       _lossOfPhrase[gap.source] = startMs;
     } else if (_lastSealed.remove(gap.source)
         case final TranscriptSegmentEntity sealed
         when startMs < sealed.timestampMs) {
       _savePartial(sealed.copyWith(timestampMs: startMs));
     }
+    // Perte qui dure (serveur lent, socket vivante) : un seul repère, du
+    // début de la perte à son dernier morceau, qui grandit sous le même id.
     _writeGapMarker(
       session,
       gap.source,
-      startMs,
-      _offsetOf(session, gap.endMs),
+      gap.episodeStartMs == null
+          ? startMs
+          : math.min(startMs, _offsetOf(session, gap.episodeStartMs!)),
+      _offsetOf(session, math.max(gap.endMs, gap.episodeEndMs ?? gap.endMs)),
     );
   }
 
