@@ -555,12 +555,15 @@ final class GapBackfillService {
       ];
       // Le voisin ne compte que s'il précède de peu (une phrase plus loin
       // n'est pas la fin de celle-ci, même si elle lui ressemble).
+      // Une pause de plus de [_pause] entre les deux (WAV) en fait une autre
+      // prise de parole : une vraie répétition reste.
       final String? near =
           before != null &&
               beforeAt != null &&
               pieces.isNotEmpty &&
               from + pieces.first.offsetMs - beforeAt <=
-                  _neighbourSpan.inMilliseconds
+                  _neighbourSpan.inMilliseconds &&
+              !await _pauseBetween(path, beforeAt, from + pieces.first.offsetMs)
           ? before
           : null;
       List<({int offsetMs, String text})> kept = trimOverlaps(
@@ -659,6 +662,31 @@ final class GapBackfillService {
 
   // Une phrase dure au plus 30 s : au-delà, ce n'est plus le voisin.
   static const Duration _neighbourSpan = Duration(seconds: 35);
+
+  // Silence au-delà duquel deux phrases sont deux prises de parole.
+  static const Duration _pause = Duration(seconds: 3);
+
+  /// Un silence (porte de parole) de plus de [_pause] dans le WAV entre
+  /// [fromMs] et [toMs].
+  Future<bool> _pauseBetween(String path, int fromMs, int toMs) async {
+    if (toMs - fromMs <= _pause.inMilliseconds) return false;
+    final Uint8List? pcm = await _readPcm(path, fromMs, toMs);
+    if (pcm == null) return false;
+    const int step = 3200;
+    int run = 0;
+    for (int c = 0; c * step < pcm.length; c++) {
+      final bool speech = TranscriptionRemoteDataSourceImpl.isSpeechChunk(
+        Uint8List.sublistView(
+          pcm,
+          c * step,
+          math.min((c + 1) * step, pcm.length),
+        ),
+      );
+      run = speech ? 0 : run + 1;
+      if (run * 100 > _pause.inMilliseconds) return true;
+    }
+    return false;
+  }
 
   /// De la parole (porte RMS du direct, pas de 100 ms) dans [pcm] entre
   /// [fromMs] et [toMs] (heures relatives au début de [pcm]).
