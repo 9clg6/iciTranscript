@@ -45,12 +45,45 @@ class Proxy {
   final List<List<Object>> _conns = <List<Object>>[];
   final Set<List<Object>> _cutPairs = Set<List<Object>>.identity();
 
+  /// Server-to-client bytes are held this long (a lagging server, without
+  /// loading the machine). Order is kept; a server close waits for them.
+  Duration lag = Duration.zero;
+
+  /// New connections wait this long before the upstream connect: the
+  /// WebSocket handshake reply (accept) comes late.
+  Duration acceptDelay = Duration.zero;
+
+  void setLag(Duration d) {
+    lag = d;
+    log('proxy_lag', <String, Object?>{
+      'src': name,
+      's': d.inMilliseconds / 1000,
+    });
+  }
+
+  void setAcceptDelay(Duration d) {
+    acceptDelay = d;
+    log('proxy_accept_delay', <String, Object?>{
+      'src': name,
+      's': d.inMilliseconds / 1000,
+    });
+  }
+
   Future<void> listen() async {
     _server = await ServerSocket.bind(InternetAddress.loopbackIPv4, port);
     _server!.listen(_onClient);
   }
 
   Future<void> _onClient(Socket client) async {
+    log('proxy_accept', <String, Object?>{'src': name});
+    if (acceptDelay > Duration.zero) {
+      final Duration d = acceptDelay;
+      await Future<void>.delayed(d);
+      log('proxy_accept_released', <String, Object?>{
+        'src': name,
+        'after_s': d.inMilliseconds / 1000,
+      });
+    }
     Socket up;
     try {
       up = await Socket.connect(InternetAddress.loopbackIPv4, serverPort);
@@ -84,10 +117,22 @@ class Proxy {
       onDone: () => closedBy('client'),
       onError: (Object _) => closedBy('client'),
     );
+    Future<void> held = Future<void>.value();
     final StreamSubscription<Uint8List> b = up.listen(
-      (Uint8List d) => pipe(client, d),
-      onDone: () => closedBy('server'),
-      onError: (Object _) => closedBy('server'),
+      (Uint8List d) {
+        if (lag == Duration.zero) {
+          held = held.then((_) => pipe(client, d));
+          return;
+        }
+        final DateTime due = DateTime.now().add(lag);
+        held = held.then((_) async {
+          final Duration wait = due.difference(DateTime.now());
+          if (wait > Duration.zero) await Future<void>.delayed(wait);
+          pipe(client, d);
+        });
+      },
+      onDone: () => held.then((_) => closedBy('server')),
+      onError: (Object _) => held.then((_) => closedBy('server')),
     );
     if (_stalled) {
       a.pause();

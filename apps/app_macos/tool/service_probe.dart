@@ -169,6 +169,18 @@ final class FileStore implements SessionRepository, TranscriptRepository {
   }
 }
 
+/// Real WebSocketClient that also reports each final commit it writes.
+final class CountingClient extends WebSocketClient {
+  CountingClient({required this.onFinalCommit, super.connectChannel});
+  final void Function() onFinalCommit;
+
+  @override
+  void send(String message) {
+    if (message.contains('"final":true')) onFinalCommit();
+    super.send(message);
+  }
+}
+
 /// Logs every transcribe call (start, end, outcome) of the real transcriber.
 final class TimedTranscriber implements PcmTranscriber {
   TimedTranscriber(this.inner, {this.onStart});
@@ -385,10 +397,17 @@ void main() {
     await sysProxy.listen();
     final Map<String, StreamSubscription<String>> raw =
         <String, StreamSubscription<String>>{};
+    // Per connection: final commits written vs `done`s received. A `done`
+    // with no final commit outstanding on its connection is unsolicited.
+    final Map<String, int> commits = <String, int>{'mic': 0, 'sys': 0};
+    final Map<String, int> dones = <String, int>{'mic': 0, 'sys': 0};
     WebSocketClient client(String src, int port) {
-      final WebSocketClient c = WebSocketClient(
+      final WebSocketClient c = CountingClient(
+        onFinalCommit: () => commits[src] = commits[src]! + 1,
         connectChannel: (Uri uri) {
           log('connect', <String, Object?>{'src': src});
+          commits[src] = 0;
+          dones[src] = 0;
           return WebSocketChannel.connect(uri.replace(port: port));
         },
       );
@@ -396,7 +415,13 @@ void main() {
       raw[src] = c.messageStream.listen((String m) {
         final Map<String, dynamic> j = jsonDecode(m) as Map<String, dynamic>;
         if (j['type'] == 'response.audio_transcript.done') {
-          log('raw_done', <String, Object?>{'src': src, 'text': j['text']});
+          final bool unsolicited = dones[src]! >= commits[src]!;
+          dones[src] = dones[src]! + 1;
+          log('raw_done', <String, Object?>{
+            'src': src,
+            'text': j['text'],
+            'unsolicited': unsolicited,
+          });
         }
       }, onError: (Object _) {});
       return c;
@@ -415,9 +440,19 @@ void main() {
       audioCaptureChannel: capture,
       transcriptionRemoteDataSource: remote,
       transcriptionService: transcription,
-      gapBackfill: backfill,
-      gapBackfillRetry: retry,
+      gapBackfill: env['NO_BACKFILL'] == '1' ? null : backfill,
+      gapBackfillRetry: env['NO_BACKFILL'] == '1' ? null : retry,
     );
+    // Machine load through the run.
+    final Timer loadTimer = Timer.periodic(const Duration(seconds: 30), (
+      _,
+    ) async {
+      final ProcessResult r = await Process.run('sysctl', <String>[
+        '-n',
+        'vm.loadavg',
+      ]);
+      log('load', <String, Object?>{'avg': (r.stdout as String).trim()});
+    });
     final Map<String, String> seen = <String, String>{};
     transcription.segmentsStream.listen((List<TranscriptSegmentEntity> list) {
       for (final TranscriptSegmentEntity s in list) {
@@ -565,6 +600,85 @@ void main() {
       snap('after_B_stopped');
       await waitNoMarkers('after_B');
       dumpSegments();
+    } else if (mode == 'Dlag') {
+      // D with a lagging server around the cut (partials arrive late, the
+      // sealed-partial path), and again during the catch-up before Stop.
+      await start(mode);
+      await feed(
+        live,
+        300,
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          20: () async =>
+              both((Proxy p) async => p.setLag(const Duration(seconds: 40))),
+          60: () => both((Proxy p) => p.refuse()),
+          61: () async => both((Proxy p) async => p.setLag(Duration.zero)),
+          210: () => both((Proxy p) => p.reopen()),
+          230: () async =>
+              both((Proxy p) async => p.setLag(const Duration(seconds: 30))),
+        },
+      );
+      snap('before_stop');
+      await stop(mode);
+      snap('after_stop');
+      await waitNoMarkers('after_stop', seconds: 60);
+      dumpSegments();
+    } else if (mode == 'slow') {
+      // Mic cuts followed by slow WebSocket accepts of 12, 15 and 25 s.
+      await start(mode);
+      await feed(
+        live,
+        300,
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          for (final (double t, int d) in <(double, int)>[
+            (60, 12),
+            (130, 15),
+            (200, 25),
+          ])
+            t: () async {
+              micProxy.setAcceptDelay(Duration(seconds: d));
+              micProxy.cut();
+            },
+        },
+      );
+      await stop(mode);
+      await waitNoMarkers('after_stop', seconds: 60);
+      dumpSegments();
+    } else if (mode == 'stopmid') {
+      // Stop in the middle of a sentence; STOP_LAG lags the server first.
+      final double lagS = double.tryParse(env['STOP_LAG'] ?? '') ?? 0;
+      await start(mode);
+      await feed(
+        live,
+        double.parse(env['STOP_AT'] ?? '59.2'),
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          if (lagS > 0)
+            50: () async => both(
+              (Proxy p) async =>
+                  p.setLag(Duration(milliseconds: (lagS * 1000).round())),
+            ),
+        },
+      );
+      await stop(mode);
+      await waitNoMarkers('after_stop', seconds: 60);
+      dumpSegments();
+    } else if (mode == 'long20b') {
+      // 20 min of live60 with an early 60 s mic outage at 120 s.
+      await start(mode);
+      await feed(
+        live60,
+        1200,
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          120: () => micProxy.refuse(),
+          180: () => micProxy.reopen(),
+        },
+      );
+      await stop(mode);
+      await waitNoMarkers('after_stop', seconds: 60);
+      dumpSegments();
     } else if (mode == 'D' || mode == 'long20') {
       // D: refusal 60-210 s over 300 s. long20: 20 min of live60 with a 3 s
       // mic cut at 5 min and a 45 s refusal at 12 min. Stop drains, then
@@ -663,7 +777,7 @@ void main() {
         final Map<String, dynamic> s = sched[idx] as Map<String, dynamic>;
         final double from = ((s['start'] as num) - 1.5);
         final double len = (s['end'] as num) - (s['start'] as num) + 4.5;
-        for (int k = 0; k < 5; k++) {
+        for (int k = 0; k < int.parse(env['LANG_REPS'] ?? '5'); k++) {
           await feed(live60, len, from: from, label: 'sys$idx#$k');
           await Future<void>.delayed(const Duration(seconds: 2));
         }
@@ -672,6 +786,7 @@ void main() {
       await waitNoMarkers('after_L', seconds: 120);
       dumpSegments();
     }
+    loadTimer.cancel();
     log('done_mode', <String, Object?>{'t': now()});
     await raw['mic']?.cancel();
     await raw['sys']?.cancel();
