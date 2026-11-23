@@ -135,13 +135,20 @@ void main() {
         feedback: shownFeedback[id],
       ),
     );
-    final List<Override> overrides = <Override>[
-      ...fakes.overrides,
+    // Un AppFakes par conteneur : un Notifier (ici `AppFakes.live`) ne
+    // s'attache qu'à un seul conteneur.
+    List<Override> overridesWith(AppFakes f) => <Override>[
+      ...f.overrides,
       ...localModelOverrides(db, InstantOllamaService(installed: true)),
       apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
     ];
+    final List<Override> overrides = overridesWith(fakes);
     await tester.runAsync(() async {
-      final ProviderContainer c = ProviderContainer(overrides: overrides);
+      final ProviderContainer c = ProviderContainer(
+        overrides: overridesWith(
+          AppFakes(sessions: sessions, ollama: kOllamaReady),
+        ),
+      );
       for (final SessionEntity s in sessions) {
         await c.read(sessionRepositoryProvider).create(s);
         if (stored[s.id] case final String content) {
