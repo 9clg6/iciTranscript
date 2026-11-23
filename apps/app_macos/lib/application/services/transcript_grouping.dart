@@ -1,4 +1,5 @@
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
+import 'package:ici_transcript/application/services/live_transcription.service.dart';
 
 /// Bloc affiché : une ou plusieurs phrases consécutives d'une même personne.
 class TranscriptBlock {
@@ -18,6 +19,12 @@ class TranscriptBlock {
   /// Interlocuteur du bloc (audio système), null si inconnu.
   final int? speaker;
 }
+
+/// Un repère (perte ou passage non transcrit) reste seul : il n'est la
+/// phrase de personne.
+bool _isMarker(String text) =>
+    text.startsWith(LiveTranscriptionService.gapMarkerPrefix) ||
+    LiveTranscriptionService.isUntranscribedMarker(text);
 
 final RegExp _sentenceEnd = RegExp(r'[.!?…]["»”’)]*$');
 
@@ -40,6 +47,8 @@ List<TranscriptBlock> groupTranscript(
       final bool sameSpeaker =
           speaker == null || last.speaker == null || speaker == last.speaker;
       final bool continues =
+          !_isMarker(last.segment.text) &&
+          !_isMarker(seg.text) &&
           last.segment.source == seg.source &&
           sameSpeaker &&
           !_sentenceEnd.hasMatch(last.segment.text.trim()) &&

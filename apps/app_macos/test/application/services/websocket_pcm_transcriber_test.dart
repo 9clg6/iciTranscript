@@ -8,8 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
 
 /// Tour 5, suite (b) : [WebSocketPcmTranscriber] contre une socket factice.
-/// Un intervalle de plus de 30 s part en morceaux de 30 s au plus, chacun
-/// commité puis attendu avant le suivant (comme le renvoi étalé) ; les
+/// Un long intervalle part en morceaux courts (12 s au plus depuis le tour
+/// 6), chacun commité puis attendu avant le suivant (comme le renvoi étalé) ; les
 /// heures rendues partent du début de l'intervalle ; un serveur muet fait
 /// échouer la retranscription en temps borné ; la socket est fermée après,
 /// réussite ou échec.
@@ -24,8 +24,13 @@ void main() {
     return data;
   }
 
-  test('70 s : trois morceaux de 30 s au plus, un à la fois, heures depuis '
-      'le début de l intervalle, socket fermée', () {
+  // Tour 6 : morceaux de WebSocketPcmTranscriber.maxPiece (12 s) au plus,
+  // coupés aux silences (sonde 4 : un morceau de 30 s occupait le serveur
+  // séquentiel, un enregistrement attendait 8,8 s). L'intention reste :
+  // tout l'intervalle transcrit une fois, dans l'ordre, chaque morceau
+  // attendu avant le suivant, heures depuis le début de l'intervalle.
+  test('70 s : morceaux de 12 s au plus, tout l intervalle une fois dans '
+      'l ordre, un à la fois, heures depuis le début, socket fermée', () {
     fakeAsync((FakeAsync async) {
       final _ScriptedServer server = _ScriptedServer(async)
         ..answerAfter = const Duration(seconds: 2);
@@ -34,27 +39,45 @@ void main() {
       );
       List<({int offsetMs, String text})>? result;
       transcriber.transcribe(pcm(70)).then((r) => result = r);
-      async.elapse(const Duration(seconds: 30));
+      async.elapse(const Duration(minutes: 1));
 
       expect(result, isNotNull);
-      expect(result!.map((p) => p.offsetMs), <int>[0, 30000, 60000]);
+      final int maxBytes = WebSocketPcmTranscriber.maxPiece.inMilliseconds * 32;
+      expect(server.bytesPerCommit.length, greaterThanOrEqualTo(6));
+      expect(
+        server.bytesPerCommit.every((int b) => b <= maxBytes),
+        isTrue,
+        reason: 'morceaux de 12 s au plus',
+      );
+      expect(
+        server.bytesPerCommit.fold<int>(0, (int a, int b) => a + b),
+        70 * 32000,
+        reason: 'tout l intervalle, une fois',
+      );
+      int chunk = 0;
+      final List<int> expectedFirst = <int>[];
+      for (final int bytes in server.bytesPerCommit) {
+        expectedFirst.add(chunk);
+        chunk += bytes ~/ 3200;
+      }
+      expect(
+        server.firstChunkOfCommit,
+        expectedFirst,
+        reason: 'morceaux contigus, dans l ordre',
+      );
+      expect(
+        result!.map((p) => p.offsetMs),
+        expectedFirst.map((int c) => c * 100),
+        reason: 'heures depuis le début de l intervalle',
+      );
       expect(result!.map((p) => p.text), <String>[
-        'Morceau 1.',
-        'Morceau 2.',
-        'Morceau 3.',
+        for (int n = 1; n <= server.bytesPerCommit.length; n++) 'Morceau $n.',
       ]);
-      expect(server.bytesPerCommit, <int>[960000, 960000, 320000]);
       expect(
         server.log.join(' '),
-        matches(
-          RegExp(
-            r'^(append )+commit done (append )+commit done '
-            r'(append )+commit done$',
-          ),
-        ),
+        matches(RegExp(r'^((append )+commit done ?)+$')),
         reason: 'chaque morceau attend son done avant le suivant',
       );
-      expect(server.firstChunkOfCommit, <int>[0, 300, 600]);
       expect(server.closed, isTrue);
     });
   });

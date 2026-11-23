@@ -39,7 +39,15 @@ void main() {
     expect(dir, startsWith(Directory.systemTemp.path));
     expect(dir, isNot(contains('/Library/Application Support/')));
     final Directory d = Directory(dir);
-    if (d.existsSync()) await d.delete(recursive: true);
+    // Chaque rig arrête son rattrapage différé en fin de test (tearDown) ;
+    // le nettoyage reste tolérant à un fichier qui disparaît entre-temps.
+    for (int attempt = 0; attempt < 5 && d.existsSync(); attempt++) {
+      try {
+        await d.delete(recursive: true);
+      } on FileSystemException {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
     await d.create(recursive: true);
   });
 
@@ -56,6 +64,7 @@ void main() {
             systemClient: FakeVoxSocket(vox),
           ),
         );
+        addTearDown(rig.dispose);
         await rig.start();
         final String a = rig.sessionId;
         await rig.speak(0, 30); // phrase de A, jamais acquittée
@@ -94,6 +103,7 @@ void main() {
         'A cède avant le morceau suivant, ferme sa socket, garde son repère '
         'et sera réessayé', () async {
       final _Rig rig = _Rig(remote: FakeTranscriptionRemoteDataSource());
+      addTearDown(rig.dispose);
       // 2 s par morceau : le rattrapage complet (4 morceaux) dépasse les 5 s
       // laissées au démarrage de B.
       rig.backfillServer.answerAfter = const Duration(seconds: 2);
@@ -134,6 +144,7 @@ void main() {
   test('point 2 : la relance ne démarre aucun morceau pendant le démarrage '
       'd un enregistrement', () async {
     final _Rig rig = _Rig(remote: FakeTranscriptionRemoteDataSource());
+    addTearDown(rig.dispose);
     rig.backfillServer.available = false; // A : serveur de rattrapage absent
     await rig.start();
     await rig.speak(0, 300);
@@ -157,6 +168,7 @@ void main() {
   test('point 3 : Passer pendant le rattrapage libère l écran aussitôt ; le '
       'repère reste jusqu à son remplacement', () async {
     final _Rig rig = _Rig(remote: FakeTranscriptionRemoteDataSource());
+    addTearDown(rig.dispose);
     rig.backfillServer.answerAfter = const Duration(seconds: 1);
     final List<Duration> remaining = <Duration>[];
     rig.service.finalisingRemainingStream.listen(remaining.add);
@@ -228,6 +240,14 @@ final class _Rig {
   late final TranscriptionService transcription;
   late final GapBackfillRetry retry;
   late final LiveTranscriptionService service;
+
+  /// Attend la fin du rattrapage différé (relance en tâche de fond) puis
+  /// arrête le service : rien n'écrit plus dans le dossier partagé quand le
+  /// test suivant le nettoie.
+  Future<void> dispose() async {
+    await retry.dispose();
+    await service.dispose();
+  }
 
   String get sessionId => transcription.currentSessionStream.value!.id;
   int get t0 => transcription
