@@ -150,6 +150,9 @@ final class TranscriptionRemoteDataSourceImpl
     _systemConnected = systemAudioEnabled;
     _clearOutages();
     _resetUtteranceState();
+    // Une nouvelle séance repart de la borne de 10 s : l'app vit des jours
+    // dans la barre des menus, un serveur lent d'hier ne compte plus.
+    _learnedSlowAccepts.updateAll((_, _) => 0);
     if (_closedSubscriptions.isEmpty) {
       _closedSubscriptions
         ..add(_mic.onClosed.listen((_) => _onSocketClosed(AudioSource.input)))
