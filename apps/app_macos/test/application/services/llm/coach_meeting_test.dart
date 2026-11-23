@@ -4,6 +4,8 @@ import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ici_transcript/application/services/live_answers/answer_prompt.dart'
+    show questionLanguage;
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
@@ -17,13 +19,15 @@ import '../../../helpers/llm_fakes.dart' show ScriptedLlmProvider, requestText;
 /// les autres participants. Comportement épinglé ici :
 /// - seules les phrases du micro partent ; jamais l'audio système, un repère
 ///   de perte (« Transcription interrompue… ») ni un « Passage non
-///   transcrit » ; une phrase en français de l'utilisateur n'est pas envoyée
-///   (langue jugée par `questionLanguage`, déjà là pour les réponses) ;
-///   langue indécise (`questionLanguage` rend null) : anglaise seulement si
-///   la phrase a au moins un mot-outil anglais (pronom, article,
-///   auxiliaire, préposition : « I », « so », « the »…) et aucun mot-outil
-///   français ; sinon ignorée. Décision : « OK », « yes », « exactly » sont
-///   des interjections, pas des mots-outils ;
+///   transcrit » ; une phrase en français de l'utilisateur n'est pas envoyée ;
+/// - règle de langue, qui ne s'en remet PAS au seul `questionLanguage` : une
+///   phrase de l'utilisateur part seulement si elle a au moins un mot-outil
+///   anglais (pronom, article, auxiliaire, préposition : « I », « so »,
+///   « the »…) ET aucun mot-outil français (« le », « la », « fait »…) ;
+///   sinon ignorée. Un mot des deux langues (« on », « a ») ne compte pas
+///   comme français. Franglais (« On fait le call with the team. », que
+///   `questionLanguage` juge anglais) : ignoré. « OK », « yes »,
+///   « exactly » sont des interjections, pas des mots-outils ;
 /// - un modèle qui dit en prose qu'il n'y a rien à corriger = aucune
 ///   correction pour cette partie, pas un échec ;
 /// - une longue réunion part en plusieurs requêtes d'au plus
@@ -164,8 +168,8 @@ void main() {
       },
     );
 
-    test('langue indécise : anglaise seulement avec un mot-outil anglais et '
-        'aucun français', () async {
+    test('phrase sans indice ou mêlée : anglaise seulement avec un mot-outil '
+        'anglais et aucun français', () async {
       final ScriptedLlmProvider llm = replying(answer(<Map<String, String>>[]));
       const Map<String, bool> sent = <String, bool>{
         'I think so.': true,
@@ -188,6 +192,29 @@ void main() {
           reason: '« $text » ${expected ? 'doit' : 'ne doit pas'} partir',
         );
       });
+    });
+
+    test('franglais que `questionLanguage` juge anglais : ignoré quand '
+        'même (un mot-outil français suffit)', () async {
+      const String franglais = 'On fait le call with the team.';
+      expect(
+        questionLanguage(franglais),
+        'English',
+        reason: 'prémisse : le seul juge de langue se tromperait ici',
+      );
+      final ScriptedLlmProvider llm = replying(answer(<Map<String, String>>[]));
+
+      await coachMeeting(llm, <TranscriptSegmentEntity>[
+        seg('mix', franglais, atMs: 0),
+        seg('en', 'I am agree with you on this point.', atMs: 5000),
+      ]);
+
+      expect(allSent(llm), isNot(contains(franglais)));
+      expect(
+        allSent(llm),
+        contains('I am agree with you on this point.'),
+        reason: '« on » est des deux langues : ne compte pas comme français',
+      );
     });
 
     test('rien que du français ou rien du micro : aucune requête, retour '

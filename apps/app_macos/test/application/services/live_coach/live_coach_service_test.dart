@@ -182,7 +182,7 @@ void main() {
   );
 
   test('langue indécise (même règle qu\'après l\'appel) : « I think so. » '
-      'part, « Yes exactly. » et le franglais non', () {
+      'part, « Yes exactly. » et le franglais (mot-outil français) non', () {
     fakeAsync((FakeAsync async) {
       setUpCoach();
       say('Yes exactly.', atMs: 1000);
