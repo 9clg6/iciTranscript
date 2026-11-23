@@ -20,10 +20,17 @@ import '../../../helpers/live_service_fakes.dart';
 /// Comportement épinglé :
 /// - le raccourci est posé par `registerModifiers` (masque Carbon), jamais
 ///   par `register` (Carbon ne sait pas poser un raccourci sans touche) ;
-/// - mêmes gestes qu'un raccourci à touche : appui bref (< 300 ms) =
-///   bascule, appui maintenu = parler tant qu'il est tenu ;
-/// - `aborted` (le plugin a vu une autre touche pendant que ⌘⌥ étaient
-///   tenus : l'utilisateur tape ⌘⌥Échap ou ⌘⌥D d'une autre app) :
+/// - un accord n'agit qu'une fois su être le nôtre (revue PR #29) : le
+///   plugin ne dit rien pendant le seuil d'appui, que le contrôleur lui
+///   transmet (`DictationController.holdThreshold`, seule source) ; ⌘⌥ puis
+///   une touche ou un clic pendant ce seuil ne produit AUCUN événement, donc
+///   rien ici (ni capture, ni micro de réunion détourné, ni collage) ;
+/// - `tapped` (appui bref propre) = bascule : il démarre, le suivant arrête ;
+/// - `pressed` arrive au seuil : appui maintenu déjà confirmé, capture
+///   ouverte à ce moment ; `released` arrête quelle que soit l'attente entre
+///   les deux (le seuil n'est jamais recompté côté Dart) ;
+/// - `aborted` (autre touche ou clic après `pressed` : l'utilisateur tenait
+///   ⌘⌥ puis a tapé ⌘⌥Échap ou ⌘⌥D d'une autre app) :
 ///   - la dictée lancée par cet appui est jetée sans bruit : rien collé,
 ///     rien copié, ni erreur ni « rien entendu », capture arrêtée, flux
 ///     fermé, Échap libérée, serveur rendu à l'arbitre ;
@@ -59,6 +66,12 @@ void main() {
     FakeAsync async, {
     DictationSettings settings = clipboardMode,
   }) => DictationHarness(async)..launch(settings);
+
+  /// Appui bref propre, confirmé par le plugin.
+  void tap(DictationHarness d) {
+    d.shortcuts.emit(ShortcutEvent.tapped);
+    d.async.elapse(Duration.zero);
+  }
 
   void abort(DictationHarness d) {
     d.shortcuts.emit(ShortcutEvent.aborted);
@@ -104,6 +117,11 @@ void main() {
         expect(d.shortcuts.registeredModifiers, <int>[2304]);
         expect(d.shortcuts.registered, isEmpty);
         expect(d.controller.shortcutStatus, ShortcutStatus.registered);
+        expect(
+          d.shortcuts.registeredHoldThresholds.last,
+          DictationController.holdThreshold,
+          reason: 'le seuil vient du contrôleur, nulle part ailleurs',
+        );
       });
     });
 
@@ -130,25 +148,51 @@ void main() {
   });
 
   group('mêmes gestes qu un raccourci à touche', () {
-    test('appui bref : la dictée continue ; un second appui bref l arrête et '
-        'produit le texte une fois', () {
+    test('tant que le plugin ne dit rien, rien ne s ouvre (accord indécis '
+        'ou raccourci d une autre app)', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+        final int startsBefore = d.process.starts.length;
+
+        async.elapse(const Duration(seconds: 2));
+
+        expect(d.audio.startCalls, 0);
+        expect(d.remote.connects, isEmpty);
+        expect(d.process.starts.length, startsBefore);
+        expect(d.output.log, isEmpty);
+      });
+    });
+
+    test('appui bref (tapped) : la dictée démarre et continue ; un second '
+        'appui bref l arrête et produit le texte une fois', () {
       fakeAsync((FakeAsync async) {
         final DictationHarness d = launched(async);
 
-        d.press();
-        async.elapse(const Duration(milliseconds: 120));
-        d.release();
-        d.say(20);
+        tap(d);
         expect(d.state, isA<DictationListening>());
+        d.say(20);
         expect(d.remote.finalCommits, 0);
 
-        d.press();
-        d.release();
+        tap(d);
         expect(d.state, isA<DictationTranscribing>());
         d.remote.emitDone('Bonjour à tous.');
         async.elapse(Duration.zero);
 
         expect(d.output.copies, <String>['Bonjour à tous.']);
+      });
+    });
+
+    test('pressed puis released 50 ms après : arrêt (le maintien est déjà '
+        'confirmé par le plugin, jamais pris pour une bascule)', () {
+      fakeAsync((FakeAsync async) {
+        final DictationHarness d = launched(async);
+
+        d.press();
+        async.elapse(const Duration(milliseconds: 50));
+        d.release();
+
+        expect(d.state, isNot(isA<DictationListening>()));
+        expect(d.audio.stopCalls, 1);
       });
     });
 
@@ -172,8 +216,7 @@ void main() {
     test('Échap annule une dictée en cours, comme avant', () {
       fakeAsync((FakeAsync async) {
         final DictationHarness d = launched(async);
-        d.press();
-        d.release();
+        tap(d);
         d.say(5);
 
         d.cancel();
@@ -185,7 +228,7 @@ void main() {
   });
 
   group('une autre touche pendant ⌘⌥ : raccourci d une autre app', () {
-    test('pendant les 300 ms : la dictée lancée par cet appui est jetée sans '
+    test('juste après le seuil : la dictée lancée par cet appui est jetée sans '
         'bruit, rien n est collé', () {
       fakeAsync((FakeAsync async) {
         final DictationHarness d = launched(async, settings: pasteMode);
@@ -231,11 +274,10 @@ void main() {
         'un appui bref suivant l arrête', () {
       fakeAsync((FakeAsync async) {
         final DictationHarness d = launched(async);
-        d.press();
-        d.release();
+        tap(d);
         d.say(10);
 
-        // ⌘⌥D tapé dans une autre app pendant la dictée.
+        // ⌘⌥ tenus au-delà du seuil puis D (raccourci d'une autre app).
         d.press();
         abort(d);
         final int sentBefore = d.remote.sentAudio.length;
@@ -247,8 +289,7 @@ void main() {
         expect(d.remote.sentAudio.length, greaterThan(sentBefore));
         expect(d.output.log, isEmpty);
 
-        d.press();
-        d.release();
+        tap(d);
         expect(d.state, isA<DictationTranscribing>());
         d.remote.emitDone('Toujours là.');
         async.elapse(Duration.zero);
@@ -354,6 +395,11 @@ void main() {
       }
     }
 
+    void tapIn() {
+      d.shortcuts.emit(ShortcutEvent.tapped);
+      clock.elapse(Duration.zero);
+    }
+
     void abortIn() {
       d.shortcuts.emit(ShortcutEvent.aborted);
       clock.elapse(Duration.zero);
@@ -386,8 +432,7 @@ void main() {
         run(20, voiced: true);
         run(15);
 
-        d.press();
-        d.release();
+        tapIn();
         run(10, voiced: true);
         d.press();
         abortIn();
@@ -395,8 +440,7 @@ void main() {
         expect(d.state, isA<DictationListening>());
         expect(d.output.log, isEmpty);
 
-        d.press();
-        d.release();
+        tapIn();
         run(20);
         async.elapse(const Duration(seconds: 2));
 
