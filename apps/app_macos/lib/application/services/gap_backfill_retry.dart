@@ -131,14 +131,20 @@ final class GapBackfillRetry {
       pending[sessionId] = 0;
       await _write(pending);
     }
-    final BackfillOutcome outcome = await _backfill.backfill(
-      sessionId,
-      recordingsDirectory: _directory,
-    );
-    // Seule une tentative qui a atteint le serveur compte : une panne du
-    // serveur ne doit pas épuiser les reprises avant son retour.
+    // Une tentative qui a avancé (au moins une tranche rendue) ne compte
+    // pas : la suivante repart tout de suite, là où elle s'est arrêtée.
+    BackfillOutcome outcome;
+    do {
+      outcome = await _backfill.backfill(
+        sessionId,
+        recordingsDirectory: _directory,
+      );
+    } while (outcome.markersLeft > 0 && outcome.progressed && !_isRecording());
+    // Seule une tentative qui a atteint le serveur sans rien rendre compte :
+    // une panne du serveur ne doit pas épuiser les reprises avant son retour.
     final int attempts =
-        (pending[sessionId] ?? 0) + (outcome.reachedServer ? 1 : 0);
+        (pending[sessionId] ?? 0) +
+        (outcome.reachedServer && !outcome.progressed ? 1 : 0);
     if (outcome.markersLeft == 0) {
       pending.remove(sessionId);
     } else if (attempts >= maxAttempts) {
