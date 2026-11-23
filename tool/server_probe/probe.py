@@ -670,6 +670,98 @@ def cmd_svcscore(a):
     print(json.dumps(out, ensure_ascii=False, indent=1))
 
 
+MARK = re.compile(r"(Transcription interrompue|Passage non transcrit)\D*(\d+):(\d{2}):(\d{2})\s*[–-]\s*(\d+):(\d{2}):(\d{2})")
+
+
+def coverage(sentence, text_words):
+    g = grams(words(sentence), 3)
+    h = grams(text_words, 3)
+    return sum(min(c, h[k]) for k, c in g.items()) / max(1, sum(g.values()))
+
+
+def note_state(ev, sess, before_backfill):
+    """Segments of [sess]: the final dump, or the latest version of each id
+    seen before the first backfill transcription (deletions not visible)."""
+    if not before_backfill:
+        return [g for g in [e for e in ev if e["ev"] == "segments"][-1]["list"] if g["session"] == sess]
+    cut = next((e["t"] for e in ev if e["ev"] == "transcribe_start"), float("inf"))
+    last = {}
+    for e in ev:
+        if e["t"] >= cut:
+            break
+        if e["ev"] == "segment" and e["session"] == sess and "current" not in e["id"]:
+            last[e["id"]] = {"id": e["id"], "src": e["src"], "t": e["ts"], "text": e["text"]}
+    return list(last.values())
+
+
+def check_note(sched_src, segs, end_s):
+    ref = [s for s in sched_src if s["end"] <= end_s]
+    markers, live = [], []
+    for g in sorted(segs, key=lambda g: g["t"]):
+        m = MARK.search(g["text"])
+        if m:
+            v = list(map(int, m.groups()[1:]))
+            markers.append((v[0] * 3600 + v[1] * 60 + v[2], v[3] * 3600 + v[4] * 60 + v[5] + 1))
+        else:
+            live.append(g)
+    res = {"violations": [], "garbled": [], "under_marker": [], "dup_full": [], "dup_end": [], "ts_off": [], "order_breaks": 0}
+    for s in ref:
+        local = [g for g in live if s["start"] - 60 <= g["t"] <= s["end"] + 60]
+        # One segment, or two adjacent ones (a sentence split by a piece
+        # boundary), must hold the sentence: a union over the window would
+        # match templated neighbours.
+        spans = [words(g["text"]) for g in local] + \
+            [words(x["text"] + " " + y["text"]) for x, y in zip(local, local[1:])]
+        present = max((coverage(s["text"], w) for w in spans), default=0) >= 0.6
+        hits = [g for g in local if coverage(s["text"], words(g["text"])) >= 0.8]
+        if len(hits) > 1:
+            res["dup_full"].append((s["i"], s["start"], [g["text"][:50] for g in hits]))
+        if not present:
+            under = any(a - 1 <= s["end"] and s["start"] <= b + 1 for a, b in markers)
+            at = [g for g in live if s["start"] - 2 <= g["t"] <= s["start"] + 2]
+            if under:
+                res["under_marker"].append((s["i"], s["start"], s["end"]))
+            elif at:  # a line is there, but the model got it wrong
+                res["garbled"].append((s["i"], s["start"], at[0]["text"][:60]))
+            else:
+                res["violations"].append((s["i"], s["start"], s["end"]))
+    best_prev = -1
+    for g in live:
+        cand = [s for s in ref if abs(s["start"] - g["t"]) <= 60]
+        if not cand:
+            continue
+        b = max(cand, key=lambda s: coverage(s["text"], words(g["text"])))
+        if coverage(b["text"], words(g["text"])) >= 0.5:
+            if abs(g["t"] - b["start"]) > 5:
+                res["ts_off"].append((round(g["t"], 1), b["i"], b["start"], g["text"][:50]))
+            if b["i"] < best_prev:
+                res["order_breaks"] += 1
+            best_prev = max(best_prev, b["i"])
+    for a, b in zip(live, live[1:]):
+        wa, wb = words(a["text"]), words(b["text"])
+        for k in range(min(len(wa), len(wb), 12), 2, -1):
+            diff = sum(x != y for x, y in zip(wa[-k:], wb[:k]))
+            if diff <= 1:
+                res["dup_end"].append((round(a["t"], 1), round(b["t"], 1), " ".join(wb[:k])))
+                break
+    res["markers"] = len(markers)
+    return res
+
+
+def cmd_notecheck(a):
+    """Every reference sentence is in the note OR its audio is under a marker."""
+    ev = [json.loads(l) for l in open(a.run)]
+    sched = json.loads((AUDIO / a.audio / "schedule.json").read_text())
+    sess = a.session or next(e["session"] for e in ev if e["ev"] == "meeting_started")
+    feed = next(e for e in ev if e["ev"] == "feed_start" and (a.session is None or True))
+    end_s = float(a.end or feed["seconds"])
+    out = {"run": Path(a.run).stem}
+    for state in ("before_backfill", "final"):
+        segs = note_state(ev, sess, state == "before_backfill")
+        out[state] = {src: check_note(sched[src], [g for g in segs if g["src"] == src], end_s) for src in ("mic", "sys")}
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--url", default="ws://127.0.0.1:8017/v1/realtime")
@@ -695,8 +787,13 @@ def main():
     ss.add_argument("--audio", default="live")
     ss.add_argument("--session")
     ss.add_argument("--window", type=int, default=0)
+    nc = sub.add_parser("notecheck")
+    nc.add_argument("run")
+    nc.add_argument("--audio", default="live")
+    nc.add_argument("--session")
+    nc.add_argument("--end")
     a = p.parse_args()
-    if a.cmd in ("gen", "timeline", "score", "svcscore"):
+    if a.cmd in ("gen", "timeline", "score", "svcscore", "notecheck"):
         return globals()[f"cmd_{a.cmd}"](a)
     asyncio.run(globals()[a.cmd](a))
 

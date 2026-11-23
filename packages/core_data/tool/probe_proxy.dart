@@ -49,6 +49,19 @@ class Proxy {
   /// loading the machine). Order is kept; a server close waits for them.
   Duration lag = Duration.zero;
 
+  /// A server durably slower than real time: server-to-client bytes that
+  /// arrive t seconds after [setThrottle] are released at t / [throttle]
+  /// (0.8 = answers fall behind by 0.25 s per second). 0 = off. Shared by
+  /// all connections of this proxy, so a reconnect stays behind.
+  double throttle = 0;
+  DateTime? _throttleStart;
+
+  void setThrottle(double factor) {
+    throttle = factor;
+    _throttleStart = DateTime.now();
+    log('proxy_throttle', <String, Object?>{'src': name, 'factor': factor});
+  }
+
   /// New connections wait this long before the upstream connect: the
   /// WebSocket handshake reply (accept) comes late.
   Duration acceptDelay = Duration.zero;
@@ -125,11 +138,18 @@ class Proxy {
     Future<void> held = Future<void>.value();
     final StreamSubscription<Uint8List> b = up.listen(
       (Uint8List d) {
-        if (lag == Duration.zero) {
+        final DateTime now = DateTime.now();
+        DateTime due = now.add(lag);
+        if (throttle > 0 && _throttleStart != null) {
+          final int since = now.difference(_throttleStart!).inMilliseconds;
+          due = _throttleStart!
+              .add(Duration(milliseconds: (since / throttle).round()))
+              .add(lag);
+        }
+        if (!due.isAfter(now)) {
           held = held.then((_) => pipe(client, d));
           return;
         }
-        final DateTime due = DateTime.now().add(lag);
         held = held.then((_) async {
           final Duration wait = due.difference(DateTime.now());
           if (wait > Duration.zero) await Future<void>.delayed(wait);

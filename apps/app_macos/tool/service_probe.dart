@@ -679,12 +679,44 @@ void main() {
       await stop('S2');
       await waitNoMarkers('after_S2', seconds: 60);
       dumpSegments();
-    } else if (mode == 'R') {
-      // Regression: 5 min plain plus one 3 s mic cut.
+    } else if (mode == 'throttle') {
+      // Server durably slower than real time on both sources (answers fall
+      // behind progressively), then one 20 s refusal near the end.
+      final double f = double.parse(env['THROTTLE'] ?? '0.8');
+      final double secs = double.parse(env['SECONDS'] ?? '600');
+      final Timer buf = Timer.periodic(const Duration(seconds: 1), (_) {
+        log('buffer', <String, Object?>{
+          for (final AudioSource a in AudioSource.values) ...<String, Object?>{
+            '${a == AudioSource.input ? 'mic' : 'sys'}_unsent':
+                remote.bufferedAudio(a).inMilliseconds / 1000,
+            '${a == AudioSource.input ? 'mic' : 'sys'}_unacked':
+                remote.unacknowledgedAudio(a).inMilliseconds / 1000,
+          },
+        });
+      });
       await start(mode);
       await feed(
-        live,
-        300,
+        live60,
+        secs,
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          1: () async => both((Proxy p) async => p.setThrottle(f)),
+          secs - 80: () => both((Proxy p) => p.refuse()),
+          secs - 60: () => both((Proxy p) => p.reopen()),
+        },
+      );
+      await stop(mode);
+      buf.cancel();
+      await waitNoMarkers('after_stop', seconds: 60);
+      dumpSegments();
+    } else if (mode == 'R') {
+      // Regression: plain run (R_SECONDS, live60 beyond 300 s) plus one
+      // 3 s mic cut at 101 s.
+      final double secs = double.parse(env['R_SECONDS'] ?? '300');
+      await start(mode);
+      await feed(
+        secs > 300 ? live60 : live,
+        secs,
         label: mode,
         faults: <double, Future<void> Function()>{
           101: () => micProxy.refuse(),
