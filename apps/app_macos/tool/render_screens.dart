@@ -57,6 +57,12 @@ import 'package:ici_transcript/application/services/dictation/dictation_controll
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/presentation/app.dart';
+import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:ici_transcript/application/services/live_coach/live_coach.service.dart';
+import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
+import 'package:ici_transcript/core/providers/services/live_coach.service.provider.dart';
+import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
+import 'package:ici_transcript/features/shell/presentation/shell_view.provider.dart';
 
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
@@ -211,8 +217,14 @@ final Map<String, SettingsState> _aiStates = <String, SettingsState>{
 
 /// Live : enregistrement en cours, quelques phrases déjà transcrites.
 class _RecordingLiveViewModel extends LiveTranscriptionViewModel {
+  _RecordingLiveViewModel({this.liveCoach = false});
+
+  /// Coach en direct activé (sans écrire prefs.json).
+  final bool liveCoach;
+
   @override
-  LiveTranscriptionState build() => LiveTranscriptionState.initial();
+  LiveTranscriptionState build() =>
+      LiveTranscriptionState.initial().copyWith(isLiveCoachEnabled: liveCoach);
 
   @override
   Future<void> startSession() async {
@@ -608,6 +620,7 @@ List<Override> _overrides(
   _Dictation dictation = _dictationOn,
   SessionDetailState Function(SessionDetailState)? detail,
   LiveAnswersService? answers,
+  bool liveCoach = false,
 }) => <Override>[
   if (answers != null) liveAnswersServiceProvider.overrideWithValue(answers),
   dictationSettingsViewModelProvider.overrideWith(
@@ -634,7 +647,9 @@ List<Override> _overrides(
   sessionListViewModelProvider.overrideWith(
     () => FakeSessionListViewModel(sessions),
   ),
-  liveTranscriptionViewModelProvider.overrideWith(_RecordingLiveViewModel.new),
+  liveTranscriptionViewModelProvider.overrideWith(
+    () => _RecordingLiveViewModel(liveCoach: liveCoach),
+  ),
   settingsViewModelProvider.overrideWith(
     () => _SettingsViewModel(settings ?? _settings),
   ),
@@ -659,6 +674,177 @@ List<Override> _overrides(
     ),
   ),
 ];
+
+/// Coach en direct figé sur [_snap].
+class _FixedCoach extends LiveCoachService {
+  _FixedCoach(this._snap) : super(resolveModel: () async => null);
+
+  final LiveCoachSnapshot _snap;
+
+  @override
+  LiveCoachSnapshot get snapshot => _snap;
+
+  @override
+  Stream<LiveCoachSnapshot> get snapshots =>
+      Stream<LiveCoachSnapshot>.value(_snap);
+}
+
+EnglishCorrectionEntity _fix(
+  String category,
+  String original,
+  String corrected,
+  String why, [
+  int? atMs,
+]) => EnglishCorrectionEntity(
+  original: original,
+  corrected: corrected,
+  category: category,
+  explanation: why,
+  timestampMs: atMs,
+);
+
+/// Retours du coach rangés pour la page « Coach anglais » (inventés).
+final Map<String, EnglishFeedbackEntity> _coachFeedback =
+    <String, EnglishFeedbackEntity>{
+      's1': EnglishFeedbackEntity(
+        overall: 'Bon niveau, quelques tournures à reprendre.',
+        corrections: <EnglishCorrectionEntity>[
+          _fix(
+            'grammar',
+            'I am agree with you on this point',
+            'I agree with you on this point',
+            '« agree » est un verbe : pas de « am ».',
+            65000,
+          ),
+          _fix(
+            'vocabulary',
+            'we must actualize the roadmap',
+            'we must update the roadmap',
+            '« actualize » est un faux ami de « actualiser ».',
+            372000,
+          ),
+          _fix(
+            'expression',
+            'it depends of the budget',
+            'it depends on the budget',
+            'On dit « depend on ».',
+            1514000,
+          ),
+        ],
+      ),
+      's2': const EnglishFeedbackEntity(overall: 'Très bon niveau.'),
+      's3': EnglishFeedbackEntity(
+        corrections: <EnglishCorrectionEntity>[
+          _fix(
+            'grammar',
+            'he have sent the deck',
+            'he has sent the deck',
+            'Troisième personne : « has ».',
+            128000,
+          ),
+          _fix(
+            'conjugation',
+            'we have met them yesterday',
+            'we met them yesterday',
+            'Moment passé précis : prétérit.',
+            640000,
+          ),
+        ],
+        unanalyzedSegmentIds: const <String>['seg-40', 'seg-41'],
+      ),
+      's4': EnglishFeedbackEntity(
+        corrections: <EnglishCorrectionEntity>[
+          _fix(
+            'Grammaire',
+            'the prices are more cheap',
+            'the prices are cheaper',
+            'Comparatif court : « -er ».',
+            90000,
+          ),
+        ],
+      ),
+      // Coach d'après l'appel tombé en échec : tout reste à analyser.
+      's5': const EnglishFeedbackEntity(
+        unanalyzedSegmentIds: <String>['seg-0', 'seg-1'],
+      ),
+      // Note sans phrase anglaise de l'utilisateur : rien d'envoyé.
+      's7': const EnglishFeedbackEntity(nothingToAnalyse: true),
+      's6': EnglishFeedbackEntity(
+        corrections: <EnglishCorrectionEntity>[
+          _fix(
+            'grammar',
+            'since three months',
+            'for three months',
+            'Durée : « for ».',
+            30000,
+          ),
+          _fix(
+            'vocabulary',
+            'a formation for the team',
+            'a training for the team',
+            '« formation » est un faux ami.',
+            300000,
+          ),
+        ],
+      ),
+      's8': EnglishFeedbackEntity(
+        corrections: <EnglishCorrectionEntity>[
+          _fix(
+            'vocabulary',
+            'I will assist to the meeting',
+            'I will attend the meeting',
+            '« assist » veut dire aider.',
+            45000,
+          ),
+        ],
+      ),
+    };
+
+/// Les notes et leurs retours rangés dans [db] (page « Coach anglais »).
+Future<void> _seedCoach(AppDatabase db) async {
+  final ProviderContainer c = ProviderContainer(
+    overrides: <Override>[databaseProvider.overrideWithValue(db)],
+  );
+  for (final SessionEntity s in _sessions) {
+    await c.read(sessionRepositoryProvider).create(s);
+    if (_coachFeedback[s.id] case final EnglishFeedbackEntity f) {
+      await c
+          .read(summaryServiceProvider)
+          .saveSummary(
+            sessionId: s.id,
+            content: SessionAnalysis(feedback: f).toStored(),
+          );
+    }
+  }
+  c.dispose();
+}
+
+/// Corrections du coach en direct (les 3 dernières s'affichent).
+final List<EnglishCorrectionEntity> _liveCorrections =
+    <EnglishCorrectionEntity>[
+      _fix('grammar', 'I am agree', 'I agree', 'Verbe.', 61000),
+      _fix(
+        'vocabulary',
+        'we must actualize the plan',
+        'we must update the plan',
+        'Faux ami.',
+        412000,
+      ),
+      _fix(
+        'expression',
+        'it depends of the team',
+        'it depends on the team',
+        '« depend on ».',
+        905000,
+      ),
+      _fix(
+        'grammar',
+        'he have finished the report',
+        'he has finished the report',
+        'Troisième personne.',
+        1388000,
+      ),
+    ];
 
 /// Charge les polices déclarées (FontManifest) et la police système macOS.
 Future<void> _loadFonts() async {
@@ -727,6 +913,9 @@ void main() {
         FakeFilePicker? picker,
         List<Override> extra = const <Override>[],
         LiveAnswersService? answers,
+        bool liveCoach = false,
+        LiveCoachSnapshot? coach,
+        bool coachAvailable = true,
       }) async {
         final AppDatabase base = db ?? memoryDatabase();
         addTearDown(base.close);
@@ -752,6 +941,13 @@ void main() {
                   dictation: dictation,
                   detail: detail,
                   answers: answers,
+                  liveCoach: liveCoach,
+                ),
+                liveCoachAvailableProvider.overrideWith(
+                  (Ref ref) async => coachAvailable,
+                ),
+                liveCoachServiceProvider.overrideWithValue(
+                  _FixedCoach(coach ?? const LiveCoachSnapshot()),
                 ),
                 // Jamais le vrai agenda : états figés.
                 ...extra.isEmpty ? _calendar() : extra,
@@ -1121,6 +1317,117 @@ void main() {
         await _pump(tester, 10);
         await _shot(tester, key, 'detail-questions-scrolled-$suffix');
       });
+
+      // Coach anglais : page (notes, erreurs récurrentes), puis une note
+      // ouverte sur sa section coach (corrections, aucune, non analysée).
+      shoot('coach-page', (WidgetTester tester) async {
+        final AppDatabase db = memoryDatabase();
+        await tester.runAsync(() => _seedCoach(db));
+        final GlobalKey key = await pumpApp(
+          tester,
+          _sessions,
+          db: db,
+          ollama: kOllamaReady,
+          detail: (SessionDetailState s) =>
+              s.copyWith(feedback: _coachFeedback[s.session?.id]),
+        );
+        Future<void> io() async {
+          for (int i = 0; i < 4; i++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 50)),
+            );
+            await _pump(tester, 3);
+          }
+        }
+
+        await tester.tap(find.text('Coach anglais'));
+        await io();
+        await _shot(tester, key, 'coach-page-$suffix');
+        for (final MapEntry<String, String> n in <String, String>{
+          'corrections': 'Point produit hebdo',
+          'none': 'Revue de sprint 14',
+          'unanalyzed': 'Entretien candidat backend',
+          'nothing': 'Appel rapide fournisseur',
+        }.entries) {
+          await tester.tap(find.text(n.value).first);
+          await io();
+          await _shot(tester, key, 'coach-note-${n.key}-$suffix');
+          await tester.tap(find.byTooltip(LocaleKeys.common_action_back.tr()));
+          await io();
+        }
+      });
+
+      for (final MapEntry<String, LiveCoachSnapshot> c
+          in <String, LiveCoachSnapshot>{
+            'corrections': LiveCoachSnapshot(
+              sessionId: 's2',
+              corrections: _liveCorrections,
+            ),
+            'waiting': const LiveCoachSnapshot(sessionId: 's2'),
+            'unavailable': const LiveCoachSnapshot(
+              sessionId: 's2',
+              unavailable: true,
+            ),
+          }.entries) {
+        shoot('live-coach-${c.key}', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            liveCoach: true,
+            coach: c.value,
+          );
+          await tester.tap(find.text('Nouvelle note'));
+          await _pump(tester, 10);
+          await _shot(tester, key, 'live-coach-${c.key}-$suffix');
+        });
+      }
+
+      // Interrupteur « Coach en direct » : options du direct et Réglages,
+      // fournisseur en ligne autorisé ou non.
+      for (final bool available in <bool>[true, false]) {
+        final String name = available ? 'available' : 'unavailable';
+        shoot('live-coach-switch-$name', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            liveCoach: available,
+            coachAvailable: available,
+            settings: available
+                ? _settings.copyWith(
+                    llmCloudAllowed: true,
+                    llmActive: LlmProviderId.anthropic,
+                    llmKeySuffixes: const <LlmProviderId, String>{
+                      LlmProviderId.anthropic: 'a1b2',
+                    },
+                  )
+                : null,
+          );
+          await tester.tap(find.text('Réglages'));
+          await _pump(tester, 10);
+          final Finder row = find.text(LocaleKeys.coach_live_option.tr());
+          await tester.drag(
+            row,
+            Offset(0, 220 - tester.getTopLeft(row).dy),
+          );
+          await _pump(tester, 10);
+          await _shot(tester, key, 'settings-live-coach-$name-$suffix');
+        });
+        shoot('live-idle-coach-$name', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            liveCoach: available,
+            coachAvailable: available,
+          );
+          // Écran du direct avant de démarrer : options visibles.
+          final ProviderContainer c = ProviderScope.containerOf(
+            tester.element(find.byType(RootAppWidget)),
+          );
+          c.read(shellViewControllerProvider.notifier).show(ShellView.live);
+          await _pump(tester, 10);
+          await _shot(tester, key, 'live-idle-coach-$name-$suffix');
+        });
+      }
 
       shoot('live-finalising', (WidgetTester tester) async {
         final GlobalKey key = await pumpApp(tester, _sessions);

@@ -53,6 +53,10 @@ abstract class LiveTranscriptionState with _$LiveTranscriptionState {
     /// Indique si l'option coach d'anglais est activée.
     @Default(false) bool isCoachEnabled,
 
+    /// Indique si le coach anglais en direct est activé (fournisseur en
+    /// ligne seulement).
+    @Default(false) bool isLiveCoachEnabled,
+
     /// Indique si la traduction temps réel est activée.
     @Default(false) bool isTranslationEnabled,
 
