@@ -176,7 +176,7 @@ void main() {
         reason: 'colonnes de ${t.key}',
       );
     }
-    expect(await _userVersion(db), 2);
+    expect(await _userVersion(db), db.schemaVersion);
   }
 
   group('base déjà migrée mais marquée v1', () {

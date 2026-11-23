@@ -13,6 +13,7 @@ class TranscriptLineWidget extends StatelessWidget {
     required this.segment,
     this.translation,
     this.speaker,
+    this.onAnswer,
     super.key,
   });
 
@@ -24,6 +25,9 @@ class TranscriptLineWidget extends StatelessWidget {
 
   /// Interlocuteur identifié en direct (0, 1, …), null si inconnu.
   final int? speaker;
+
+  /// « Répondre à cette phrase » ; null = pas d'action (phrase en cours).
+  final VoidCallback? onAnswer;
 
   String _formatTimestamp(int timestampMs) {
     final Duration d = Duration(milliseconds: timestampMs);
@@ -61,6 +65,16 @@ class TranscriptLineWidget extends StatelessWidget {
               _formatTimestamp(segment.timestampMs),
               style: o.meta.copyWith(color: o.faint),
             ),
+            if (onAnswer != null) ...<Widget>[
+              const Spacer(),
+              IconButton(
+                onPressed: onAnswer,
+                tooltip: LocaleKeys.live_answers_answer_this.tr(),
+                iconSize: OatsIconSize.sm,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.reply_outlined, color: o.faint),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: OatsSpace.xs),

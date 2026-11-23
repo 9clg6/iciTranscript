@@ -72,4 +72,45 @@ void main() {
       });
     }
   });
+
+  // Revue PR #21 : un faux positif remplace de la vraie parole par un repère
+  // permanent (ou la jette sans fenêtre). `_otherWords` contient des mots
+  // ordinaires d'une réunion technique en français ou en anglais (todo,
+  // die, van, alt, per, con, com, del, den, es, bis, los, las…). Fragments
+  // inventés, brefs, chargés de jargon et de noms propres : jamais signalés.
+  group('jamais signalé : jargon, noms propres, franglais', () {
+    for (final String text in <String>[
+      'Alt tab, del the todo, van der Berg es the owner per Los Angeles.',
+      'Le todo du sprint est sur Jira, ticket OPS 1234 per Kevin.',
+      'On merge la PR, puis rebase sur main et force push.',
+      'Die Hard est le nom de code du projet de migration.',
+      'Bis repetita : le build casse encore sur la branche release.',
+      'Le con de Fabien, pardon, le compte de Fabien est bloqué.',
+      'Check the dot com domain, the DNS points to Los Gatos.',
+      'Del Rey et Van Dijk sont les deux clients du lot Benelux.',
+      'Per the SLA, we answer within two hours on weekdays.',
+      'La feature est en alpha, alt text manquant sur les images.',
+      'Les KPI de Las Vegas et Los Angeles sont dans le dashboard.',
+      'On a den, le serveur de staging, et prod sur Kubernetes.',
+      'Es-tu sûr que le endpoint renvoie un 404 et pas un 500 ?',
+      'Van, camion, livraison : le module logistique gère les trois.',
+      'TODO : écrire les tests, puis le README, puis la doc API.',
+      'Ship it per default, rollback si les métriques baissent.',
+      'Le pricing par seat, per user per month, reste à valider.',
+      'Bon, la démo de Vasco da Gama Corp est mardi à dix heures.',
+      'We use Postgres, Redis, Kafka and a bit of Elixir for that.',
+      'Ctrl alt suppr ne marche pas sur la VM Windows du client.',
+      'Le con du modèle, c est la latence ; le pro, c est le prix.',
+      'Ask Juan Carlos about the San Diego office lease renewal.',
+      'La review de code se fait sur GitLab, pas sur Bitbucket.',
+      'El Niño, c est le nom du cluster de calcul de l équipe data.',
+      'Per se, the con is cost, the pro is speed of delivery.',
+      'On passe en mode async, standup écrit sur Slack tous les jours.',
+      'Le todo list app de Diego et de Los Pollos est en beta.',
+    ]) {
+      test(text, () {
+        expect(TranscriptTextNormalizer.isUnexpectedLanguage(text), isFalse);
+      });
+    }
+  });
 }

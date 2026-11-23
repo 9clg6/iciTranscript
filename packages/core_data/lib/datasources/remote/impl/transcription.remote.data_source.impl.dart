@@ -72,6 +72,11 @@ final class TranscriptionRemoteDataSourceImpl
   static const int _maxInFlightMs = 30000;
   static const Duration _firstRetryDelay = Duration(milliseconds: 500);
   static const Duration _maxRetryDelay = Duration(seconds: 10);
+  // Poignée de main d'une reconnexion : 10 s, puis le double après chaque
+  // expiration, 60 s au plus (sonde 6 : sous forte charge, le serveur vivant
+  // acceptait après plus de 10 s ; à 10 s fixes, 5 échecs et 75 s de micro
+  // coupé). Après une expiration, la tentative suivante part aussitôt.
+  static const Duration _maxHandshake = Duration(seconds: 60);
   // Serveur muet, jugé PAR source : sonde 2, les messages système
   // masquaient un micro mort plus de 117 s. Une source dont un commit final
   // attend et qui ne reçoit aucun message à elle pendant [_serverSilence]
@@ -336,6 +341,12 @@ final class TranscriptionRemoteDataSourceImpl
     _scheduleReconnect(source, outage);
   }
 
+  Duration _handshakeBound(int slowAccepts) {
+    final Duration bound =
+        WebSocketClient.connectTimeout * (1 << math.min(slowAccepts, 3));
+    return bound > _maxHandshake ? _maxHandshake : bound;
+  }
+
   void _scheduleReconnect(AudioSource source, _Outage outage) {
     final Duration delay =
         _firstRetryDelay * (1 << math.min(outage.attempts, 5));
@@ -348,10 +359,22 @@ final class TranscriptionRemoteDataSourceImpl
   Future<void> _reconnect(AudioSource source, _Outage outage) async {
     outage.attempts++;
     final WebSocketClient client = _client(source);
+    final Duration bound = _handshakeBound(outage.slowAccepts);
+    client.handshakeTimeout = bound;
     try {
-      // Une poignée de main sans fin est abandonnée (le faux client, comme un
-      // canal qui ne répond pas, peut ne jamais rendre la main).
-      await client.connect(_url).timeout(WebSocketClient.connectTimeout);
+      // Une seule tentative à la fois : la suivante ne part qu'une fois
+      // celle-ci finie ou expirée. Une poignée de main sans fin est
+      // abandonnée (le faux client, comme un canal qui ne répond pas, peut
+      // ne jamais rendre la main).
+      await client.connect(_url).timeout(bound);
+    } on TimeoutException {
+      // Accueil lent, pas refus : on réessaie tout de suite, plus patient,
+      // sans ajouter d'attente à celle déjà subie.
+      if (identical(_outages[source], outage)) {
+        outage.slowAccepts++;
+        unawaited(_reconnect(source, outage));
+      }
+      return;
     } catch (_) {
       if (identical(_outages[source], outage)) {
         _scheduleReconnect(source, outage);
@@ -623,6 +646,8 @@ class _Outgoing {
 /// Reconnexion en cours d'une source.
 class _Outage {
   int attempts = 0;
+  // Poignées de main expirées de suite : allongent la suivante.
+  int slowAccepts = 0;
   Timer? retry;
 }
 

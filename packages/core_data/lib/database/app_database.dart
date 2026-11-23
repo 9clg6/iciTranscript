@@ -109,6 +109,16 @@ class DetectedQuestions extends Table {
   /// Sources de la reponse, liste JSON {documentId, title, excerpt}.
   TextColumn get sources => text().nullable()();
 
+  /// Etat : unanswered, answered, declined, truncated, failed (schema v3).
+  TextColumn get status =>
+      text().withDefault(const Constant<String>('unanswered'))();
+
+  /// Interlocuteur (0, 1, ...) range en texte, null si inconnu (schema v3).
+  TextColumn get speaker => text().nullable()();
+
+  /// Source audio : input (l'utilisateur) ou output (schema v3).
+  TextColumn get source => text().nullable()();
+
   /// Date de creation au format ISO 8601.
   TextColumn get createdAt => text()();
 
@@ -198,7 +208,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -229,8 +239,23 @@ class AppDatabase extends _$AppDatabase {
           '(SELECT chunk_id FROM document_chunks_fts)',
         );
       }
+      if (from < 3) await _migrateDetectedQuestionsToV3(m);
     },
   );
+
+  /// 2 -> 3 : etat, interlocuteur et source des questions detectees.
+  /// Rejouable : une base peut deja avoir tout ou partie des colonnes avec
+  /// `user_version = 2`. Un etat deja range est garde ; seules les lignes
+  /// encore `unanswered` qui ont une reponse passent en `answered`.
+  Future<void> _migrateDetectedQuestionsToV3(Migrator m) async {
+    await _addColumnIfMissing(m, detectedQuestions, detectedQuestions.status);
+    await _addColumnIfMissing(m, detectedQuestions, detectedQuestions.speaker);
+    await _addColumnIfMissing(m, detectedQuestions, detectedQuestions.source);
+    await customStatement(
+      "UPDATE detected_questions SET status = 'answered' "
+      "WHERE status = 'unanswered' AND answer IS NOT NULL",
+    );
+  }
 
   Future<void> _addColumnIfMissing(
     Migrator m,

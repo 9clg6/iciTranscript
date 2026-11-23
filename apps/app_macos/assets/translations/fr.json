@@ -139,6 +139,27 @@
       "not_captured": "Non capté"
     }
   },
+  "live_answers": {
+    "title": "Questions",
+    "empty": "Les questions des autres participants apparaîtront ici.",
+    "answer_latest": "Répondre",
+    "answer_this": "Répondre à cette phrase",
+    "answer": "Proposer une réponse",
+    "local_manual_hint": "Modèle local : les réponses se demandent, cliquez sur « Proposer une réponse ».",
+    "answering": "Réponse en cours…",
+    "copy": "Copier la réponse",
+    "copied": "Réponse copiée",
+    "dismiss": "Ignorer",
+    "declined": "Pas de réponse utile à proposer.",
+    "truncated": "Réponse incomplète",
+    "error": {
+      "invalid_key": "Clé API refusée : vérifiez-la dans Réglages.",
+      "rate_limited": "Trop de demandes chez le fournisseur : réessayez dans un instant.",
+      "unreachable": "Modèle injoignable : vérifiez la connexion, puis réessayez.",
+      "malformed": "Réponse illisible du modèle : réessayez.",
+      "other": "La réponse a échoué : réessayez."
+    }
+  },
   "history": {
     "detail": {
       "copy": "Copier",
@@ -160,7 +181,10 @@
       "coach_delete": "Supprimer le retour",
       "coach_perfect": "Aucune correction : votre anglais est impeccable.",
       "transcript": "Transcription",
-      "transcript_empty": "Aucune transcription pour cette note."
+      "transcript_empty": "Aucune transcription pour cette note.",
+      "questions": "Questions posées",
+      "no_answer": "Sans réponse",
+      "answer_failed": "La réponse avait échoué."
     }
   },
   "settings": {

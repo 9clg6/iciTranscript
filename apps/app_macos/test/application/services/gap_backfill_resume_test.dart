@@ -152,6 +152,7 @@ void main() {
       transcriptionService: transcription,
       gapBackfillRetry: retry,
     );
+    addTearDown(service.dispose);
     Future<void> start() => service.startTranscription(
       serverCommand: 'uvx',
       serverArgs: const <String>['voxmlx-serve'],
