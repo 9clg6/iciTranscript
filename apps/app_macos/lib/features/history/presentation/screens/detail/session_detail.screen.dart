@@ -10,6 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
+import 'package:ici_transcript/application/services/live_answers/live_question.dart';
+import 'package:ici_transcript/features/shared/presentation/widgets/question_answer.widget.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/transcript_turns.dart';
@@ -219,6 +221,20 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                         ? null
                         : CoachFeedbackView(feedback: state.feedback!),
                     errorKey: state.feedbackError,
+                  ),
+                ),
+              if (state.questions.isNotEmpty)
+                _section(
+                  title: LocaleKeys.history_detail_questions.tr(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      for (final LiveQuestion q in state.questions)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: OatsSpace.lg),
+                          child: _SavedQuestion(q),
+                        ),
+                    ],
                   ),
                 ),
               _section(
@@ -682,3 +698,33 @@ List<TranscriptSegmentEntity> _localizedMarkers(
     else
       s,
 ];
+
+/// Question gardée avec la note : réponse, sources, ou ce qui l'a empêchée.
+class _SavedQuestion extends StatelessWidget {
+  const _SavedQuestion(this.question);
+
+  final LiveQuestion question;
+
+  @override
+  Widget build(BuildContext context) {
+    final LiveQuestion q = question;
+    final String? status = switch (q.status) {
+      LiveQuestionStatus.answered => null,
+      LiveQuestionStatus.declined => LocaleKeys.live_answers_declined.tr(),
+      LiveQuestionStatus.failed => LocaleKeys.history_detail_answer_failed.tr(),
+      _ => LocaleKeys.history_detail_no_answer.tr(),
+    };
+    return QuestionAnswerView(
+      question: q,
+      speakerLabel: q.source == AudioSource.input
+          ? LocaleKeys.history_detail_speaker_me.tr()
+          : q.speaker == null
+          ? LocaleKeys.transcription_live_speaker_system.tr()
+          : LocaleKeys.history_detail_speaker.tr(
+              args: <String>['${q.speaker! + 1}'],
+            ),
+      status: status,
+      truncatedLabel: LocaleKeys.live_answers_truncated.tr(),
+    );
+  }
+}

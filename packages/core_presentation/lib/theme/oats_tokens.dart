@@ -194,6 +194,9 @@ class Oats extends ThemeExtension<Oats> {
   /// Corps de texte appuyé (titre de ligne).
   TextStyle get bodyStrong => _sans(14, FontWeight.w500, 1.4, ink);
 
+  /// Phrase de tête d'une réponse (semi-gras).
+  TextStyle get bodyEmphasis => _sans(14, FontWeight.w600, 1.55, ink);
+
   /// Texte d'interface courant (boutons, items).
   TextStyle get ui => _sans(13, FontWeight.w500, 1.3, ink);
 
