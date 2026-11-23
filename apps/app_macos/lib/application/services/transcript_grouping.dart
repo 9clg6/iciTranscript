@@ -22,7 +22,7 @@ class TranscriptBlock {
 
 /// Un repère (perte ou passage non transcrit) reste seul : il n'est la
 /// phrase de personne.
-bool _isMarker(String text) =>
+bool isTranscriptMarker(String text) =>
     text.startsWith(LiveTranscriptionService.gapMarkerPrefix) ||
     LiveTranscriptionService.isUntranscribedMarker(text);
 
@@ -47,8 +47,8 @@ List<TranscriptBlock> groupTranscript(
       final bool sameSpeaker =
           speaker == null || last.speaker == null || speaker == last.speaker;
       final bool continues =
-          !_isMarker(last.segment.text) &&
-          !_isMarker(seg.text) &&
+          !isTranscriptMarker(last.segment.text) &&
+          !isTranscriptMarker(seg.text) &&
           last.segment.source == seg.source &&
           sameSpeaker &&
           !_sentenceEnd.hasMatch(last.segment.text.trim()) &&

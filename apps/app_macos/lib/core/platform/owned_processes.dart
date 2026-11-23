@@ -283,6 +283,19 @@ final class OwnedProcessRegistry {
     }
   }
 
+  /// Quitter l'app : arrête tous les serveurs lancés par ce registre, en
+  /// parallèle (chacun borné comme [stop], ~15 s au pire). Un échec sur l'un
+  /// est noté et n'arrête pas les autres ; son entrée reste dans le fichier
+  /// d'état pour le nettoyage du lancement suivant. Ne lève jamais.
+  Future<void> stopAll() async {
+    await Future.wait(<Future<void>>[
+      for (final String role in _live.keys.toList())
+        stop(role).catchError((Object e) {
+          _log.warning('$role non arrêté en quittant: $e');
+        }),
+    ]);
+  }
+
   /// Sonde de santé, par l'hôte.
   Future<bool> isHealthy(Uri url) => _host.isHealthy(url);
 

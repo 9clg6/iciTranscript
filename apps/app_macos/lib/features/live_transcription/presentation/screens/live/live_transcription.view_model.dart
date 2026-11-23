@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -243,8 +244,9 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         calendarLink: calendarLink,
       );
       _log.info('startTranscription OK');
-      final String? sessionId = _liveService?.currentSessionStream.value?.id;
-      if (sessionId != null) _answers.start(sessionId);
+      final SessionEntity? session = _liveService?.currentSessionStream.value;
+      state = state.copyWith(sessionTitle: session?.title);
+      if (session != null) _answers.start(session.id);
     } catch (e) {
       _log.error('ERREUR startTranscription: $e');
       if (e is PlatformException && e.code == 'MIC_PERMISSION_DENIED') {
@@ -330,6 +332,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       segments: <TranscriptSegmentEntity>[],
       duration: Duration.zero,
       speakerLabels: <String, int>{},
+      sessionTitle: null,
     );
 
     // Sauvegarder la transcription en local
