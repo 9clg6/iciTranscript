@@ -90,16 +90,79 @@ final class GapBackfillService {
   /// (jusqu'au segment intact suivant, 30 s au plus). Les autres sources,
   /// les segments hors fenêtre et les passages non transcrits ne sont
   /// jamais touchés.
+  ///
+  /// Les repères rangés d'une source qui se recoupent ou se touchent (un
+  /// repère provisoire et un final après un arrêt brutal, sonde 7) forment
+  /// une union : un seul intervalle, sous le premier repère ; les autres
+  /// repères de l'union sont dans [BackfillGap.replacedIds] et partent quand
+  /// l'union est retrouvée.
   static List<BackfillGap> plan(
     List<TranscriptSegmentEntity> segments, {
     List<DictatedInterval> dictated = const <DictatedInterval>[],
   }) => <BackfillGap>[
-    for (final TranscriptSegmentEntity s in segments)
-      if (_isGapMarker(s))
-        if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
-          if (!_insideDictation(s, m, dictated))
-            ..._planMarker(s, _ms(m, 4), segments, dictated),
+    for (final _MarkerUnion u in _unions(segments, dictated))
+      for (final BackfillGap g in _planMarker(
+        u.first,
+        u.end,
+        segments,
+        dictated,
+        endLimit: u.nextStart,
+      ))
+        (
+          markerId: g.markerId,
+          source: g.source,
+          startMs: g.startMs,
+          endMs: g.endMs,
+          replacedIds: <String>[...g.replacedIds, ...u.others],
+        ),
   ];
+
+  /// Unions des repères de perte d'une même source (début, fin), hors
+  /// dictée, triées par début.
+  static List<_MarkerUnion> _unions(
+    List<TranscriptSegmentEntity> segments,
+    List<DictatedInterval> dictated,
+  ) {
+    final List<({TranscriptSegmentEntity marker, int end})> markers =
+        <({TranscriptSegmentEntity marker, int end})>[
+          for (final TranscriptSegmentEntity s in segments)
+            if (_isGapMarker(s))
+              if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
+                if (!_insideDictation(s, m, dictated))
+                  (marker: s, end: _ms(m, 4)),
+        ]..sort(
+          (
+            ({TranscriptSegmentEntity marker, int end}) a,
+            ({TranscriptSegmentEntity marker, int end}) b,
+          ) => a.marker.timestampMs.compareTo(b.marker.timestampMs),
+        );
+    final List<_MarkerUnion> unions = <_MarkerUnion>[];
+    for (final ({TranscriptSegmentEntity marker, int end}) m in markers) {
+      _MarkerUnion? open;
+      for (final _MarkerUnion u in unions.reversed) {
+        if (u.first.source == m.marker.source &&
+            m.marker.timestampMs <= u.end) {
+          open = u;
+          break;
+        }
+      }
+      if (open == null) {
+        unions.add(_MarkerUnion(m.marker, m.end));
+      } else {
+        open.others.add(m.marker.id);
+        if (m.end > open.end) open.end = m.end;
+      }
+    }
+    for (int i = 0; i < unions.length; i++) {
+      for (int j = i + 1; j < unions.length; j++) {
+        if (unions[j].first.source == unions[i].first.source) {
+          unions[i].nextStart = unions[j].first.timestampMs;
+          break;
+        }
+      }
+    }
+    return unions;
+  }
 
   /// Un segment qui commence à moins de [edgeTolerance] d'un bord de la
   /// perte appartient à la phrase coupée (le texte arrive ~1 s après
@@ -119,8 +182,9 @@ final class GapBackfillService {
     TranscriptSegmentEntity marker,
     int lostEnd,
     List<TranscriptSegmentEntity> segments,
-    List<DictatedInterval> dictated,
-  ) {
+    List<DictatedInterval> dictated, {
+    int? endLimit,
+  }) {
     final int tolerance = edgeTolerance.inMilliseconds;
     final List<TranscriptSegmentEntity> live =
         segments
@@ -155,6 +219,11 @@ final class GapBackfillService {
           ? next.timestampMs
           : last + _afterReplacedSpan.inMilliseconds;
       if (cover > end) end = cover;
+    }
+    // Le prolongement s'arrête où commence l'union suivante de la source :
+    // son audio est retranscrit par elle (jamais deux fois).
+    if (endLimit != null && end > endLimit) {
+      end = endLimit > lostEnd ? endLimit : lostEnd;
     }
     if (start < 0) start = 0;
     final List<String> ids = <String>[
@@ -322,9 +391,14 @@ final class GapBackfillService {
     // (gap_backfill_overlap_test) : on la garde et on retire le doublon.
     // Tout ce qui commence avant la fin reste remplacé, quel que soit son
     // texte (sonde 5).
-    final int? lostEnd = _markerTimes.firstMatch(marker.text) == null
-        ? null
-        : _ms(_markerTimes.firstMatch(marker.text)!, 4);
+    // Fin de l'union : celle du plus tardif de ses repères.
+    final int? lostEnd = <int>[
+      for (final TranscriptSegmentEntity s in segments)
+        if ((s.id == marker.id || gap.replacedIds.contains(s.id)) &&
+            _isGapMarker(s))
+          if (_markerTimes.firstMatch(s.text) case final RegExpMatch m)
+            _ms(m, 4),
+    ].fold<int?>(null, (int? a, int b) => a == null || b > a ? b : a);
     final TranscriptSegmentEntity? edge = lostEnd == null
         ? null
         : (segments
@@ -524,3 +598,16 @@ final class GapBackfillService {
 
 /// Issue d'un morceau de repère.
 enum _Part { noAudio, unavailable, failed, nothingNew, saved }
+
+/// Union de repères de perte d'une source : le premier (par début), la fin
+/// la plus tardive, et les autres repères qu'elle absorbe.
+class _MarkerUnion {
+  _MarkerUnion(this.first, this.end);
+
+  final TranscriptSegmentEntity first;
+  int end;
+
+  /// Début de l'union suivante de la même source, s'il y en a une.
+  int? nextStart;
+  final List<String> others = <String>[];
+}

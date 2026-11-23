@@ -319,7 +319,7 @@ final class InMemorySessionRepository implements SessionRepository {
 
 /// Dépôt en mémoire au contrat du port : `save` remplace un segment de même
 /// id (en gardant sa place), `deleteById` le retire.
-final class InMemoryTranscriptRepository implements TranscriptRepository {
+class InMemoryTranscriptRepository implements TranscriptRepository {
   final Map<String, TranscriptSegmentEntity> store =
       <String, TranscriptSegmentEntity>{};
 
@@ -384,14 +384,18 @@ final class FakeWavRecorder extends WavRecorder {
 
 /// Monte le vrai [LiveTranscriptionService] sur les faux ci-dessus.
 final class LiveServiceHarness {
-  LiveServiceHarness(this.async, {TranscriptionRemoteDataSource? remote})
-    : process = FakeProcessManagerChannel(now: () => async.elapsed),
-      remote = remote ?? FakeTranscriptionRemoteDataSource() {
+  LiveServiceHarness(
+    this.async, {
+    TranscriptionRemoteDataSource? remote,
+    InMemoryTranscriptRepository? segments,
+  }) : process = FakeProcessManagerChannel(now: () => async.elapsed),
+       remote = remote ?? FakeTranscriptionRemoteDataSource(),
+       segments = segments ?? InMemoryTranscriptRepository() {
     transcription = TranscriptionService(
       startSessionUseCase: StartSessionUseCase(sessionRepository: sessions),
       stopSessionUseCase: StopSessionUseCase(sessionRepository: sessions),
       saveTranscriptSegmentUseCase: SaveTranscriptSegmentUseCase(
-        transcriptRepository: segments,
+        transcriptRepository: this.segments,
       ),
     );
     service = LiveTranscriptionService(
@@ -412,7 +416,7 @@ final class LiveServiceHarness {
   final FakeAudioCaptureChannel audio = FakeAudioCaptureChannel();
   final TranscriptionRemoteDataSource remote;
   final InMemorySessionRepository sessions = InMemorySessionRepository();
-  final InMemoryTranscriptRepository segments = InMemoryTranscriptRepository();
+  final InMemoryTranscriptRepository segments;
   final List<FakeWavRecorder> recorders = <FakeWavRecorder>[];
   late final TranscriptionService transcription;
   late final LiveTranscriptionService service;
