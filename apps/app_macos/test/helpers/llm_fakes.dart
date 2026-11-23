@@ -110,8 +110,7 @@ Future<void> seedNote(
 }
 
 /// Ligne rangée dans `summaries` pour `s1`, null si aucune.
-Future<Summary?> storedRow(AppDatabase db) =>
-    SummaryDao(db).getBySessionId('s1');
+Future<Summary?> storedRow(AppDatabase db) => SummaryDao(db).getBySessionId('s1');
 
 /// Enveloppe rangée pour `s1` (vide si aucune ligne).
 Future<SessionAnalysis> storedAnalysis(AppDatabase db) async =>

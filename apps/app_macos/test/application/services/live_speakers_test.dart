@@ -3,19 +3,15 @@ import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 
-TranscriptSegmentEntity _segment(
-  String id,
-  AudioSource source,
-  int ms,
-  String text,
-) => TranscriptSegmentEntity(
-  id: id,
-  sessionId: 's',
-  source: source,
-  text: text,
-  timestampMs: ms,
-  createdAt: DateTime(2026),
-);
+TranscriptSegmentEntity _segment(String id, AudioSource source, int ms, String text) =>
+    TranscriptSegmentEntity(
+      id: id,
+      sessionId: 's',
+      source: source,
+      text: text,
+      timestampMs: ms,
+      createdAt: DateTime(2026),
+    );
 
 void main() {
   test('fusionne les phrases consécutives d’un même interlocuteur', () {
@@ -26,12 +22,10 @@ void main() {
       _segment('b', AudioSource.output, 4000, 'Je suis Alice.'),
       _segment('x', AudioSource.output, 12000, 'Sans étiquette.'),
     ];
-    final List<SpeakerTurn> turns = buildSpeakerTurns(segments, <String, int>{
-      'a': 0,
-      'b': 0,
-      'c': 1,
-      'me': 3,
-    });
+    final List<SpeakerTurn> turns = buildSpeakerTurns(
+      segments,
+      <String, int>{'a': 0, 'b': 0, 'c': 1, 'me': 3},
+    );
     expect(
       turns.map((SpeakerTurn t) => (t.speaker, t.text, t.start, t.end)),
       <(int, String, double, double)>[

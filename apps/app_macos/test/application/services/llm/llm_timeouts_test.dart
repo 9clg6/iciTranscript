@@ -38,8 +38,7 @@ class _DripAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    final StreamController<Uint8List> controller =
-        StreamController<Uint8List>();
+    final StreamController<Uint8List> controller = StreamController<Uint8List>();
     int sent = 0;
     Timer.periodic(every, (Timer t) {
       if (controller.isClosed) return t.cancel();
@@ -98,12 +97,13 @@ void main() {
       final List<Object> errors = <Object>[];
       bool done = false;
       AnthropicLlmProvider(
-            dio: Dio()
-              ..httpClientAdapter = _DripAdapter(every: every, count: 5),
-            apiKey: _key,
-          )
-          .streamChat(kPing)
-          .listen(texts.add, onError: errors.add, onDone: () => done = true);
+        dio: Dio()..httpClientAdapter = _DripAdapter(every: every, count: 5),
+        apiKey: _key,
+      ).streamChat(kPing).listen(
+        texts.add,
+        onError: errors.add,
+        onDone: () => done = true,
+      );
 
       async.elapse(every * 6);
 
@@ -118,8 +118,9 @@ void main() {
     fakeAsync((FakeAsync async) {
       final List<Object> errors = <Object>[];
       AnthropicLlmProvider(
-        dio: Dio()
-          ..httpClientAdapter = RecordingHttpAdapter(reply: const HangReply()),
+        dio: Dio()..httpClientAdapter = RecordingHttpAdapter(
+          reply: const HangReply(),
+        ),
         apiKey: _key,
       ).streamChat(kPing).listen((_) {}, onError: errors.add);
 
@@ -133,10 +134,9 @@ void main() {
     fakeAsync((FakeAsync async) {
       final List<Object> errors = <Object>[];
       final StreamSubscription<String> sub = AnthropicLlmProvider(
-        dio: Dio()
-          ..httpClientAdapter = RecordingHttpAdapter(
-            reply: BodyReply(200, _delta('Le'), keepOpen: true),
-          ),
+        dio: Dio()..httpClientAdapter = RecordingHttpAdapter(
+          reply: BodyReply(200, _delta('Le'), keepOpen: true),
+        ),
         apiKey: _key,
       ).streamChat(kPing).listen((_) {}, onError: errors.add);
 

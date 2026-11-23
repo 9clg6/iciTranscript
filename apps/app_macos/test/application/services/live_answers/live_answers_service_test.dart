@@ -429,7 +429,9 @@ void main() {
       run((FakeAsync async, LiveAnswersHarness h) {
         h.hear(q);
         async.flushMicrotasks();
-        h.llm.last.reply('La livraison est prévue pour le lot 1 au début du');
+        h.llm.last.reply(
+          'La livraison est prévue pour le lot 1 au début du',
+        );
         async.flushMicrotasks();
 
         expect(h.only.status, LiveQuestionStatus.answered);
@@ -969,7 +971,9 @@ void main() {
       run((FakeAsync async, LiveAnswersHarness h) {
         h.hear(q);
         async.flushMicrotasks();
-        h.llm.last.reply('La livraison est prévue pour le lot 1 au début du');
+        h.llm.last.reply(
+          'La livraison est prévue pour le lot 1 au début du',
+        );
         async.flushMicrotasks();
 
         final LiveQuestion saved = h.store.saved[h.only.id]!;

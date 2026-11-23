@@ -185,7 +185,10 @@ void main() {
             const <DocumentExcerpt>[],
           );
           expect(a.truncated, isTrue);
-          expect(a.text, 'La livraison est prévue pour le lot 1 au début du');
+          expect(
+            a.text,
+            'La livraison est prévue pour le lot 1 au début du',
+          );
         },
       );
 

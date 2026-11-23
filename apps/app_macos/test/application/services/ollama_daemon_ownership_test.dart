@@ -82,34 +82,31 @@ void main() {
     return f.existsSync() && f.readAsStringSync().contains('ollama');
   }
 
-  group(
-    '1. démon déjà là, pas lancé par l\'app (Ollama de l\'utilisateur)',
-    () {
-      setUp(() => host.foreignDaemonUp = true);
+  group('1. démon déjà là, pas lancé par l\'app (Ollama de l\'utilisateur)', () {
+    setUp(() => host.foreignDaemonUp = true);
 
-      test('il sert tel quel : rien n\'est lancé ni noté', () async {
-        final OllamaService s = service(registry());
+    test('il sert tel quel : rien n\'est lancé ni noté', () async {
+      final OllamaService s = service(registry());
 
-        await s.ensureReady();
+      await s.ensureReady();
 
-        expect(inner.started, isEmpty);
-        expect(recordsOllama('servers.json'), isFalse);
-      });
+      expect(inner.started, isEmpty);
+      expect(recordsOllama('servers.json'), isFalse);
+    });
 
-      test('jamais arrêté : ni à la sortie de l\'app, ni par le nettoyage du '
-          'lancement suivant', () async {
-        final OwnedProcessRegistry r = registry();
-        final OllamaService s = service(r);
-        await s.ensureReady();
+    test('jamais arrêté : ni à la sortie de l\'app, ni par le nettoyage du '
+        'lancement suivant', () async {
+      final OwnedProcessRegistry r = registry();
+      final OllamaService s = service(r);
+      await s.ensureReady();
 
-        await s.dispose();
-        await registry().cleanUpLeftovers();
+      await s.dispose();
+      await registry().cleanUpLeftovers();
 
-        expect(inner.kills, isEmpty);
-        expect(inner.groupKills, isEmpty);
-      });
-    },
-  );
+      expect(inner.kills, isEmpty);
+      expect(inner.groupKills, isEmpty);
+    });
+  });
 
   group('2. rien ne répond', () {
     test('l\'app lance `ollama serve` par le registre, attend la santé et le '
@@ -121,7 +118,10 @@ void main() {
       expect(inner.started, hasLength(1));
       expect(inner.started.single.executable, endsWith('ollama'));
       expect(inner.started.single.arguments, <String>['serve']);
-      expect(inner.healthChecks.map((Uri u) => u.port).toSet(), <int>{port});
+      expect(
+        inner.healthChecks.map((Uri u) => u.port).toSet(),
+        <int>{port},
+      );
       expect(recordsOllama('servers.json'), isTrue);
     });
 
@@ -191,11 +191,9 @@ void main() {
         settle: false,
         overrides: overrides,
       );
-      for (
-        int i = 0;
-        i < 30 && find.text('history.detail.summarize'.tr()).evaluate().isEmpty;
-        i++
-      ) {
+      for (int i = 0;
+          i < 30 && find.text('history.detail.summarize'.tr()).evaluate().isEmpty;
+          i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 100)),
         );
@@ -310,8 +308,12 @@ final class _OllamaHost implements ProcessHost {
     List<String> arguments, {
     Map<String, String>? environment,
     ProcessStartMode mode = ProcessStartMode.normal,
-  }) =>
-      inner.start(executable, arguments, environment: environment, mode: mode);
+  }) => inner.start(
+    executable,
+    arguments,
+    environment: environment,
+    mode: mode,
+  );
 
   @override
   Future<List<RunningProcess>> running() => inner.running();

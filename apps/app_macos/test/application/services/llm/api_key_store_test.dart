@@ -68,16 +68,14 @@ void main() {
   });
 
   group('lecture, écriture, suppression', () {
-    test(
-      'une clé écrite se relit, et seulement pour son fournisseur',
-      () async {
-        await store.write(LlmProviderId.anthropic, _key);
+    test('une clé écrite se relit, et seulement pour son fournisseur',
+        () async {
+      await store.write(LlmProviderId.anthropic, _key);
 
-        expect(await store.read(LlmProviderId.anthropic), _key);
-        expect(await store.read(LlmProviderId.openai), isNull);
-        expect(keychain.items.values, <String>[_key]);
-      },
-    );
+      expect(await store.read(LlmProviderId.anthropic), _key);
+      expect(await store.read(LlmProviderId.openai), isNull);
+      expect(keychain.items.values, <String>[_key]);
+    });
 
     test('une clé supprimée se relit null', () async {
       await store.write(LlmProviderId.gemini, _key);
@@ -99,23 +97,18 @@ void main() {
       expect(keychain.items.values, <String>['sk-openai-test']);
     });
 
-    test(
-      'écrire une clé vide ou faite de blancs revient à la supprimer',
-      () async {
-        for (final String blank in <String>['', '   \n\t']) {
-          await store.write(LlmProviderId.anthropic, _key);
+    test('écrire une clé vide ou faite de blancs revient à la supprimer',
+        () async {
+      for (final String blank in <String>['', '   \n\t']) {
+        await store.write(LlmProviderId.anthropic, _key);
 
-          await store.write(LlmProviderId.anthropic, blank);
+        await store.write(LlmProviderId.anthropic, blank);
 
-          expect(
-            await store.read(LlmProviderId.anthropic),
-            isNull,
-            reason: 'clé "$blank"',
-          );
-          expect(keychain.items, isEmpty, reason: 'clé "$blank"');
-        }
-      },
-    );
+        expect(await store.read(LlmProviderId.anthropic), isNull,
+            reason: 'clé "$blank"');
+        expect(keychain.items, isEmpty, reason: 'clé "$blank"');
+      }
+    });
   });
 
   group('la clé ne quitte pas le trousseau', () {
@@ -143,9 +136,7 @@ void main() {
         createFile: (String path) {
           created.add(path);
           return Zone.root.run(
-            () => File(
-              '${sandbox.path}/${created.length}-${path.split('/').last}',
-            ),
+            () => File('${sandbox.path}/${created.length}-${path.split('/').last}'),
           );
         },
       );
@@ -192,11 +183,8 @@ void main() {
       expect(log, contains('temoin-journal'));
       expect(log, isNot(contains(_key)));
       expect(printed.join('\n'), isNot(contains(_key)));
-      expect(
-        writeError,
-        isNotNull,
-        reason: 'un refus du trousseau ne doit pas passer pour un succès',
-      );
+      expect(writeError, isNotNull,
+          reason: 'un refus du trousseau ne doit pas passer pour un succès');
       expect(writeError.toString(), isNot(contains(_key)));
     });
   });
@@ -214,17 +202,15 @@ void main() {
       expect(await selection.activeProvider(), LlmProviderId.ollama);
     });
 
-    test(
-      'avec une seule clé, son fournisseur est configuré et actif',
-      () async {
-        await store.write(LlmProviderId.openai, 'sk-openai-test');
+    test('avec une seule clé, son fournisseur est configuré et actif',
+        () async {
+      await store.write(LlmProviderId.openai, 'sk-openai-test');
 
-        expect(await selection.isConfigured(LlmProviderId.openai), isTrue);
-        expect(await selection.isConfigured(LlmProviderId.anthropic), isFalse);
-        expect(await selection.isConfigured(LlmProviderId.gemini), isFalse);
-        expect(await selection.activeProvider(), LlmProviderId.openai);
-      },
-    );
+      expect(await selection.isConfigured(LlmProviderId.openai), isTrue);
+      expect(await selection.isConfigured(LlmProviderId.anthropic), isFalse);
+      expect(await selection.isConfigured(LlmProviderId.gemini), isFalse);
+      expect(await selection.activeProvider(), LlmProviderId.openai);
+    });
 
     test('supprimer la clé du fournisseur actif ramène sur Ollama', () async {
       await store.write(LlmProviderId.gemini, 'gemini-test-key');
@@ -254,38 +240,34 @@ void main() {
       expect(await selection.activeProvider(), LlmProviderId.anthropic);
     });
 
-    test(
-      'le choix de l’utilisateur gagne quand son fournisseur est configuré',
-      () async {
-        await store.write(LlmProviderId.anthropic, _key);
-        await store.write(LlmProviderId.gemini, 'gemini-test-key');
+    test('le choix de l’utilisateur gagne quand son fournisseur est configuré',
+        () async {
+      await store.write(LlmProviderId.anthropic, _key);
+      await store.write(LlmProviderId.gemini, 'gemini-test-key');
 
-        expect(
-          await selection.activeProvider(preferred: LlmProviderId.gemini),
-          LlmProviderId.gemini,
-        );
-        expect(
-          await selection.activeProvider(preferred: LlmProviderId.ollama),
-          LlmProviderId.ollama,
-        );
-      },
-    );
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.gemini),
+        LlmProviderId.gemini,
+      );
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.ollama),
+        LlmProviderId.ollama,
+      );
+    });
 
-    test(
-      'un choix sans clé est ignoré : premier configuré, sinon Ollama',
-      () async {
-        expect(
-          await selection.activeProvider(preferred: LlmProviderId.openai),
-          LlmProviderId.ollama,
-        );
+    test('un choix sans clé est ignoré : premier configuré, sinon Ollama',
+        () async {
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.openai),
+        LlmProviderId.ollama,
+      );
 
-        await store.write(LlmProviderId.gemini, 'gemini-test-key');
+      await store.write(LlmProviderId.gemini, 'gemini-test-key');
 
-        expect(
-          await selection.activeProvider(preferred: LlmProviderId.openai),
-          LlmProviderId.gemini,
-        );
-      },
-    );
+      expect(
+        await selection.activeProvider(preferred: LlmProviderId.openai),
+        LlmProviderId.gemini,
+      );
+    });
   });
 }

@@ -28,7 +28,8 @@ void main() {
     await recorder.open(file.path);
     final Uint8List header = (await file.readAsBytes()).sublist(0, 44);
     await recorder.close();
-    final Uint8List pcm = Uint8List(pcmBytes)..fillRange(0, pcmBytes, 7);
+    final Uint8List pcm = Uint8List(pcmBytes)
+      ..fillRange(0, pcmBytes, 7);
     await file.writeAsBytes(<int>[...header, ...pcm], flush: true);
     return file;
   }
