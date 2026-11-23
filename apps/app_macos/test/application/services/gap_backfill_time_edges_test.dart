@@ -10,6 +10,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../fixtures/probe5_sequences.dart';
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Tour 7, point 1. Sonde 5 : la règle des bords du tour 6 n'a rien remplacé
 // (`replacedIds` vide) : le segment partiel sauvé DANS la perte (57,0 s pour
@@ -131,11 +132,7 @@ void main() {
     Future<void> wav(String sessionId, String track, int tag, int ms) async {
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${sessionId}_$track.wav');
-      final Uint8List block = Uint8List(32000);
-      final ByteData d = ByteData.sublistView(block);
-      for (int o = 0; o < block.length; o += 2) {
-        d.setInt16(o, tag, Endian.little);
-      }
+      final Uint8List block = voicedPcm(32000, value: tag);
       for (int s = 0; s < ms ~/ 1000; s++) {
         await recorder.append(block);
       }
@@ -244,7 +241,7 @@ final class _Recorded implements PcmTranscriber {
 
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
-    final int tag = ByteData.sublistView(pcm).getInt16(0, Endian.little);
+    final int tag = voicedValue(pcm);
     final String source = tag == 1 ? 'input' : 'output';
     return scenario.gaps
         .firstWhere((ProbeGap g) => g.source == source)

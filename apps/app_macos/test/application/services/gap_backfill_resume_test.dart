@@ -18,6 +18,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Tour 6, point 1 (sonde 4) : après la réunion B, les repères en attente de
 // la réunion A ne repartaient que sur un signal « serveur prêt » ou au
@@ -42,9 +43,7 @@ void main() {
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${id}_mic.wav');
       for (int k = 0; k < 300; k++) {
-        final Uint8List data = Uint8List(3200);
-        ByteData.sublistView(data).setInt16(0, base + k, Endian.little);
-        await recorder.append(data);
+        await recorder.append(voicedChunk(<int>[base + k]));
       }
       await recorder.close();
       await repo.save(

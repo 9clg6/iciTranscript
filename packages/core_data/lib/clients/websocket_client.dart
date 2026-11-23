@@ -39,9 +39,20 @@ class WebSocketClient {
   /// reconnexion est restée 30 s bloquée sur `ready`).
   static const Duration connectTimeout = Duration(seconds: 10);
 
-  /// Borne de la prochaine poignée de main ; la source distante l'allonge
-  /// quand un serveur chargé accepte lentement.
+  /// Borne de la prochaine poignée de main ; la source distante et le
+  /// rattrapage l'allongent quand un serveur chargé accepte lentement.
   Duration handshakeTimeout = connectTimeout;
+
+  /// Borne adaptative (seul endroit) : 10 s, doublée à chaque poignée de
+  /// main expirée de suite ([slowAccepts]), au plus 60 s.
+  static Duration handshakeBound(int slowAccepts) {
+    final Duration bound =
+        connectTimeout * (1 << (slowAccepts < 3 ? slowAccepts : 3));
+    return bound > maxHandshake ? maxHandshake : bound;
+  }
+
+  /// Plus longue poignée de main attendue.
+  static const Duration maxHandshake = Duration(seconds: 60);
 
   /// Indique si le client est connecte.
   bool get isConnected => _channel != null;

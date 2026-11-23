@@ -13,6 +13,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Revue PR #21, chemin réel des doublons (sonde 6, svc_D.jsonl, machine très
 // chargée), rejoué tel quel : mêmes textes, même ordre, même retard.
@@ -140,12 +141,7 @@ void main() {
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${sessionId}_$track.wav');
       for (int c = 0; c < 3200; c++) {
-        final Uint8List chunk = Uint8List(3200);
-        final ByteData d = ByteData.sublistView(chunk);
-        for (int o = 0; o < 3200; o += 2) {
-          d.setInt16(o, c * 4 + tag, Endian.little);
-        }
-        await recorder.append(chunk);
+        await recorder.append(voicedPcm(3200, value: c * 4 + tag));
       }
       await recorder.close();
     }
@@ -247,7 +243,7 @@ final class _Recorded implements PcmTranscriber {
 
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
-    final int v = ByteData.sublistView(pcm).getInt16(0, Endian.little);
+    final int v = voicedValue(pcm);
     final int tag = v % 4;
     final int startMs = (v ~/ 4) * 100;
     final int endMs = startMs + pcm.length ~/ 32;

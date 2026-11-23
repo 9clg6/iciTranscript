@@ -12,6 +12,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Tour 5 bis, point 2 : serveur de transcription indisponible au moment du
 // rattrapage. Le repère reste, et la session est réessayée plus tard : dès
@@ -66,7 +67,7 @@ void main() {
     recording = false;
     final WavRecorder recorder = WavRecorder();
     await recorder.open('${dir.path}/${sessionId}_mic.wav');
-    await recorder.append(Uint8List(30 * 32000));
+    await recorder.append(voicedPcm(30 * 32000));
     await recorder.close();
     await repo.save(
       TranscriptSegmentEntity(

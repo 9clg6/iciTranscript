@@ -481,8 +481,12 @@ final class FakeVoxServer {
 
   /// Serveur séquentiel (comme le vrai, sonde 2026-11-22) : il traite
   /// l'audio de toutes les sockets dans une seule file, [speed] fois plus
-  /// vite que le temps réel. Null : réponse en 400 ms, sans file.
-  final double? speed;
+  /// vite que le temps réel. Null : réponse en 400 ms, sans file. Peut
+  /// changer en cours de test (serveur durablement ralenti puis rétabli).
+  double? speed;
+
+  /// Retard ajouté à chaque réponse (proxy « Dlag » des sondes).
+  Duration lag = Duration.zero;
   Duration _busyUntil = Duration.zero;
 
   /// Met [audio] dans la file ; rend l'instant où il aura été traité.
@@ -507,6 +511,9 @@ final class FakeVoxSocket extends WebSocketClient {
 
   /// Refus de connexion propre à cette socket (coupure réseau ciblée).
   bool refusing = false;
+
+  /// La poignée de main reste sans réponse.
+  bool hanging = false;
 
   /// Répond seul aux commits finaux.
   bool autoReply = true;
@@ -548,6 +555,9 @@ final class FakeVoxSocket extends WebSocketClient {
   @override
   Future<void> connect(String url) async {
     connectCalls++;
+    // Poignée de main qui n'aboutit jamais (proxy ralenti, sonde 10) : seule
+    // la borne du client y met fin.
+    if (hanging) return Completer<void>().future;
     if (!server.up || refusing) {
       throw const SocketException('Connection refused');
     }
@@ -607,11 +617,13 @@ final class FakeVoxSocket extends WebSocketClient {
       if (!autoReply) return;
       final int generation = _generation;
       final int n = ++_phrases;
-      final Duration delay = server.speed == null
-          ? const Duration(milliseconds: 400)
-          : server.busyUntil +
-                const Duration(milliseconds: 400) -
-                server.now!();
+      final Duration delay =
+          (server.speed == null
+              ? const Duration(milliseconds: 400)
+              : server.busyUntil +
+                    const Duration(milliseconds: 400) -
+                    server.now!()) +
+          server.lag;
       Timer(delay, () {
         if (!_connected || generation != _generation) return;
         for (final int id in utterance) {

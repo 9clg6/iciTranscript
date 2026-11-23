@@ -14,6 +14,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 /// Tour 5, suite (a) : ordre après la réunion. La passe post-session
 /// (diarization, lancée par le view model après `stopTranscription()`)
@@ -89,7 +90,7 @@ void main() {
     final File mic = File('${recordings.path}/${id}_mic.wav');
     final WavRecorder recorder = WavRecorder();
     await recorder.open(mic.path);
-    await recorder.append(Uint8List(30 * 32000));
+    await recorder.append(voicedPcm(30 * 32000));
     await recorder.close();
     transcriber.wav = mic;
 

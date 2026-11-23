@@ -9,6 +9,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Tour 5 bis, point 1 (mesuré sur le vrai serveur) : la marge de 1 s
 // retranscrit le début de la phrase qui suit la perte (« Le jardinier a
@@ -123,7 +124,7 @@ void main() {
     addTearDown(() => dir.delete(recursive: true));
     final WavRecorder recorder = WavRecorder();
     await recorder.open('${dir.path}/${sessionId}_mic.wav');
-    await recorder.append(Uint8List(30 * 32000));
+    await recorder.append(voicedPcm(30 * 32000));
     await recorder.close();
 
     final InMemoryTranscriptRepository repo = InMemoryTranscriptRepository();
