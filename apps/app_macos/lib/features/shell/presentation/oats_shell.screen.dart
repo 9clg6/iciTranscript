@@ -13,6 +13,7 @@ import 'package:ici_transcript/features/live_transcription/presentation/screens/
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.screen.dart';
+import 'package:ici_transcript/features/shell/presentation/meeting_suggestion.widget.dart';
 import 'package:ici_transcript/features/shell/presentation/shell_view.provider.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
@@ -70,7 +71,18 @@ class OatsShellScreen extends ConsumerWidget {
               ref.read(shellViewControllerProvider.notifier).show(v);
             },
           ),
-          Expanded(child: page),
+          Expanded(
+            child: Stack(
+              children: <Widget>[
+                Positioned.fill(child: page),
+                const Positioned(
+                  right: OatsSpace.xl,
+                  bottom: OatsSpace.xl,
+                  child: MeetingSuggestionPrompt(),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

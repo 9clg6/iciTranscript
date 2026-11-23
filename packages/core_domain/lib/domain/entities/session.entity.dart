@@ -25,5 +25,14 @@ abstract class SessionEntity with _$SessionEntity {
 
     /// Statut actuel de la session.
     required SessionStatus status,
+
+    /// Identifiant de l'evenement d'agenda lie (occurrence), ou null.
+    String? calendarEventId,
+
+    /// Titre de l'evenement d'agenda lie, ou null.
+    String? calendarEventTitle,
+
+    /// Noms des participants de l'evenement lie (jamais d'adresse e-mail).
+    @Default(<String>[]) List<String> attendees,
   }) = _SessionEntity;
 }
