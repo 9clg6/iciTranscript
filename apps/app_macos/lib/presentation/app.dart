@@ -6,6 +6,7 @@ import 'package:ici_transcript/core/providers/kernel.provider.dart';
 import 'package:ici_transcript/core/providers/platform/uvx_available.provider.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/shared/presentation/screens/onboarding/uv_onboarding.screen.dart';
+import 'package:ici_transcript/features/status_panel/status_panel_sync.provider.dart';
 import 'package:ici_transcript/foundation/routing/app_router.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
@@ -53,6 +54,8 @@ class _RootAppWidgetState extends ConsumerState<RootAppWidget> {
         ),
       ),
       data: (_) {
+        // Panneau de barre de menus : tenu à jour toute la vie de l'app.
+        ref.read(statusPanelSyncProvider);
         if (!(uvxState.value ?? true)) {
           return _simple(
             UvOnboardingScreen(

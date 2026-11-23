@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
 
@@ -15,7 +17,22 @@ extension SessionLocalModelX on SessionLocalModel {
     // Un statut écrit par une version plus récente de l'app (base partagée)
     // ne doit pas casser la lecture : il est lu comme une session close.
     status: SessionStatus.values.asNameMap()[status] ?? SessionStatus.completed,
+    calendarEventId: calendarEventId,
+    calendarEventTitle: calendarEventTitle,
+    attendees: _decodeAttendees(attendees),
   );
+}
+
+/// Colonne illisible (ancienne donnee, JSON abime) = aucun participant.
+List<String> _decodeAttendees(String? raw) {
+  if (raw == null) return const <String>[];
+  try {
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is List) return decoded.whereType<String>().toList();
+  } on FormatException {
+    // Lu comme vide.
+  }
+  return const <String>[];
 }
 
 /// Extensions de mapping pour [SessionEntity] vers le modele local.
@@ -28,5 +45,8 @@ extension SessionEntityToLocalX on SessionEntity {
     updatedAt: updatedAt.toIso8601String(),
     durationSeconds: durationSeconds,
     status: status.name,
+    calendarEventId: calendarEventId,
+    calendarEventTitle: calendarEventTitle,
+    attendees: attendees.isEmpty ? null : jsonEncode(attendees),
   );
 }

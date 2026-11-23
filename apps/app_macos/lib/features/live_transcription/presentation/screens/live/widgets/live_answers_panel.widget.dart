@@ -1,4 +1,3 @@
-import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +8,7 @@ import 'package:ici_transcript/application/services/live_answers/live_question.d
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/question_answer.widget.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
@@ -167,6 +167,8 @@ class _QuestionCard extends StatelessWidget {
       status: status.$1,
       statusTone: status.$2,
       truncatedLabel: LocaleKeys.live_answers_truncated.tr(),
+      shortenedLabel: LocaleKeys.live_answers_shortened.tr(),
+      unsourcedLabel: LocaleKeys.live_answers_unsourced.tr(),
       actions: <Widget>[
         if (q.status == LiveQuestionStatus.answered)
           icon(
@@ -215,11 +217,7 @@ class _QuestionCard extends StatelessWidget {
   }
 
   static String _speaker(LiveQuestion q, int? n) =>
-      q.source == AudioSource.input
-      ? LocaleKeys.transcription_live_speaker_me.tr()
-      : n == null
-      ? LocaleKeys.transcription_live_speaker_system.tr()
-      : LocaleKeys.transcription_live_speaker_n.tr(args: <String>['${n + 1}']);
+      liveSpeakerLabel(q.source, n);
 
   // Le générateur d'easy_localization ne crée pas de constante pour une clé
   // nommée « other » (mot réservé des pluriels).

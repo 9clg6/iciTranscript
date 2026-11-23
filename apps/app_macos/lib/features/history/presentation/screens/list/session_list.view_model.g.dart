@@ -54,7 +54,7 @@ final class SessionListViewModelProvider
 }
 
 String _$sessionListViewModelHash() =>
-    r'b019459d8b0d9554e3b5495a61937a988601b5f3';
+    r'e734f02d06c04f5e17aa89dae4bc1af91a0920db';
 
 /// ViewModel de la liste des sessions (sidebar).
 ///

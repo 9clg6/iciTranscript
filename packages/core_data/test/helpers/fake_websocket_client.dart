@@ -37,6 +37,9 @@ final class FakeWebSocketClient extends WebSocketClient {
   /// Numéros reçus, connexion par connexion.
   final List<List<int>> connections = <List<int>>[];
 
+  /// Heure (horloge du test) de chaque connexion établie.
+  final List<Duration> connectionOpenedAt = <Duration>[];
+
   /// Messages reçus, connexion par connexion.
   final List<List<String>> connectionMessages = <List<String>>[];
 
@@ -115,6 +118,8 @@ final class FakeWebSocketClient extends WebSocketClient {
       throw const SocketException('Connection refused');
     }
     _connected = true;
+    final Duration? openedAt = now?.call();
+    if (openedAt != null) connectionOpenedAt.add(openedAt);
     _generation++;
     _pendingUtterances.clear();
     _currentUtterance = <int>[];

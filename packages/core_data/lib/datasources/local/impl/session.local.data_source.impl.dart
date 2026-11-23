@@ -16,32 +16,13 @@ final class SessionLocalDataSourceImpl implements SessionLocalDataSource {
   @override
   Future<List<SessionLocalModel>> getAll() async {
     final List<Session> rows = await _sessionDao.getAll();
-    return rows
-        .map(
-          (Session row) => SessionLocalModel(
-            id: row.id,
-            title: row.title,
-            createdAt: row.createdAt,
-            updatedAt: row.updatedAt,
-            durationSeconds: row.durationSeconds,
-            status: row.status,
-          ),
-        )
-        .toList();
+    return rows.map(_toModel).toList();
   }
 
   @override
   Future<SessionLocalModel?> getById(String id) async {
     final Session? row = await _sessionDao.getById(id);
-    if (row == null) return null;
-    return SessionLocalModel(
-      id: row.id,
-      title: row.title,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      durationSeconds: row.durationSeconds,
-      status: row.status,
-    );
+    return row == null ? null : _toModel(row);
   }
 
   @override
@@ -54,6 +35,9 @@ final class SessionLocalDataSourceImpl implements SessionLocalDataSource {
         updatedAt: session.updatedAt,
         durationSeconds: Value<int?>(session.durationSeconds),
         status: session.status,
+        calendarEventId: Value<String?>(session.calendarEventId),
+        calendarEventTitle: Value<String?>(session.calendarEventTitle),
+        attendees: Value<String?>(session.attendees),
       ),
     );
   }
@@ -68,6 +52,9 @@ final class SessionLocalDataSourceImpl implements SessionLocalDataSource {
         updatedAt: Value<String>(session.updatedAt),
         durationSeconds: Value<int?>(session.durationSeconds),
         status: Value<String>(session.status),
+        calendarEventId: Value<String?>(session.calendarEventId),
+        calendarEventTitle: Value<String?>(session.calendarEventTitle),
+        attendees: Value<String?>(session.attendees),
       ),
     );
   }
@@ -80,18 +67,19 @@ final class SessionLocalDataSourceImpl implements SessionLocalDataSource {
   @override
   Stream<List<SessionLocalModel>> watchAll() {
     return _sessionDao.watchAll().map(
-      (List<Session> rows) => rows
-          .map(
-            (Session row) => SessionLocalModel(
-              id: row.id,
-              title: row.title,
-              createdAt: row.createdAt,
-              updatedAt: row.updatedAt,
-              durationSeconds: row.durationSeconds,
-              status: row.status,
-            ),
-          )
-          .toList(),
+      (List<Session> rows) => rows.map(_toModel).toList(),
     );
   }
+
+  static SessionLocalModel _toModel(Session row) => SessionLocalModel(
+    id: row.id,
+    title: row.title,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    durationSeconds: row.durationSeconds,
+    status: row.status,
+    calendarEventId: row.calendarEventId,
+    calendarEventTitle: row.calendarEventTitle,
+    attendees: row.attendees,
+  );
 }

@@ -1,4 +1,5 @@
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:core_domain/domain/params/stop_session.param.dart';
@@ -43,10 +44,11 @@ final class TranscriptionService {
   final BehaviorSubject<bool> isTranscribingStream =
       BehaviorSubject<bool>.seeded(false);
 
-  /// Demarre une nouvelle session de transcription.
-  Future<void> startSession() async {
+  /// Demarre une nouvelle session de transcription, liee a [link] s'il y en
+  /// a un.
+  Future<void> startSession({SessionCalendarLink? link}) async {
     final ResultState<SessionEntity> result = await _startSessionUseCase
-        .execute();
+        .executeLinked(link);
     result.when(
       success: (SessionEntity session) {
         currentSessionStream.add(session);
@@ -86,23 +88,28 @@ final class TranscriptionService {
   /// Sauvegarde un segment de transcription et met a jour le stream.
   ///
   /// Un segment de meme id (provisoire) est remplace, en base et a l'ecran.
-  Future<void> saveSegment(TranscriptSegmentEntity segment) async {
+  ///
+  /// Rend vrai si le segment est rangé.
+  Future<bool> saveSegment(TranscriptSegmentEntity segment) async {
     final ResultState<TranscriptSegmentEntity> result =
         await _saveTranscriptSegmentUseCase.execute(segment);
-    result.when(
-      success: (TranscriptSegmentEntity savedSegment) {
-        final List<TranscriptSegmentEntity> currentSegments =
-            List<TranscriptSegmentEntity>.from(segmentsStream.value)
-              ..removeWhere(
-                (TranscriptSegmentEntity s) => s.id == savedSegment.id,
-              );
-        currentSegments.add(savedSegment);
-        segmentsStream.add(currentSegments);
-      },
-      failure: (Exception e) {
-        _log.error('Erreur sauvegarde segment', e);
-      },
-    );
+    return result.when<bool>(
+          success: (TranscriptSegmentEntity savedSegment) {
+            final List<TranscriptSegmentEntity> currentSegments =
+                List<TranscriptSegmentEntity>.from(segmentsStream.value)
+                  ..removeWhere(
+                    (TranscriptSegmentEntity s) => s.id == savedSegment.id,
+                  );
+            currentSegments.add(savedSegment);
+            segmentsStream.add(currentSegments);
+            return true;
+          },
+          failure: (Exception e) {
+            _log.error('Erreur sauvegarde segment', e);
+            return false;
+          },
+        ) ??
+        false;
   }
 
   /// Sauve en base la phrase en cours, sans la montrer : l'ecran garde son

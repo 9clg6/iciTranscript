@@ -192,6 +192,7 @@ class LiveAnswersService {
         answer: '',
         failure: null,
         truncated: false,
+        shortened: false,
         sources: const <AnswerSource>[],
       ),
     );
@@ -362,6 +363,7 @@ class LiveAnswersService {
             : LiveQuestionStatus.answered,
         answer: a.text,
         truncated: a.truncated,
+        shortened: a.shortened,
         sources: a.sources,
         failure: null,
         model: model,

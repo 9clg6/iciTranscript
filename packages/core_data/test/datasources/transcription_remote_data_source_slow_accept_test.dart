@@ -124,8 +124,11 @@ void main() {
   });
 
   // Revue PR #21 (commit 1250d05) : une seule poignée de main à la fois.
+  // Tour 9 (sonde 7 : coupures de 22,5 / 25,5 / 55,5 s pour des accueils de
+  // 12 / 15 / 25 s) : la nouvelle coupure ne repart plus à 10 s, elle part
+  // de la borne qui a réussi la dernière fois.
   test('une tentative à la fois ; à expiration le canal est fermé et jamais '
-      'réutilisé ; une nouvelle coupure repart à 10 s', () {
+      'réutilisé ; la coupure suivante part de la borne qui a réussi', () {
     fakeAsync((FakeAsync async) {
       final DataSourceBench b = DataSourceBench(async);
       b.mic.acceptDelay = const Duration(seconds: 15);
@@ -159,10 +162,11 @@ void main() {
       async.elapse(const Duration(seconds: 30));
       expect(b.mic.connections, hasLength(2), reason: 'reconnecté');
 
-      // Nouvelle coupure : la borne repart à 10 s.
+      // Nouvelle coupure, même serveur lent (15 s) : la première tentative
+      // attend la borne qui a réussi (20 s) ; la coupure ≈ l'accueil.
       final Duration secondDrop = async.elapsed;
       b.mic.drop();
-      for (int id = 1000; id < 1150; id++) {
+      for (int id = 1000; id < 1250; id++) {
         b.tick(
           id,
           voiced: <AudioSource, bool>{AudioSource.input: id % 50 < 40},
@@ -171,15 +175,96 @@ void main() {
       final List<Duration> again = b.mic.connectAttempts
           .where((Duration t) => t >= secondDrop)
           .toList();
-      expect(again.length, greaterThanOrEqualTo(2));
+      expect(again, hasLength(1), reason: 'une seule tentative suffit');
+      expect(b.mic.connections, hasLength(3), reason: 'reconnecté');
       expect(
-        again[1] - again[0],
-        lessThanOrEqualTo(const Duration(milliseconds: 11500)),
-        reason: 'première borne de la nouvelle coupure : 10 s',
+        b.mic.connectionOpenedAt.last - secondDrop,
+        lessThanOrEqualTo(const Duration(milliseconds: 16500)),
+        reason: 'coupure ≈ délai d accueil (15 s)',
+      );
+    });
+  });
+
+  test('après un accueil rapide, la borne revient à 10 s', () {
+    fakeAsync((FakeAsync async) {
+      final DataSourceBench b = DataSourceBench(async);
+      async.elapse(const Duration(seconds: 1));
+      int id = 0;
+      void outage(Duration accept, int seconds) {
+        b.mic
+          ..acceptDelay = accept
+          ..drop();
+        for (int i = 0; i < seconds * 10; i++, id++) {
+          b.tick(
+            id,
+            voiced: <AudioSource, bool>{AudioSource.input: id % 50 < 40},
+          );
+        }
+      }
+
+      outage(const Duration(seconds: 15), 40); // apprend 20 s
+      outage(const Duration(seconds: 2), 10); // accueil rapide
+      final Duration thirdDrop = async.elapsed;
+      outage(const Duration(seconds: 15), 40);
+
+      final List<Duration> attempts = b.mic.connectAttempts
+          .where((Duration t) => t >= thirdDrop)
+          .toList();
+      expect(attempts.length, greaterThanOrEqualTo(2));
+      expect(
+        attempts[1] - attempts[0],
+        greaterThanOrEqualTo(const Duration(seconds: 10)),
       );
       expect(
-        again[1] - again[0],
+        attempts[1] - attempts[0],
+        lessThanOrEqualTo(const Duration(milliseconds: 11500)),
+        reason: 'borne revenue à 10 s',
+      );
+    });
+  });
+
+  // Revue PR #25, point 5 : l'app vit des jours dans la barre de menus ; la
+  // borne apprise ne doit pas survivre à la séance. Une nouvelle note
+  // (connexion de début de séance) repart à 10 s.
+  test('une nouvelle séance repart à 10 s, quoi que la précédente ait '
+      'appris', () {
+    fakeAsync((FakeAsync async) {
+      final DataSourceBench b = DataSourceBench(async);
+      async.elapse(const Duration(seconds: 1));
+      int id = 0;
+      void outage(int seconds) {
+        b.mic
+          ..acceptDelay = const Duration(seconds: 15)
+          ..drop();
+        for (int i = 0; i < seconds * 10; i++, id++) {
+          b.tick(
+            id,
+            voiced: <AudioSource, bool>{AudioSource.input: id % 50 < 40},
+          );
+        }
+      }
+
+      outage(40); // apprend 20 s
+      b.dataSource.disconnect(); // fin de la note
+      async.elapse(const Duration(hours: 6));
+      b.mic.acceptDelay = Duration.zero;
+      b.dataSource.connect(systemAudioEnabled: false); // nouvelle note
+      async.elapse(const Duration(seconds: 1));
+
+      final Duration drop = async.elapsed;
+      outage(40);
+      final List<Duration> attempts = b.mic.connectAttempts
+          .where((Duration t) => t >= drop)
+          .toList();
+      expect(attempts.length, greaterThanOrEqualTo(2));
+      expect(
+        attempts[1] - attempts[0],
         greaterThanOrEqualTo(const Duration(seconds: 10)),
+      );
+      expect(
+        attempts[1] - attempts[0],
+        lessThanOrEqualTo(const Duration(milliseconds: 11500)),
+        reason: 'borne de départ de la séance : 10 s',
       );
     });
   });

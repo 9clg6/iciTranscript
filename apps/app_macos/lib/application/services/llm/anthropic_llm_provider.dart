@@ -18,6 +18,10 @@ class AnthropicLlmProvider implements LlmProvider {
   /// Modele rapide par defaut.
   static const String defaultModel = 'claude-haiku-5-5';
 
+  /// `max_tokens` d'une requête [LlmChatRequest.preferLowLatency] : la
+  /// documentation « Reduce latency » associe effort `low` et 1024 jetons.
+  static const int lowLatencyMaxTokens = 1024;
+
   /// Version de l'API (en-tete `anthropic-version`).
   static const String apiVersion = '2026-10-21';
 
@@ -39,7 +43,11 @@ class AnthropicLlmProvider implements LlmProvider {
       },
       body: <String, Object?>{
         'model': request.model ?? _model,
-        'max_tokens': request.maxTokens,
+        'max_tokens': request.preferLowLatency
+            ? lowLatencyMaxTokens
+            : request.maxTokens,
+        if (request.preferLowLatency)
+          'output_config': <String, String>{'effort': 'low'},
         'stream': true,
         'system': request.systemPrompt,
         'messages': <Map<String, String>>[

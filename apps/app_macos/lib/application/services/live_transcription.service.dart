@@ -11,6 +11,7 @@ import 'package:core_data/model/audio_gap.dart';
 import 'package:core_data/model/remote/transcript_event.remote.model.dart';
 import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
@@ -248,6 +249,7 @@ final class LiveTranscriptionService {
     String? webSocketUrl,
     bool enablePostProcessing = false,
     bool liveDiarization = false,
+    SessionCalendarLink? calendarLink,
   }) {
     // Dès la demande : l'enregistrement a la priorité sur le serveur
     // (séquentiel). Le prédicat « enregistrement » lu par le rattrapage
@@ -264,6 +266,7 @@ final class LiveTranscriptionService {
         serverArgs: serverArgs,
         webSocketUrl: webSocketUrl ?? '${_ports.transcriptionWebSocket}',
         liveDiarization: liveDiarization,
+        calendarLink: calendarLink,
       ),
     ).whenComplete(() => _startRequested = false);
   }
@@ -275,6 +278,7 @@ final class LiveTranscriptionService {
     required List<String> serverArgs,
     required String webSocketUrl,
     required bool liveDiarization,
+    SessionCalendarLink? calendarLink,
   }) async {
     if (_running) {
       _log.warning('Une transcription est déjà en cours');
@@ -349,7 +353,7 @@ final class LiveTranscriptionService {
 
       // 4. Creer une nouvelle session
       _log.info('Creation session...');
-      await _transcriptionService.startSession();
+      await _transcriptionService.startSession(link: calendarLink);
       _log.info('Session creee OK');
 
       // 4b. Ouvrir les enregistreurs WAV par session (micro + système) :
@@ -405,6 +409,7 @@ final class LiveTranscriptionService {
       _log.info('Audio subscription active, en attente de chunks...');
       _running = true;
       _lossOfPhrase.clear();
+      _gapMarkers.clear();
       _lastSealed.clear();
       _provisionalTimer = Timer.periodic(
         const Duration(seconds: 1),
@@ -860,20 +865,115 @@ final class LiveTranscriptionService {
         when startMs < sealed.timestampMs) {
       _savePartial(sealed.copyWith(timestampMs: startMs));
     }
+    _writeGapMarker(
+      session,
+      gap.source,
+      startMs,
+      _offsetOf(session, gap.endMs),
+    );
+  }
+
+  // Repères de perte écrits dans cette session, par source, dans l'ordre :
+  // (id, début, fin) en heures de réunion.
+  final Map<AudioSource, List<({String id, int start, int end})>> _gapMarkers =
+      <AudioSource, List<({String id, int start, int end})>>{};
+
+  /// Seul endroit qui écrit un repère de perte. Les repères d'une source ne
+  /// se chevauchent jamais (sonde 7 : trois repères emboîtés) : une perte
+  /// qui touche ou recoupe des repères de la même source les fusionne en un
+  /// seul, l'union, sous l'id du premier ; les autres sont retirés.
+  void _writeGapMarker(
+    SessionEntity session,
+    AudioSource source,
+    int start,
+    int end,
+  ) {
+    final List<({String id, int start, int end})> markers = _gapMarkers
+        .putIfAbsent(source, () => <({String id, int start, int end})>[]);
+    final List<({String id, int start, int end})> touched = markers
+        .where(
+          (({String id, int start, int end}) m) =>
+              m.start <= end && start <= m.end,
+        )
+        .toList();
+    int from = start;
+    int to = end;
+    for (final ({String id, int start, int end}) m in touched) {
+      if (m.start < from) from = m.start;
+      if (m.end > to) to = m.end;
+    }
+    final String id = touched.isEmpty
+        ? _newSegmentId(session, source)
+        : touched.first.id;
+    final List<String> absorbed = <String>[
+      for (final ({String id, int start, int end}) m in touched.skip(1)) m.id,
+    ];
+    markers
+      ..removeWhere(touched.contains)
+      ..add((id: id, start: from, end: to));
     final TranscriptSegmentEntity marker = TranscriptSegmentEntity(
-      id: _newSegmentId(session, gap.source),
+      id: id,
       sessionId: session.id,
-      source: gap.source,
-      text: gapMarkerText(startMs, _offsetOf(session, gap.endMs)),
-      timestampMs: startMs,
+      source: source,
+      text: gapMarkerText(from, to),
+      timestampMs: from,
       createdAt: clock.now(),
     );
-    _log.warning('Audio non transcrit: ${marker.text} (${gap.source.name})');
+    _log.warning('Audio non transcrit: ${marker.text} (${source.name})');
+    // Atomique pour l'utilisateur : l'union est rangée d'abord (réessayée si
+    // l'écriture échoue), les repères absorbés ne partent qu'ensuite ; aucun
+    // intervalle ne reste sans repère.
+    final List<Future<void>> absorbedWrites = <Future<void>>[
+      for (final String other in absorbed) ?_segmentWrites[other],
+    ];
+    _chainWrite(id, () async {
+      await Future.wait(absorbedWrites);
+      if (!await _saveWithRetry(marker)) return;
+      _sortAndDedupeSegments();
+      for (final String other in absorbed) {
+        await _transcriptionService.discardProvisional(other);
+        _transcriptionService.segmentsStream.add(
+          List<TranscriptSegmentEntity>.from(
+            _transcriptionService.segmentsStream.value,
+          )..removeWhere((TranscriptSegmentEntity x) => x.id == other),
+        );
+      }
+    });
+  }
+
+  // Un repère qui ne se range pas est réessayé : 1, 2, 4, 8 s.
+  // ponytail: 5 essais (15 s, Stop attend au pire autant) puis abandon
+  // journalisé ; file durable si un disque plein doit tenir plus longtemps.
+  static const int _markerWriteAttempts = 5;
+
+  Future<bool> _saveWithRetry(TranscriptSegmentEntity segment) async {
+    for (int attempt = 0; attempt < _markerWriteAttempts; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(Duration(seconds: 1 << (attempt - 1)));
+      }
+      if (await _transcriptionService.saveSegment(segment)) return true;
+    }
+    _log.error('Repère non rangé après $_markerWriteAttempts essais');
+    return false;
+  }
+
+  // Écritures chaînées par id de segment : la dernière valeur voulue est
+  // toujours écrite en dernier (revue : un re-rangement non chaîné pouvait
+  // être écrasé par la première écriture, plus lente).
+  final Map<String, Future<void>> _segmentWrites = <String, Future<void>>{};
+
+  void _chainWrite(String id, Future<void> Function() write) {
     late final Future<void> task;
-    task = _transcriptionService
-        .saveSegment(marker)
-        .then((_) => _sortAndDedupeSegments())
-        .whenComplete(() => _pendingFinalizations.remove(task));
+    // Une écriture ratée plus tôt pour cet id n'empêche pas la suivante.
+    task = (_segmentWrites[id] ?? Future<void>.value())
+        .catchError((Object e) => _log.error('Écriture de $id ratée', e))
+        .then((_) => write())
+        .catchError((Object e) => _log.error('Écriture de $id ratée', e))
+        .whenComplete(() {
+          _pendingFinalizations.remove(task);
+          if (identical(_segmentWrites[id], task)) _segmentWrites.remove(id);
+        });
+    _segmentWrites[id] = task;
     _pendingFinalizations.add(task);
   }
 
@@ -1140,12 +1240,11 @@ final class LiveTranscriptionService {
       <AudioSource, TranscriptSegmentEntity>{};
 
   void _savePartial(TranscriptSegmentEntity segment, {Future<void>? after}) {
-    late final Future<void> task;
-    task = (after ?? Future<void>.value())
-        .then((_) => _transcriptionService.saveSegment(segment))
-        .then((_) => _sortAndDedupeSegments())
-        .whenComplete(() => _pendingFinalizations.remove(task));
-    _pendingFinalizations.add(task);
+    _chainWrite(segment.id, () async {
+      await after;
+      await _transcriptionService.saveSegment(segment);
+      _sortAndDedupeSegments();
+    });
   }
 
   static final RegExp _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);

@@ -5,10 +5,14 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
+import 'package:ici_transcript/application/services/calendar/calendar_rules.dart';
 import 'package:ici_transcript/application/services/diarization.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/llm/meeting_ai.dart';
@@ -17,6 +21,7 @@ import 'package:ici_transcript/application/services/transcript_formatter.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/core/platform/owned_processes.dart';
 import 'package:ici_transcript/core/platform/prefs_store.dart';
+import 'package:ici_transcript/core/providers/platform/now.provider.dart';
 import 'package:ici_transcript/core/platform/voxmlx_server.dart';
 import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
@@ -30,6 +35,7 @@ import 'package:ici_transcript/core/providers/services/ollama.service.provider.d
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/translation.service.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
@@ -37,6 +43,10 @@ import 'package:ici_transcript/features/shared/presentation/llm_error_key.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'live_transcription.view_model.g.dart';
+
+/// Attente maximale de l'agenda au démarrage d'une note ; au-delà, la note
+/// démarre sans lien.
+const Duration kCalendarLinkTimeout = Duration(seconds: 1);
 
 /// ViewModel de l'ecran de transcription en direct.
 @Riverpod(keepAlive: true)
@@ -53,6 +63,8 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   // valeur choisie.
   bool _coachTouched = false;
   bool _speakersTouched = false;
+
+  CalendarEvent? _nextEvent;
 
   static const String _coachKey = 'coach_enabled';
   static const String _speakersKey = 'live_speakers_enabled';
@@ -217,6 +229,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     _startDurationTimer();
 
     try {
+      final SessionCalendarLink? calendarLink = await _calendarLink();
       final String? micId = ref.read(settingsViewModelProvider).selectedMicId;
       final bool systemAudio = ref
           .read(settingsViewModelProvider)
@@ -228,10 +241,12 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         outputEnabled: systemAudio,
         enablePostProcessing: state.isCoachEnabled,
         liveDiarization: state.isLiveSpeakersEnabled,
+        calendarLink: calendarLink,
       );
       _log.info('startTranscription OK');
-      final String? sessionId = _liveService?.currentSessionStream.value?.id;
-      if (sessionId != null) _answers.start(sessionId);
+      final SessionEntity? session = _liveService?.currentSessionStream.value;
+      state = state.copyWith(sessionTitle: session?.title);
+      if (session != null) _answers.start(session.id);
     } catch (e) {
       _log.error('ERREUR startTranscription: $e');
       if (e is PlatformException && e.code == 'MIC_PERMISSION_DENIED') {
@@ -248,6 +263,41 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       await _liveService?.stopTranscription();
     }
   }
+
+  /// Événement de l'agenda auquel lier la note qui démarre (règle
+  /// [eventToLink]) ; null si l'agenda n'est pas connecté, pas autorisé ou
+  /// illisible. Ni titre ni participants ne vont au journal.
+  Future<SessionCalendarLink?> _calendarLink() async {
+    final CalendarEvent? chosen = _nextEvent;
+    _nextEvent = null;
+    if (chosen != null) return _linkTo(chosen);
+    try {
+      // Un agenda muet ne retarde jamais l'enregistrement.
+      final CalendarFeed feed = await ref
+          .read(calendarFeedControllerProvider.future)
+          .timeout(kCalendarLinkTimeout);
+      if (feed is! CalendarEvents) return null;
+      final CalendarEvent? event = eventToLink(
+        feed.events,
+        ref.read(nowProvider)(),
+      );
+      return event == null ? null : _linkTo(event);
+    } on Object catch (e) {
+      _log.warning('Agenda illisible au démarrage (${e.runtimeType})');
+      return null;
+    }
+  }
+
+  /// La prochaine note démarrée se lie à [event] (celui affiché dans une
+  /// suggestion) au lieu de l'événement choisi par [eventToLink].
+  void linkNextNoteTo(CalendarEvent event) => _nextEvent = event;
+
+  static SessionCalendarLink _linkTo(CalendarEvent event) =>
+      SessionCalendarLink(
+        eventId: event.id,
+        eventTitle: event.title,
+        attendees: event.attendeeNames,
+      );
 
   /// Arrête d'attendre la fin de la transcription : le reste devient un
   /// repère de perte, l'arrêt se termine.
@@ -282,6 +332,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       segments: <TranscriptSegmentEntity>[],
       duration: Duration.zero,
       speakerLabels: <String, int>{},
+      sessionTitle: null,
     );
 
     // Sauvegarder la transcription en local

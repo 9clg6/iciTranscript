@@ -5,6 +5,17 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
+/// Qui parle en direct : « Vous » au micro, « Interlocuteur n » quand le son
+/// du Mac est attribué ([speaker] 0, 1, …), sinon « Interlocuteur ».
+String liveSpeakerLabel(AudioSource source, int? speaker) =>
+    source == AudioSource.input
+    ? LocaleKeys.transcription_live_speaker_me.tr()
+    : speaker == null
+    ? LocaleKeys.transcription_live_speaker_system.tr()
+    : LocaleKeys.transcription_live_speaker_n.tr(
+        args: <String>['${speaker + 1}'],
+      );
+
 /// Une ligne de transcription en direct : qui parle, quand, le texte, puis la
 /// traduction éventuelle.
 class TranscriptLineWidget extends StatelessWidget {
@@ -41,14 +52,7 @@ class TranscriptLineWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final Oats o = context.oats;
     final bool isInput = segment.source == AudioSource.input;
-    final int? who = isInput ? null : speaker;
-    final String label = isInput
-        ? LocaleKeys.transcription_live_speaker_me.tr()
-        : who != null
-        ? LocaleKeys.transcription_live_speaker_n.tr(
-            args: <String>['${who + 1}'],
-          )
-        : LocaleKeys.transcription_live_speaker_system.tr();
+    final String label = liveSpeakerLabel(segment.source, speaker);
     final String? t = translation?.trim();
 
     return Column(
