@@ -76,7 +76,7 @@ final class TranscriptionRemoteDataSourceImpl
   // expiration, 60 s au plus (sonde 6 : sous forte charge, le serveur vivant
   // acceptait après plus de 10 s ; à 10 s fixes, 5 échecs et 75 s de micro
   // coupé). Après une expiration, la tentative suivante part aussitôt.
-  static const Duration _maxHandshake = Duration(seconds: 60);
+  // Borne : WebSocketClient.handshakeBound.
   // Serveur muet, jugé PAR source : sonde 2, les messages système
   // masquaient un micro mort plus de 117 s. Une source dont un commit final
   // attend et qui ne reçoit aucun message à elle pendant [_serverSilence]
@@ -361,11 +361,8 @@ final class TranscriptionRemoteDataSourceImpl
     AudioSource.output: 0,
   };
 
-  Duration _handshakeBound(int slowAccepts) {
-    final Duration bound =
-        WebSocketClient.connectTimeout * (1 << math.min(slowAccepts, 3));
-    return bound > _maxHandshake ? _maxHandshake : bound;
-  }
+  Duration _handshakeBound(int slowAccepts) =>
+      WebSocketClient.handshakeBound(slowAccepts);
 
   void _scheduleReconnect(AudioSource source, _Outage outage) {
     final Duration delay =
