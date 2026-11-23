@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:clock/clock.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -35,7 +36,11 @@ typedef BackfillGap = ({
 
 /// Issue d'un rattrapage : repères restants, et si le serveur a été atteint
 /// (sinon la tentative ne compte pas pour la limite de reprises).
-typedef BackfillOutcome = ({int markersLeft, bool reachedServer});
+typedef BackfillOutcome = ({
+  int markersLeft,
+  bool reachedServer,
+  bool progressed,
+});
 
 /// Transcrit un PCM16 mono 16 kHz hors réunion ; morceaux datés depuis le
 /// début du PCM.
@@ -228,7 +233,6 @@ final class GapBackfillService {
       // arrive ~1 s après son audio) pour ne pas le retranscrire en entier ;
       // un texte du voisin un peu différent resterait sinon en double.
       final int first = replaced.first.timestampMs;
-      final int unextended = start;
       final TranscriptSegmentEntity? previous = live
           .where((TranscriptSegmentEntity x) => x.timestampMs < first)
           .lastOrNull;
@@ -238,9 +242,6 @@ final class GapBackfillService {
           ? math.min(first, previous.timestampMs + tolerance)
           : first - _afterReplacedSpan.inMilliseconds;
       if (back < start) start = back;
-      if (startLimit != null && start < startLimit) {
-        start = math.min(startLimit, unextended);
-      }
       final int last = replaced.last.timestampMs;
       final TranscriptSegmentEntity? next = live
           .where((TranscriptSegmentEntity x) => x.timestampMs > last)
@@ -251,6 +252,10 @@ final class GapBackfillService {
           ? next.timestampMs
           : last + _afterReplacedSpan.inMilliseconds;
       if (cover > end) end = cover;
+    }
+    // Le recul ne passe pas la fin de l'union précédente (la marge, si).
+    if (startLimit != null && start < startLimit) {
+      start = math.min(startLimit, marker.timestampMs - margin.inMilliseconds);
     }
     // Le prolongement s'arrête où commence l'union suivante de la source :
     // son audio est retranscrit par elle (jamais deux fois).
@@ -318,6 +323,8 @@ final class GapBackfillService {
     required String recordingsDirectory,
   }) async {
     _intactEdges.clear();
+    _progressed = false;
+    _lastRecovered.clear();
     final List<TranscriptSegmentEntity> segments = await _transcripts
         .getBySessionId(sessionId);
     final List<DictatedInterval> dictated =
@@ -328,7 +335,11 @@ final class GapBackfillService {
     }
     final List<BackfillGap> gaps = plan(segments, dictated: dictated);
     if (_isRecording()) {
-      return (markersLeft: _markers(gaps, 0), reachedServer: false);
+      return (
+        markersLeft: _markers(gaps, 0),
+        reachedServer: false,
+        progressed: false,
+      );
     }
     int left = 0;
     bool reached = false;
@@ -340,7 +351,11 @@ final class GapBackfillService {
       // Le serveur ne tient pas un troisième flux (sonde) : on s'arrête dès
       // qu'un enregistrement (ou une dictée) commence.
       if (_isRecording()) {
-        return (markersLeft: left + _markers(gaps, g), reachedServer: reached);
+        return (
+          markersLeft: left + _markers(gaps, g),
+          reachedServer: reached,
+          progressed: _progressed,
+        );
       }
       final _Part part = await _backfillPart(
         sessionId,
@@ -351,6 +366,14 @@ final class GapBackfillService {
       );
       parts.add(part);
       if (part != _Part.noAudio && part != _Part.unavailable) reached = true;
+      if (part == _Part.cut) {
+        // Coupée après avoir avancé : le reste attend la tentative suivante.
+        return (
+          markersLeft: left + _markers(gaps, g),
+          reachedServer: reached,
+          progressed: true,
+        );
+      }
       final bool lastPart =
           g == gaps.length - 1 || gaps[g + 1].markerId != gap.markerId;
       if (!lastPart) continue;
@@ -368,15 +391,25 @@ final class GapBackfillService {
       }
       parts.clear();
     }
-    return (markersLeft: left, reachedServer: reached);
+    return (markersLeft: left, reachedServer: reached, progressed: _progressed);
   }
+
+  // Une tranche au moins rendue pendant cette tentative.
+  bool _progressed = false;
+
+  // Dernier morceau rendu par source pendant cette tentative.
+  final Map<AudioSource, TranscriptSegmentEntity> _lastRecovered =
+      <AudioSource, TranscriptSegmentEntity>{};
 
   /// Repères distincts de [gaps] à partir de l'indice [from].
   static int _markers(List<BackfillGap> gaps, int from) =>
       gaps.skip(from).map((BackfillGap g) => g.markerId).toSet().length;
 
   /// Retranscrit un morceau [part] du repère de [gap] et sauve ce qui est
-  /// neuf ; le repère n'est pas retiré ici.
+  /// neuf, tranche par tranche ([slice]) : chaque tranche rendue est rangée,
+  /// les segments qu'elle remplace partent et le repère rétrécit à ce qui
+  /// reste. Une tentative coupée reprend donc là où elle s'est arrêtée. Le
+  /// repère n'est retiré qu'à la fin, par [backfill].
   Future<_Part> _backfillPart(
     String sessionId,
     BackfillGap gap,
@@ -385,26 +418,8 @@ final class GapBackfillService {
     String recordingsDirectory,
   ) async {
     final String track = gap.source == AudioSource.input ? 'mic' : 'system';
-    final Uint8List? pcm = await _readPcm(
-      '$recordingsDirectory/${sessionId}_$track.wav',
-      gap.startMs,
-      gap.endMs,
-    );
-    if (pcm == null || pcm.isEmpty) return _Part.noAudio;
-    List<({int offsetMs, String text})> pieces;
-    try {
-      pieces = await _transcriber.transcribe(pcm);
-    } on TranscriberUnavailable catch (e) {
-      _log.info('Rattrapage de ${gap.markerId} reporté: $e');
-      return _Part.unavailable;
-    } on SocketException catch (e) {
-      _log.info('Rattrapage de ${gap.markerId} reporté (serveur absent): $e');
-      return _Part.unavailable;
-    } catch (e) {
-      _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
-      return _Part.failed;
-    }
-    final TranscriptSegmentEntity marker = segments.firstWhere(
+    final String path = '$recordingsDirectory/${sessionId}_$track.wav';
+    TranscriptSegmentEntity marker = segments.firstWhere(
       (TranscriptSegmentEntity s) => s.id == gap.markerId,
     );
     // On coupe contre les voisins intacts, pas contre les phrases que ce
@@ -412,12 +427,21 @@ final class GapBackfillService {
     final List<TranscriptSegmentEntity> intact = segments
         .where((TranscriptSegmentEntity s) => !gap.replacedIds.contains(s.id))
         .toList();
-    final String? before = _neighbour(intact, marker, before: true)?.text;
-    List<({int offsetMs, String text})> kept = trimOverlaps(
-      pieces,
-      before: before,
-      after: _neighbour(intact, marker, before: false)?.text,
+    final TranscriptSegmentEntity? left = _neighbour(
+      intact,
+      marker,
+      before: true,
     );
+    String? before = left?.text;
+    // L'union d'avant, rendue juste avant, est le vrai voisin : leurs marges
+    // se recoupent, une phrase à la jonction ne doit pas revenir deux fois.
+    final TranscriptSegmentEntity? recovered = _lastRecovered[gap.source];
+    if (recovered != null &&
+        recovered.timestampMs <= gap.endMs &&
+        (left == null || recovered.timestampMs >= left.timestampMs)) {
+      before = recovered.text;
+    }
+    final String? after = _neighbour(intact, marker, before: false)?.text;
     // Exception : une phrase qui commence à la fin de la perte ou après, et
     // dont le début se retrouve tel quel dans le texte rattrapé, est intacte
     // (gap_backfill_overlap_test) : on la garde et on retire le doublon.
@@ -445,35 +469,137 @@ final class GapBackfillService {
                       a.timestampMs.compareTo(b.timestampMs),
                 ))
               .firstOrNull;
-    if (edge != null) {
-      final List<({int offsetMs, String text})> withEdge = trimOverlaps(
-        pieces,
-        before: before,
-        after: edge.text,
-      );
-      if (!_sameTexts(withEdge, trimOverlaps(pieces, before: before))) {
-        kept = withEdge;
-        _intactEdges.add(edge.id);
-      }
-    }
-    if (kept.isEmpty) return _Part.nothingNew;
-    // Ids d'avant pour le premier morceau (un repère non coupé ne change pas).
     final String prefix = part == 0
         ? '${gap.markerId}_backfill_'
         : '${gap.markerId}_backfill_p${part}_';
-    for (int k = 0; k < kept.length; k++) {
-      await _transcripts.save(
-        TranscriptSegmentEntity(
-          id: '$prefix$k',
-          sessionId: sessionId,
-          source: gap.source,
-          text: kept[k].text,
-          timestampMs: gap.startMs + kept[k].offsetMs,
-          createdAt: clock.now(),
-        ),
+    _Part result = _Part.noAudio;
+    int from = gap.startMs;
+    while (from < gap.endMs) {
+      // Pas de reste trop court : une coupe juste avant laisserait un bout
+      // de repère sans parole, jamais rattrapé.
+      int until = from + slice.inMilliseconds;
+      if (gap.endMs - until < _minTail.inMilliseconds) until = gap.endMs;
+      final Uint8List? read = await _readPcm(path, from, until);
+      if (read == null || read.isEmpty) break;
+      final Uint8List pcm = until < gap.endMs ? _cutAtSilence(read) : read;
+      final int to = from + pcm.length ~/ 32;
+      final bool first = from == gap.startMs;
+      final bool last = to >= gap.endMs;
+      List<({int offsetMs, String text})> pieces;
+      try {
+        pieces = await _transcriber.transcribe(pcm);
+      } on TranscriberUnavailable catch (e) {
+        _log.info('Rattrapage de ${gap.markerId} reporté: $e');
+        return result == _Part.saved ? _Part.cut : _Part.unavailable;
+      } on SocketException catch (e) {
+        _log.info('Rattrapage de ${gap.markerId} reporté (serveur absent): $e');
+        return result == _Part.saved ? _Part.cut : _Part.unavailable;
+      } catch (e) {
+        _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
+        return result == _Part.saved ? _Part.cut : _Part.failed;
+      }
+      List<({int offsetMs, String text})> kept = trimOverlaps(
+        pieces,
+        before: before,
+        after: last ? after : null,
       );
+      if (edge != null) {
+        final List<({int offsetMs, String text})> withEdge = trimOverlaps(
+          pieces,
+          before: before,
+          after: edge.text,
+        );
+        if (!_sameTexts(withEdge, trimOverlaps(pieces, before: before))) {
+          kept = withEdge;
+          _intactEdges.add(edge.id);
+        }
+      }
+      // Le départ recule dans la phrase intacte d'avant : le premier morceau
+      // n'est souvent que sa fin, avec un mot qui diffère ou un début abîmé
+      // (sonde 9 : « L'Omavois, puis la gardienne… »). Un morceau d'avant la
+      // perte presque tout entier dans ce voisin (60 % de ses mots, dans
+      // l'ordre) est écarté ; celui qui dit autre chose reste.
+      // ponytail: coupe sur le texte ; partir du premier silence entre
+      // phrases (WAV) serait la racine, si le banc avait de vrais silences.
+      // Même chose au début d'une tranche suivante : la fin d'une phrase déjà
+      // rendue entière par la tranche d'avant.
+      if (before != null &&
+          kept.isNotEmpty &&
+          (first
+              ? gap.startMs + kept.first.offsetMs < marker.timestampMs
+              : kept.first.offsetMs < 500) &&
+          _sharedInOrder(kept.first.text, before) >= _tailRepeat) {
+        kept = kept.sublist(1);
+      }
+      if (result == _Part.noAudio) result = _Part.nothingNew;
+      if (kept.isNotEmpty) {
+        result = _Part.saved;
+        _progressed = true;
+        for (int k = 0; k < kept.length; k++) {
+          final int at = from + kept[k].offsetMs;
+          await _transcripts.save(
+            _lastRecovered[gap.source] = TranscriptSegmentEntity(
+              // Par l'heure : une tentative qui reprend n'écrase pas les
+              // tranches déjà rendues ; une reprise du même audio, si.
+              id: '$prefix${at}_$k',
+              sessionId: sessionId,
+              source: gap.source,
+              text: kept[k].text,
+              timestampMs: at,
+              createdAt: clock.now(),
+            ),
+          );
+        }
+        before = kept.last.text;
+        if (!last) {
+          // Ce qui est rendu sort du repère ; les phrases qu'il remplace
+          // partent (rien n'est supprimé avant d'être rendu).
+          for (final String id in gap.replacedIds) {
+            final TranscriptSegmentEntity? s = segments
+                .where((TranscriptSegmentEntity x) => x.id == id)
+                .firstOrNull;
+            if (s != null &&
+                s.timestampMs < to &&
+                !_isMarker(s) &&
+                !_intactEdges.contains(id)) {
+              await _transcripts.deleteById(id);
+            }
+          }
+          if (lostEnd != null && to < lostEnd) {
+            marker = marker.copyWith(
+              text: LiveTranscriptionService.gapMarkerText(to, lostEnd),
+              timestampMs: to,
+            );
+            await _transcripts.save(marker);
+          }
+        }
+      }
+      from = to;
     }
-    return _Part.saved;
+    return result;
+  }
+
+  /// Tranche d'audio d'un appel au transcripteur (plus un reste de moins de
+  /// [_minTail]) : une tentative coupée garde ce qu'elle a rendu (un trou de
+  /// 8 min, sonde 9). Un trou plus court part en un appel, comme avant.
+  // ponytail: borne fixe, coupée au dernier silence de ses 10 s de fin ;
+  // une phrase sans pause à la borne est coupée en deux morceaux.
+  static const Duration slice = Duration(seconds: 100);
+  static const Duration _minTail = Duration(seconds: 15);
+
+  /// [pcm] coupé après le dernier silence (pas de 100 ms) de ses 10
+  /// dernières secondes, pour ne pas couper une phrase ; sinon tel quel.
+  static Uint8List _cutAtSilence(Uint8List pcm) {
+    const int step = 3200;
+    final int chunks = pcm.length ~/ step;
+    for (int c = chunks - 1; c > 0 && c >= chunks - 100; c--) {
+      if (!TranscriptionRemoteDataSourceImpl.isSpeechChunk(
+        Uint8List.sublistView(pcm, c * step, (c + 1) * step),
+      )) {
+        return Uint8List.sublistView(pcm, 0, (c + 1) * step);
+      }
+    }
+    return pcm;
   }
 
   /// Segment en direct (non repère) de la même source juste avant ou juste
@@ -497,6 +623,26 @@ final class GapBackfillService {
       }
     }
     return best;
+  }
+
+  static const double _tailRepeat = 0.6;
+
+  /// Part des mots de [piece], dans l'ordre, retrouvés dans [neighbour].
+  static double _sharedInOrder(String piece, String neighbour) {
+    final List<String> a = _keys(_words(piece));
+    final List<String> b = _keys(_words(neighbour));
+    if (a.isEmpty) return 0;
+    List<int> prev = List<int>.filled(b.length + 1, 0);
+    for (int i = 1; i <= a.length; i++) {
+      final List<int> cur = List<int>.filled(b.length + 1, 0);
+      for (int j = 1; j <= b.length; j++) {
+        cur[j] = a[i - 1] == b[j - 1]
+            ? prev[j - 1] + 1
+            : math.max(prev[j], cur[j - 1]);
+      }
+      prev = cur;
+    }
+    return prev[b.length] / a.length;
   }
 
   // Au moins deux mots communs, sauf si tout le morceau est répété : un
@@ -629,7 +775,9 @@ final class GapBackfillService {
 }
 
 /// Issue d'un morceau de repère.
-enum _Part { noAudio, unavailable, failed, nothingNew, saved }
+// cut : une partie rendue, puis le transcripteur a manqué (la suite reprend
+// à la prochaine tentative, le repère rétréci).
+enum _Part { noAudio, unavailable, failed, nothingNew, saved, cut }
 
 /// Union de repères de perte d'une source : le premier (par début), la fin
 /// la plus tardive, et les autres repères qu'elle absorbe.

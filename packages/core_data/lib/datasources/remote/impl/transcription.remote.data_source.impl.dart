@@ -253,9 +253,9 @@ final class TranscriptionRemoteDataSourceImpl
       ..add(_Outgoing(message, timestampMs, audioMs, window));
     if (live) {
       // Audio jeté par la borne sur la socket vivante : signalé tout de
-      // suite (dès que la plage est close : une perte, pas une par chunk),
-      // pas à la prochaine coupure.
-      _emitGap(source, unacked, closedOnly: true);
+      // suite, et de nouveau à chaque seconde de plus tant que la perte
+      // dure (même début : l'app agrandit le même repère).
+      _emitGap(source, unacked, live: true);
       _pump(source);
     }
   }
@@ -441,22 +441,55 @@ final class TranscriptionRemoteDataSourceImpl
     }
   }
 
-  void _emitGap(
-    AudioSource source,
-    _Unacked unacked, {
-    bool closedOnly = false,
-  }) {
-    final List<_Range> ready = <_Range>[
-      for (final _Range range in unacked.lost)
-        if (!closedOnly || range.closed) range,
-    ];
-    for (final _Range range in ready) {
+  void _emitGap(AudioSource source, _Unacked unacked, {bool live = false}) {
+    for (final _Range range in unacked.lost) {
+      final int? reported = range.reportedEndMs;
+      final bool sameStart = range.reportedStartMs == range.startMs;
+      if (live &&
+          !range.closed &&
+          sameStart &&
+          reported != null &&
+          range.endMs! - reported < _lossReportStepMs) {
+        continue;
+      }
+      if (sameStart && reported == range.endMs) continue;
+      range
+        ..reportedStartMs = range.startMs
+        ..reportedEndMs = range.endMs;
       _gapSubject.add(
-        AudioGap(source: source, startMs: range.startMs!, endMs: range.endMs!),
+        AudioGap(
+          source: source,
+          startMs: range.startMs!,
+          endMs: range.endMs!,
+          episodeStartMs: unacked.episodeStartMs,
+        ),
       );
     }
-    unacked.lost.removeWhere(ready.contains);
+    unacked.lost.removeWhere((_Range r) => !live || r.closed);
+    // Perte qui dure sans audio encore déclaré perdu (seul de l'audio déjà
+    // parti est jeté) : un signalement vide la montre quand même, de son
+    // début à son dernier audio jeté.
+    final int? end = unacked.episodeEndMs;
+    final int? reported = unacked.reportedEpisodeEndMs;
+    if (live &&
+        end != null &&
+        (reported == null || end - reported >= _lossReportStepMs)) {
+      unacked.reportedEpisodeEndMs = end;
+      final int start = unacked.episodeStartMs!;
+      _gapSubject.add(
+        AudioGap(
+          source: source,
+          startMs: start,
+          endMs: start,
+          episodeStartMs: start,
+          episodeEndMs: end,
+        ),
+      );
+    }
   }
+
+  // Une perte qui dure est re-signalée à chaque seconde d'audio perdu.
+  static const int _lossReportStepMs = 1000;
 
   /// Ferme les coupures et vide le tampon : tout ce qui n'a pas son `done`,
   /// envoyé ou non, devient une perte signalée (une par source). Aucune voie
@@ -471,6 +504,7 @@ final class TranscriptionRemoteDataSourceImpl
       _outages[source] = null;
       final _Unacked unacked = _unacked[source]!..loseAll();
       _emitGap(source, unacked);
+      unacked._endEpisodeIfCaughtUp(); // tampon vide : la perte est close
     }
   }
 
@@ -799,6 +833,43 @@ class _Unacked {
 
   void _closeLost() {
     if (lost.isNotEmpty) lost.last.closed = true;
+    _endEpisodeIfCaughtUp();
+  }
+
+  /// Début de la perte qui dure : la borne déborde, des phrases passent
+  /// entre deux évictions. Elle finit quand le tampon est revenu sous la
+  /// moitié de la borne (le serveur a rattrapé).
+  int? episodeStartMs;
+
+  /// Fin du dernier audio jeté de la perte qui dure, et fin déjà signalée.
+  int? episodeEndMs;
+  int? reportedEpisodeEndMs;
+
+  void _endEpisodeIfCaughtUp() {
+    if (audioMs <= maxBufferedMs ~/ 2) {
+      episodeStartMs = null;
+      episodeEndMs = null;
+      reportedEpisodeEndMs = null;
+    }
+  }
+
+  /// [startMs, endMs[ jeté par la borne, envoyé ou non : la perte qui dure
+  /// commence au premier audio jeté (l'audio déjà parti n'aura peut-être
+  /// jamais son `done` ; s'il vient, le rattrapage le remplace par le temps).
+  void _extendEpisode(int startMs, int endMs) {
+    // Une éviction loin après la précédente (plus que la borne) ouvre une
+    // nouvelle perte : un repère n'enjambe pas des minutes de bon texte.
+    if (episodeEndMs != null && startMs > episodeEndMs! + maxBufferedMs) {
+      episodeStartMs = null;
+      episodeEndMs = null;
+      reportedEpisodeEndMs = null;
+    }
+    episodeStartMs = episodeStartMs == null
+        ? startMs
+        : math.min(episodeStartMs!, startMs);
+    episodeEndMs = episodeEndMs == null
+        ? endMs
+        : math.max(episodeEndMs!, endMs);
   }
 
   /// Nouvelle socket : rien n'y est encore écrit.
@@ -844,8 +915,9 @@ class _Unacked {
       final _Outgoing item = queue.removeFirst();
       audioMs -= item.audioMs;
       if (_sentCount > 0) _forgetSent(item);
-      if (item.window != null) return;
+      if (item.window != null) break;
     }
+    _endEpisodeIfCaughtUp();
   }
 
   /// La socket est tombée : l'audio jeté après envoi ne sera pas transcrit.
@@ -880,6 +952,7 @@ class _Unacked {
   void _evict(_Outgoing item, {required bool sent}) {
     audioMs -= item.audioMs;
     final int? at = item.timestampMs;
+    if (at != null) _extendEpisode(at, at + item.audioMs);
     if (!sent) {
       if (at != null) _markLost(at, at + item.audioMs);
       return;
@@ -896,6 +969,7 @@ class _Unacked {
   }
 
   void _markLost(int startMs, int endMs) {
+    _extendEpisode(startMs, endMs);
     if (lost.isEmpty || lost.last.closed) lost.add(_Range());
     final _Range range = lost.last;
     range.startMs = range.startMs == null
@@ -910,4 +984,7 @@ class _Range {
   int? startMs;
   int? endMs;
   bool closed = false;
+  // Plage déjà signalée (perte qui dure, sur socket vivante).
+  int? reportedStartMs;
+  int? reportedEndMs;
 }

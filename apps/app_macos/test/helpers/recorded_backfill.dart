@@ -14,7 +14,7 @@ import 'live_service_fakes.dart';
 
 /// Session enregistrée par une sonde : l'état rangé avant le rattrapage
 /// (repères compris), le texte que le vrai rattrapage a rendu (heures de
-/// réunion) et le début de chaque intervalle qu'il a retranscrit.
+/// réunion), chaque intervalle qu'il a retranscrit et le texte lu.
 final class RecordedSession {
   const RecordedSession({
     required this.name,
@@ -22,10 +22,15 @@ final class RecordedSession {
     required this.stored,
     required this.recovered,
     required this.recordedStarts,
+    this.reference = probeReference,
   });
 
-  factory RecordedSession.fromScenario(ProbeScenario sc) => RecordedSession(
+  factory RecordedSession.fromScenario(
+    ProbeScenario sc, {
+    List<ProbeSentence> reference = probeReference,
+  }) => RecordedSession(
     name: sc.name,
+    reference: reference,
     sessionId: sc.sessionId,
     stored: <TranscriptSegmentEntity>[
       for (final ProbeSegment s in sc.segments)
@@ -60,9 +65,9 @@ final class RecordedSession {
             text: p.text,
           ),
     ],
-    recordedStarts: <({String source, int startMs})>[
+    recordedStarts: <RecordedInterval>[
       for (final ProbeGap g in sc.gaps)
-        (source: g.source, startMs: g.planStartMs),
+        (source: g.source, startMs: g.planStartMs, endMs: g.markerEndMs + 1000),
     ],
   );
 
@@ -78,10 +83,15 @@ final class RecordedSession {
               (startMs: s.timestampMs, endMs: markerRange(s.text)!.endMs),
         ]..sort((a, b) => a.startMs.compareTo(b.startMs));
     final List<int> starts = <int>[];
+    final List<int> ends = <int>[];
     int unionEnd = -1;
     for (final ({int startMs, int endMs}) r in ranges) {
-      if (r.startMs > unionEnd) starts.add(r.startMs - 1000);
+      if (r.startMs > unionEnd) {
+        starts.add(r.startMs - 1000);
+        ends.add(r.endMs + 1000);
+      }
       unionEnd = math.max(unionEnd, r.endMs);
+      ends.last = unionEnd + 1000;
     }
     // Chaque morceau rendu appartient à la dernière union commencée avant lui.
     int fromOf(int atMs) => starts.lastWhere(
@@ -111,8 +121,9 @@ final class RecordedSession {
             text: p.text,
           ),
       ],
-      recordedStarts: <({String source, int startMs})>[
-        for (final int s in starts) (source: 'output', startMs: s),
+      recordedStarts: <RecordedInterval>[
+        for (int i = 0; i < starts.length; i++)
+          (source: 'output', startMs: starts[i], endMs: ends[i]),
       ],
     );
   }
@@ -121,7 +132,8 @@ final class RecordedSession {
   final String sessionId;
   final List<TranscriptSegmentEntity> stored;
   final List<RecoveredPiece> recovered;
-  final List<({String source, int startMs})> recordedStarts;
+  final List<RecordedInterval> recordedStarts;
+  final List<ProbeSentence> reference;
 
   Set<AudioSource> get sources => <AudioSource>{
     for (final TranscriptSegmentEntity s in stored) s.source,
@@ -139,6 +151,9 @@ final class RecordedSession {
 /// Morceau rendu par le vrai rattrapage : sa source, le début de
 /// l'intervalle retranscrit qui l'a rendu, son heure de réunion, son texte.
 typedef RecoveredPiece = ({String source, int fromMs, int atMs, String text});
+
+/// Intervalle que le vrai rattrapage a retranscrit.
+typedef RecordedInterval = ({String source, int startMs, int endMs});
 
 AudioSource sourceOf(String s) =>
     s == 'input' ? AudioSource.input : AudioSource.output;
@@ -204,11 +219,15 @@ Future<InMemoryTranscriptRepository> runRecordedBackfill(
   }
 }
 
-/// Le serveur du rattrapage, d'après ce qu'il a réellement rendu : pour un
-/// intervalle qui commence là où le vrai rattrapage a commencé (à 1,5 s
-/// près), les morceaux que cet intervalle-là a rendus ; pour tout autre intervalle
-/// (élargi, déplacé), les phrases lues dans cet audio (texte de référence),
-/// comme le ferait le serveur.
+/// Le serveur du rattrapage, d'après ce qu'il a réellement rendu.
+/// - Intervalle qui commence là où le vrai a commencé (à 1,5 s près) : les
+///   morceaux que celui-ci a rendus.
+/// - Intervalle qui commence PLUS TARD, dans un intervalle enregistré : ses
+///   morceaux qui commencent dans l'audio demandé (au plus 0,5 s avant) ;
+///   ceux d'avant n'y sont pas entendus.
+/// - Sinon (élargi, déplacé ailleurs) : les phrases lues dans cet audio ;
+///   une phrase déjà commencée au début demandé rend sa fin (part des mots
+///   au prorata du temps), comme le vrai serveur.
 final class RecordedTranscriber implements PcmTranscriber {
   RecordedTranscriber(this.session);
 
@@ -220,26 +239,52 @@ final class RecordedTranscriber implements PcmTranscriber {
     final String source = v % 4 == 1 ? 'input' : 'output';
     final int startMs = (v ~/ 4) * 100;
     final int endMs = startMs + pcm.length ~/ 32;
-    final bool replay = session.recordedStarts.any(
-      (({String source, int startMs}) r) =>
-          r.source == source && (r.startMs - startMs).abs() <= 1500,
-    );
-    if (replay) {
+    final RecordedInterval? same = session.recordedStarts
+        .where(
+          (RecordedInterval r) =>
+              r.source == source && (r.startMs - startMs).abs() <= 1500,
+        )
+        .firstOrNull;
+    if (same != null) {
       return <({int offsetMs, String text})>[
         for (final RecoveredPiece p in session.recovered)
           if (p.source == source &&
-              (p.fromMs - startMs).abs() <= 1500 &&
+              (p.fromMs - same.startMs).abs() <= 1500 &&
+              p.atMs < endMs)
+            (offsetMs: math.max(0, p.atMs - startMs), text: p.text),
+      ];
+    }
+    final RecordedInterval? inside = session.recordedStarts
+        .where(
+          (RecordedInterval r) =>
+              r.source == source && r.startMs < startMs && startMs < r.endMs,
+        )
+        .firstOrNull;
+    if (inside != null) {
+      return <({int offsetMs, String text})>[
+        for (final RecoveredPiece p in session.recovered)
+          if (p.source == source &&
+              (p.fromMs - inside.startMs).abs() <= 1500 &&
+              p.atMs >= startMs - 500 &&
               p.atMs < endMs)
             (offsetMs: math.max(0, p.atMs - startMs), text: p.text),
       ];
     }
     return <({int offsetMs, String text})>[
-      for (final ProbeSentence r in probeReference)
-        if (r.source == source &&
-            r.startMs >= startMs - 500 &&
-            r.startMs < endMs)
-          (offsetMs: math.max(0, r.startMs - startMs), text: r.text),
+      for (final ProbeSentence r in session.reference)
+        if (r.source == source && r.startMs < endMs && r.endMs > startMs + 500)
+          if (r.startMs >= startMs - 500)
+            (offsetMs: math.max(0, r.startMs - startMs), text: r.text)
+          else
+            (offsetMs: 0, text: _tail(r, startMs)),
     ];
+  }
+
+  static String _tail(ProbeSentence r, int fromMs) {
+    final List<String> all = r.text.split(' ');
+    final int skip = (all.length * (fromMs - r.startMs) / (r.endMs - r.startMs))
+        .round();
+    return all.skip(skip).join(' ');
   }
 }
 

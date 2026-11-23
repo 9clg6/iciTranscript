@@ -481,8 +481,9 @@ final class FakeVoxServer {
 
   /// Serveur séquentiel (comme le vrai, sonde 2026-11-22) : il traite
   /// l'audio de toutes les sockets dans une seule file, [speed] fois plus
-  /// vite que le temps réel. Null : réponse en 400 ms, sans file.
-  final double? speed;
+  /// vite que le temps réel. Null : réponse en 400 ms, sans file. Peut
+  /// changer en cours de test (serveur durablement ralenti puis rétabli).
+  double? speed;
   Duration _busyUntil = Duration.zero;
 
   /// Met [audio] dans la file ; rend l'instant où il aura été traité.
