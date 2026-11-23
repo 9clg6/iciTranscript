@@ -991,10 +991,18 @@ final class LiveTranscriptionService {
     start = _cutStart(source, start);
     final List<({String id, int start, int end})> markers = _gapMarkers
         .putIfAbsent(source, () => <({String id, int start, int end})>[]);
+    // L'audio en souffrance qui recoupe la perte porte déjà un repère : la
+    // perte s'y fond, sous son id, avec les pertes déjà déclarées sous cet
+    // id (sonde 11 : sinon deux entrées du même id, et le repère se
+    // réduisait à la première, sous l'audio jamais rendu).
+    final ({String id, int start, int end})? waiting = _waitingMarkers[source];
+    final bool intoWaiting =
+        waiting != null && waiting.start <= end && start <= waiting.end;
     final List<({String id, int start, int end})> touched = markers
         .where(
           (({String id, int start, int end}) m) =>
-              m.start <= end && start <= m.end,
+              (m.start <= end && start <= m.end) ||
+              (intoWaiting && m.id == waiting.id),
         )
         .toList();
     int from = start;
@@ -1003,11 +1011,6 @@ final class LiveTranscriptionService {
       if (m.start < from) from = m.start;
       if (m.end > to) to = m.end;
     }
-    // L'audio en souffrance qui recoupe la perte porte déjà un repère : la
-    // perte s'y fond, sous son id.
-    final ({String id, int start, int end})? waiting = _waitingMarkers[source];
-    final bool intoWaiting =
-        waiting != null && waiting.start <= to && from <= waiting.end;
     final String id = intoWaiting
         ? waiting.id
         : touched.isEmpty
