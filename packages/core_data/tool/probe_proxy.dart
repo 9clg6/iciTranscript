@@ -75,6 +75,7 @@ class Proxy {
   }
 
   Future<void> _onClient(Socket client) async {
+    unawaited(client.done.then<void>((_) {}, onError: (Object _) {}));
     log('proxy_accept', <String, Object?>{'src': name});
     if (acceptDelay > Duration.zero) {
       final Duration d = acceptDelay;
@@ -103,6 +104,10 @@ class Proxy {
       }
     }
 
+    // Socket errors (resets) surface on `done`; they end the pair, never
+    // the harness.
+    unawaited(client.done.then<void>((_) {}, onError: (Object _) {}));
+    unawaited(up.done.then<void>((_) {}, onError: (Object _) {}));
     final List<Object> pair = <Object>[client, up];
     void closedBy(String side) {
       if (!_cutPairs.contains(pair)) {
