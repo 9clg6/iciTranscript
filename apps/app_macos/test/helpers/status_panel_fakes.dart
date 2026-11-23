@@ -111,7 +111,7 @@ class PanelLiveViewModel extends FakeLiveTranscriptionViewModel {
   /// Journal partageable (ordre arrêt / fin de l'app).
   List<String> log = <String>[];
 
-  /// Si non nul, `startSession` attend ce futur avant de finir.
+  /// Si non nul, `startSession` attend ce futur avant de démarrer.
   Completer<void>? startGate;
 
   /// Si non nul, `stopSession` attend ce futur (vidange) avant de remettre
@@ -123,11 +123,13 @@ class PanelLiveViewModel extends FakeLiveTranscriptionViewModel {
   @override
   void linkNextNoteTo(CalendarEvent event) => linked.add(event);
 
+  /// Comme le vrai : l'état ne passe à « enregistre » qu'après une attente
+  /// (post-traitement de la note précédente), ici [startGate].
   @override
   Future<void> startSession() async {
+    await startGate?.future;
     await super.startSession();
     log.add('live.start');
-    await startGate?.future;
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:core_data/model/utterance_window.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -73,17 +75,21 @@ void main() {
       .map((Object? l) => (l! as Map<Object?, Object?>)['text'])
       .toList();
 
+  // Temps réel : borne large (cf. specs de l'agenda).
+  Future<void> soon(FutureOr<void> Function() check) =>
+      eventually(check, timeout: const Duration(seconds: 10));
+
   Future<void> startFromPanel() async {
-    await eventually(() => expect(panel.updates, isNotEmpty));
+    await soon(() => expect(panel.updates, isNotEmpty));
     await panel.send('start');
-    await eventually(() => expect(last()['status'], 'recording'));
+    await soon(() => expect(last()['status'], 'recording'));
   }
 
   test('« start » du panneau : une vraie note démarre, son titre est '
       'envoyé', () async {
     await startFromPanel();
 
-    await eventually(() {
+    await soon(() {
       expect(live.sessions.store.values, hasLength(1));
       expect(last()['title'], live.sessions.store.values.single.title);
     });
@@ -97,7 +103,7 @@ void main() {
 
       live.fakeRemote.emitDone(AudioSource.output, 'Le devis part demain.');
 
-      await eventually(() => expect(tail(), contains('Le devis part demain.')));
+      await soon(() => expect(tail(), contains('Le devis part demain.')));
     },
   );
 
@@ -115,10 +121,10 @@ void main() {
       'DICTÉE-PANNEAU rappeler le fournisseur',
       window: UtteranceWindow(startMs: pressAt + 50, endMs: pressAt + 90),
     );
-    await eventually(() => expect(dictated, isNotEmpty));
+    await soon(() => expect(dictated, isNotEmpty));
     live.fakeRemote.emitDone(AudioSource.output, 'On passe au point suivant.');
 
-    await eventually(() {
+    await soon(() {
       expect(tail(), contains('On passe au point suivant.'));
       expect(last()['dictating'], isTrue);
     });
@@ -137,10 +143,10 @@ void main() {
 
     await panel.send('stop');
 
-    await eventually(() {
+    await soon(() {
       expect(c.read(liveTranscriptionViewModelProvider).isRecording, isFalse);
       expect(last()['status'], 'idle');
-    }, timeout: const Duration(seconds: 15));
+    });
     expect(live.audio.stopCalls, 1);
   });
 }
