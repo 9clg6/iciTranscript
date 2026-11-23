@@ -9,6 +9,7 @@ import 'package:ici_transcript/application/services/live_answers/live_question.d
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/question_answer.widget.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
@@ -215,11 +216,7 @@ class _QuestionCard extends StatelessWidget {
   }
 
   static String _speaker(LiveQuestion q, int? n) =>
-      q.source == AudioSource.input
-      ? LocaleKeys.transcription_live_speaker_me.tr()
-      : n == null
-      ? LocaleKeys.transcription_live_speaker_system.tr()
-      : LocaleKeys.transcription_live_speaker_n.tr(args: <String>['${n + 1}']);
+      liveSpeakerLabel(q.source, n);
 
   // Le générateur d'easy_localization ne crée pas de constante pour une clé
   // nommée « other » (mot réservé des pluriels).
