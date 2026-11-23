@@ -88,23 +88,28 @@ final class TranscriptionService {
   /// Sauvegarde un segment de transcription et met a jour le stream.
   ///
   /// Un segment de meme id (provisoire) est remplace, en base et a l'ecran.
-  Future<void> saveSegment(TranscriptSegmentEntity segment) async {
+  ///
+  /// Rend vrai si le segment est rangé.
+  Future<bool> saveSegment(TranscriptSegmentEntity segment) async {
     final ResultState<TranscriptSegmentEntity> result =
         await _saveTranscriptSegmentUseCase.execute(segment);
-    result.when(
-      success: (TranscriptSegmentEntity savedSegment) {
-        final List<TranscriptSegmentEntity> currentSegments =
-            List<TranscriptSegmentEntity>.from(segmentsStream.value)
-              ..removeWhere(
-                (TranscriptSegmentEntity s) => s.id == savedSegment.id,
-              );
-        currentSegments.add(savedSegment);
-        segmentsStream.add(currentSegments);
-      },
-      failure: (Exception e) {
-        _log.error('Erreur sauvegarde segment', e);
-      },
-    );
+    return result.when<bool>(
+          success: (TranscriptSegmentEntity savedSegment) {
+            final List<TranscriptSegmentEntity> currentSegments =
+                List<TranscriptSegmentEntity>.from(segmentsStream.value)
+                  ..removeWhere(
+                    (TranscriptSegmentEntity s) => s.id == savedSegment.id,
+                  );
+            currentSegments.add(savedSegment);
+            segmentsStream.add(currentSegments);
+            return true;
+          },
+          failure: (Exception e) {
+            _log.error('Erreur sauvegarde segment', e);
+            return false;
+          },
+        ) ??
+        false;
   }
 
   /// Sauve en base la phrase en cours, sans la montrer : l'ecran garde son

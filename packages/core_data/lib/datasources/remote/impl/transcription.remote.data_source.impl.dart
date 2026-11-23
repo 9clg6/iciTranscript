@@ -150,6 +150,9 @@ final class TranscriptionRemoteDataSourceImpl
     _systemConnected = systemAudioEnabled;
     _clearOutages();
     _resetUtteranceState();
+    // Une nouvelle séance repart de la borne de 10 s : l'app vit des jours
+    // dans la barre des menus, un serveur lent d'hier ne compte plus.
+    _learnedSlowAccepts.updateAll((_, _) => 0);
     if (_closedSubscriptions.isEmpty) {
       _closedSubscriptions
         ..add(_mic.onClosed.listen((_) => _onSocketClosed(AudioSource.input)))
@@ -335,11 +338,21 @@ final class TranscriptionRemoteDataSourceImpl
     _unacked[source]!
       ..sentEvictionsLost()
       ..resetSent();
-    final _Outage outage = _Outage();
+    // La borne qui a réussi la dernière fois pour cette source : un serveur
+    // lent l'est encore (sonde 7 : repartir de 10 s coûtait une tentative
+    // ratée par coupure).
+    final _Outage outage = _Outage()
+      ..slowAccepts = _learnedSlowAccepts[source]!;
     _outages[source] = outage;
     _connectionStateSubject.add(domain.ConnectionState.connecting);
     _scheduleReconnect(source, outage);
   }
+
+  // Par source : nombre de doublements de la borne qui a réussi en dernier.
+  final Map<AudioSource, int> _learnedSlowAccepts = <AudioSource, int>{
+    AudioSource.input: 0,
+    AudioSource.output: 0,
+  };
 
   Duration _handshakeBound(int slowAccepts) {
     final Duration bound =
@@ -361,6 +374,12 @@ final class TranscriptionRemoteDataSourceImpl
     final WebSocketClient client = _client(source);
     final Duration bound = _handshakeBound(outage.slowAccepts);
     client.handshakeTimeout = bound;
+    // Vrai si l'accueil prend plus que la première borne (10 s).
+    bool slowAccept = false;
+    final Timer slowMark = Timer(
+      WebSocketClient.connectTimeout,
+      () => slowAccept = true,
+    );
     try {
       // Une seule tentative à la fois : la suivante ne part qu'une fois
       // celle-ci finie ou expirée. Une poignée de main sans fin est
@@ -368,6 +387,7 @@ final class TranscriptionRemoteDataSourceImpl
       // ne jamais rendre la main).
       await client.connect(_url).timeout(bound);
     } on TimeoutException {
+      slowMark.cancel();
       // Accueil lent, pas refus : on réessaie tout de suite, plus patient,
       // sans ajouter d'attente à celle déjà subie.
       if (identical(_outages[source], outage)) {
@@ -376,11 +396,16 @@ final class TranscriptionRemoteDataSourceImpl
       }
       return;
     } catch (_) {
+      slowMark.cancel();
       if (identical(_outages[source], outage)) {
         _scheduleReconnect(source, outage);
       }
       return;
     }
+    slowMark.cancel();
+    // Retenir ce qui a marché : la borne de cette tentative si l'accueil a
+    // été lent, la première (10 s) sinon.
+    _learnedSlowAccepts[source] = slowAccept ? outage.slowAccepts : 0;
     // Session close ou relancée pendant la connexion.
     if (!identical(_outages[source], outage)) return;
 
