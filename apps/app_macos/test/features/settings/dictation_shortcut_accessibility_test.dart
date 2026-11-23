@@ -49,7 +49,10 @@ import '../../helpers/settings_fakes.dart';
 ///   pas besoin de l'Accessibilité ; la ligne Accessibilité du bas reste) ;
 /// - jamais muet : au retour des Réglages Système avec l'Accessibilité
 ///   accordée (`refreshAccessibility`, appelé à la reprise de l'app), le
-///   raccourci est reposé et marche, sans le réenregistrer.
+///   raccourci est reposé et marche, sans le réenregistrer ;
+/// - et même Réglages fermés (revue PR #29) : après un refus
+///   `ACCESSIBILITY_REQUIRED`, chaque retour au premier plan de l'app
+///   (cycle de vie `resumed`) retente la pose, sans relancer l'app.
 void main() {
   late FakeGlobalShortcutChannel shortcuts;
   late FakeTextOutputChannel output;
@@ -254,5 +257,53 @@ void main() {
         ShortcutStatus.registered,
       );
     });
+  });
+
+  testWidgets('Réglages fermés : l app revient au premier plan avec '
+      'l Accessibilité accordée, ⌘⌥ est reposé sans relancer', (
+    WidgetTester tester,
+  ) async {
+    saveModifierOnlyByHand();
+    shortcuts.registerModifiersResult = false;
+    final ProviderContainer container = ProviderContainer(
+      overrides: <Override>[
+        databaseProvider.overrideWithValue(
+          AppDatabase(NativeDatabase.memory()),
+        ),
+        processManagerChannelProvider.overrideWithValue(
+          FakeProcessManagerChannel(),
+        ),
+        audioCaptureChannelProvider.overrideWithValue(
+          FakeAudioCaptureChannel(),
+        ),
+        globalShortcutChannelProvider.overrideWithValue(shortcuts),
+        textOutputChannelProvider.overrideWithValue(output),
+      ],
+    );
+    addTearDown(container.dispose);
+    ShortcutStatus status() =>
+        container.read(dictationControllerProvider).shortcutStatus;
+
+    await tester.runAsync(() async {
+      await container.read(kernelProvider.future);
+      await eventually(
+        () => expect(status(), ShortcutStatus.needsAccessibility),
+      );
+    });
+
+    // L'utilisateur accorde l'Accessibilité dans les Réglages Système, puis
+    // revient à l'app (aucun écran de Réglages ouvert).
+    output.trusted = true;
+    shortcuts.registerModifiersResult = true;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    await tester.runAsync(
+      () => eventually(() {
+        expect(status(), ShortcutStatus.registered);
+        expect(shortcuts.registeredModifiers.last, 2304);
+      }),
+    );
   });
 }
