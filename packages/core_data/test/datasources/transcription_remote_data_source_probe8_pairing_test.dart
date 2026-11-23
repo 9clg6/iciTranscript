@@ -28,7 +28,13 @@ import '../helpers/fake_websocket_client.dart';
 /// non envoyée de k ET son commit final (« commit resté en tête »), donc sa
 /// fenêtre ; le commit de k+1 part ensuite, et le `done` du serveur, qui
 /// transcrit l'audio reçu de k, prend la fenêtre de k+1. La fin jetée de k
-/// n'est même pas signalée.
+/// n'est signalée qu'à la coupure suivante (sonde 8 : fermeture à 295 s,
+/// perte 1:49–1:58 = fin de 11 + 12).
+///
+/// Preuve (svc_Dlag.jsonl) : une seule connexion de 215,7 s à 295,0 s ; les
+/// `done` de 8, 9, 10 ont pris 74,3 / 83,7 / 92,8 s ; celui de 11 (texte
+/// entier) a pris 111,6 s : la fenêtre de 11 n'est jamais entrée dans la
+/// file d'attente — seule voie : le commit final de 11 jeté non envoyé.
 ///
 /// Attendu : un `done` ne reçoit JAMAIS la fenêtre d'une phrase plus
 /// récente que celle qu'il transcrit (la fenêtre commence au plus tard au
@@ -39,27 +45,7 @@ void main() {
   test('sous le calendrier de la sonde 8, chaque done garde la fenêtre de sa '
       'propre phrase', () {
     fakeAsync((FakeAsync async) {
-      final DataSourceBench b = DataSourceBench(async);
-      // Serveur séquentiel, plus lent que le temps réel pendant le
-      // rattrapage (machine chargée) : le tampon déborde pendant que la
-      // phrase en tête est en vol.
-      final _SlowServer server = _SlowServer(async)..attach(b.system);
-      for (int id = 0; id < 3000; id++) {
-        if (id == 200) server.lag = const Duration(seconds: 40);
-        if (id == 600) {
-          b.system
-            ..accepting = false
-            ..drop();
-        }
-        if (id == 610) server.lag = Duration.zero;
-        if (id == 2100) b.system.accepting = true;
-        if (id == 2300) server.lag = const Duration(seconds: 30);
-        b.tick(
-          id,
-          voiced: <AudioSource, bool>{AudioSource.output: id % 100 < 75},
-        );
-      }
-      async.elapse(const Duration(minutes: 2));
+      final DataSourceBench b = _replayProbe8(async);
 
       // Un seul abonné au flux (le banc) : le décodage est fait par abonné.
       final List<TranscriptEventRemoteModel> done = b.systemEvents
@@ -83,9 +69,16 @@ void main() {
         }
       }
       expect(wrong, isEmpty, reason: wrong.join('\n'));
+    });
+  });
 
-      // Et rien n'est perdu en silence : chaque chunk voisé est transcrit ou
-      // couvert par une perte signalée.
+  test('sous le même calendrier, à l\'arrêt, chaque chunk voisé est transcrit '
+      'ou couvert par une perte signalée', () {
+    fakeAsync((FakeAsync async) {
+      final DataSourceBench b = _replayProbe8(async);
+      unawaited(b.dataSource.disconnect());
+      async.flushMicrotasks();
+
       final List<int> silent = <int>[
         for (int id = 0; id < 2900; id++)
           if (id % 100 < 75 &&
@@ -102,6 +95,28 @@ void main() {
       );
     });
   });
+}
+
+DataSourceBench _replayProbe8(FakeAsync async) {
+  final DataSourceBench b = DataSourceBench(async);
+  // Serveur séquentiel, plus lent que le temps réel pendant le
+  // rattrapage (machine chargée) : le tampon déborde pendant que la
+  // phrase en tête est en vol.
+  final _SlowServer server = _SlowServer(async)..attach(b.system);
+  for (int id = 0; id < 3000; id++) {
+    if (id == 200) server.lag = const Duration(seconds: 40);
+    if (id == 600) {
+      b.system
+        ..accepting = false
+        ..drop();
+    }
+    if (id == 610) server.lag = Duration.zero;
+    if (id == 2100) b.system.accepting = true;
+    if (id == 2300) server.lag = const Duration(seconds: 30);
+    b.tick(id, voiced: <AudioSource, bool>{AudioSource.output: id % 100 < 75});
+  }
+  async.elapse(const Duration(minutes: 2));
+  return b;
 }
 
 /// File unique, [speed] fois le temps réel, plus un retard [lag] des
