@@ -1,12 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:clock/clock.dart' as wall;
+import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
+import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
 
 import '../../../helpers/dictation_fakes.dart';
+import '../../../helpers/live_service_fakes.dart';
 
 /// Dictée avec un raccourci « modificateurs seuls » (⌘⌥, sans autre touche),
 /// demandé par l'utilisateur (« un raccourci à deux touches »).
@@ -25,6 +31,10 @@ import '../../../helpers/dictation_fakes.dart';
 ///     PAS arrêtée par cet appui : elle continue, un appui bref suivant
 ///     l'arrête comme d'habitude ;
 ///   - un `released` égaré après `aborted` ne fait rien ;
+/// - pendant un enregistrement (dictée prise sur le micro de la réunion) :
+///   même règle, l'enregistrement continue ; ce que devient la phrase de
+///   réunion dite pendant un appui abandonné (note ou exclue comme une
+///   dictée annulée) n'est pas tranché ici ;
 /// - Échap (`cancel`) annule toujours une dictée en cours ;
 /// - Accessibilité absente : le plugin refuse, l'état du raccourci dit
 ///   `ShortcutStatus.needsAccessibility` (jamais « déjà pris », jamais
@@ -274,7 +284,7 @@ void main() {
 
         d.launch(clipboardMode);
 
-        expect(d.shortcuts.registeredModifiers, <int>[2304]);
+        expect(d.shortcuts.registered, isEmpty);
         expect(
           d.controller.shortcutStatus,
           ShortcutStatus.needsAccessibility,
@@ -295,10 +305,104 @@ void main() {
         unawaited(d.controller.apply(clipboardMode));
         async.elapse(Duration.zero);
 
-        expect(d.shortcuts.registeredModifiers, <int>[2304, 2304]);
+        expect(d.shortcuts.registeredModifiers.last, 2304);
         expect(d.controller.shortcutStatus, ShortcutStatus.registered);
         d.press();
         expect(d.state, isA<DictationListening>());
+      });
+    });
+  });
+
+  group('pendant un enregistrement', () {
+    late LiveServiceHarness h;
+    late DictationHarness d;
+    late FakeAsync clock;
+    int id = 0;
+
+    setUp(() {
+      final Directory dir = Directory(LiveTranscriptionService.recordingsDir);
+      expect(dir.path, startsWith(Directory.systemTemp.path));
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+    });
+
+    void setUpIn(FakeAsync async) {
+      clock = async;
+      id = 0;
+      final FakeVoxServer server = FakeVoxServer();
+      final FakeVoxSocket mic = FakeVoxSocket(server)
+        ..reply = (int n) => 'Phrase $n.';
+      h = LiveServiceHarness(
+        async,
+        remote: TranscriptionRemoteDataSourceImpl(
+          micClient: mic,
+          systemClient: FakeVoxSocket(server),
+        ),
+      );
+      d = DictationHarness(async, live: h)..launch(clipboardMode);
+      h.start();
+    }
+
+    /// [count] × 100 ms de micro, voisé ou non.
+    void run(int count, {bool voiced = false}) {
+      for (int i = 0; i < count; i++) {
+        final int ts = wall.clock.now().millisecondsSinceEpoch;
+        h.audio
+          ..emit(chunk(AudioSource.input, id, timestampMs: ts, voiced: voiced))
+          ..emit(chunk(AudioSource.output, id, timestampMs: ts));
+        id++;
+        clock.elapse(const Duration(milliseconds: 100));
+      }
+    }
+
+    void abortIn() {
+      d.shortcuts.emit(ShortcutEvent.aborted);
+      clock.elapse(Duration.zero);
+    }
+
+    test('appui abandonné : aucun texte, l enregistrement continue', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        run(20, voiced: true);
+        run(15);
+
+        d.press();
+        run(3, voiced: true);
+        abortIn();
+        run(20, voiced: true);
+        run(20);
+        async.elapse(const Duration(seconds: 2));
+
+        expect(d.output.log, isEmpty);
+        expect(d.state, isA<DictationIdle>());
+        expect(h.service.isRecording, isTrue);
+        expect(h.audio.stopCalls, 0);
+      });
+    });
+
+    test('dictée en bascule : un appui abandonné ne l arrête pas, un appui '
+        'bref suivant l arrête', () {
+      fakeAsync((FakeAsync async) {
+        setUpIn(async);
+        run(20, voiced: true);
+        run(15);
+
+        d.press();
+        d.release();
+        run(10, voiced: true);
+        d.press();
+        abortIn();
+        run(10, voiced: true);
+        expect(d.state, isA<DictationListening>());
+        expect(d.output.log, isEmpty);
+
+        d.press();
+        d.release();
+        run(20);
+        async.elapse(const Duration(seconds: 2));
+
+        expect(d.state, isA<DictationDone>());
+        expect(d.output.copies, hasLength(1));
+        expect(h.service.isRecording, isTrue);
       });
     });
   });
