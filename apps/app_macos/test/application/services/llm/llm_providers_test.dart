@@ -252,12 +252,19 @@ void main() {
           contentType: c.contentType,
           keepOpen: true,
         );
-        final List<String> received = <String>[];
+        // Attendre le premier morceau (requête arrivée au transport, corps en
+        // cours), pas un délai fixe : sous charge, 50 ms ne suffisaient pas
+        // toujours à Dio pour atteindre le transport, et une annulation
+        // avant l'envoi n'a rien à abandonner (surtout au premier cas du
+        // fichier, Anthropic, à froid).
+        final Completer<void> streaming = Completer<void>();
         final StreamSubscription<String> sub = c
             .build(_dioWith(adapter))
             .streamChat(_request)
-            .listen(received.add, onError: (_) {});
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+            .listen((String _) {
+              if (!streaming.isCompleted) streaming.complete();
+            }, onError: (_) {});
+        await streaming.future.timeout(const Duration(seconds: 10));
 
         await sub.cancel();
 
@@ -265,6 +272,32 @@ void main() {
           adapter.aborted.timeout(const Duration(seconds: 2)),
           completes,
         );
+      });
+
+      test('annuler avant l’envoi : aucune requête ne reste ouverte', () async {
+        final FakeHttpAdapter adapter = FakeHttpAdapter.respond(
+          200,
+          whole(c.stream),
+          contentType: c.contentType,
+          keepOpen: true,
+        );
+        final StreamSubscription<String> sub = c
+            .build(_dioWith(adapter))
+            .streamChat(_request)
+            .listen((_) {}, onError: (_) {});
+
+        await sub.cancel();
+        // La chaîne annulée de Dio se termine par des futures : vider la
+        // file d'événements suffit.
+        await pumpEventQueue();
+
+        if (adapter.request != null) {
+          // La requête a atteint le transport : elle est abandonnée.
+          await expectLater(
+            adapter.aborted.timeout(const Duration(seconds: 2)),
+            completes,
+          );
+        }
       });
 
       test('sans modèle demandé, utilise ${c.defaultModel}', () async {
