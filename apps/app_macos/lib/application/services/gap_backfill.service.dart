@@ -118,6 +118,10 @@ final class GapBackfillService {
         dictated,
         endLimit: u.nextStart,
         startLimit: planned[u.first.source],
+        legacyProvisional: <String>[
+          u.first.id,
+          ...u.others,
+        ].any((String id) => id.endsWith('_pending')),
       )) {
         gaps.add((
           markerId: g.markerId,
@@ -200,6 +204,7 @@ final class GapBackfillService {
     List<DictatedInterval> dictated, {
     int? endLimit,
     int? startLimit,
+    bool legacyProvisional = false,
   }) {
     final int tolerance = edgeTolerance.inMilliseconds;
     final List<TranscriptSegmentEntity> live =
@@ -253,6 +258,40 @@ final class GapBackfillService {
           : last + _afterReplacedSpan.inMilliseconds;
       if (cover > end) end = cover;
     }
+    // Ancien repère provisoire (`_pending`) : son début suivait l'éviction,
+    // l'audio jeté avant lui n'est sous rien (sonde 10, K). On repart du
+    // plus ancien trou de plus de [_legacyHole] entre lignes en direct dans
+    // les [_legacyLookback] d'avant lui (sans passer l'union précédente) ;
+    // les lignes d'après sont retranscrites avec.
+    // ponytail: un long silence avant la coupure est retranscrit aussi. Ne
+    // sert qu'aux bases écrites avant ce correctif.
+    if (legacyProvisional) {
+      final int floor = math.max(
+        startLimit ?? 0,
+        marker.timestampMs - _legacyLookback.inMilliseconds,
+      );
+      final List<TranscriptSegmentEntity> before = live
+          .where(
+            (TranscriptSegmentEntity x) =>
+                x.timestampMs >= floor &&
+                x.timestampMs < marker.timestampMs - tolerance,
+          )
+          .toList();
+      int next = marker.timestampMs;
+      int? hole;
+      for (int i = before.length - 1; i >= 0; i--) {
+        if (next - before[i].timestampMs > _legacyHole.inMilliseconds) hole = i;
+        next = before[i].timestampMs;
+      }
+      if (hole != null) {
+        final int from = before[hole].timestampMs + tolerance;
+        if (from < start) start = from;
+        replaced.insertAll(0, <TranscriptSegmentEntity>[
+          for (final TranscriptSegmentEntity x in before.skip(hole + 1))
+            if (!replaced.contains(x)) x,
+        ]);
+      }
+    }
     // Le recul ne passe pas la fin de l'union précédente (la marge, si).
     if (startLimit != null && start < startLimit) {
       start = math.min(startLimit, marker.timestampMs - margin.inMilliseconds);
@@ -283,6 +322,9 @@ final class GapBackfillService {
         ),
     ];
   }
+
+  static const Duration _legacyHole = Duration(seconds: 20);
+  static const Duration _legacyLookback = Duration(seconds: 240);
 
   /// Repères micro dont la perte tient tout entière dans une dictée : la
   /// réunion n'y a rien perdu (ces mots n'allaient pas à la note).
@@ -525,9 +567,10 @@ final class GapBackfillService {
       // rendue entière par la tranche d'avant.
       if (before != null &&
           kept.isNotEmpty &&
-          (first
-              ? gap.startMs + kept.first.offsetMs < marker.timestampMs
-              : kept.first.offsetMs < 500) &&
+          // Un fragment de fin commence au tout début de l'audio demandé ;
+          // une phrase voisine qui ressemble (mêmes mots) commence plus loin.
+          kept.first.offsetMs < 500 &&
+          (!first || gap.startMs + kept.first.offsetMs < marker.timestampMs) &&
           _sharedInOrder(kept.first.text, before) >= _tailRepeat) {
         kept = kept.sublist(1);
       }
