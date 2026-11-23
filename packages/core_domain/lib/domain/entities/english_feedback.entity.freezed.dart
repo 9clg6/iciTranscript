@@ -310,7 +310,9 @@ mixin _$EnglishFeedbackEntity {
  List<EnglishCorrectionEntity> get corrections;/// Appreciation globale du niveau (optionnelle).
  String? get overall;/// Phrases (ids de segments) dont la partie n'a pas pu être analysée
 /// (lot en échec) : la note propose de réessayer.
- List<String> get unanalyzedSegmentIds;
+ List<String> get unanalyzedSegmentIds;/// Aucune phrase anglaise de l'utilisateur dans la note : rien n'a été
+/// envoyé (la note le dit, ni « Aucune correction » ni erreur).
+ bool get nothingToAnalyse;
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -323,16 +325,16 @@ $EnglishFeedbackEntityCopyWith<EnglishFeedbackEntity> get copyWith => _$EnglishF
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other.corrections, corrections)&&(identical(other.overall, overall) || other.overall == overall)&&const DeepCollectionEquality().equals(other.unanalyzedSegmentIds, unanalyzedSegmentIds));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other.corrections, corrections)&&(identical(other.overall, overall) || other.overall == overall)&&const DeepCollectionEquality().equals(other.unanalyzedSegmentIds, unanalyzedSegmentIds)&&(identical(other.nothingToAnalyse, nothingToAnalyse) || other.nothingToAnalyse == nothingToAnalyse));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(corrections),overall,const DeepCollectionEquality().hash(unanalyzedSegmentIds));
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(corrections),overall,const DeepCollectionEquality().hash(unanalyzedSegmentIds),nothingToAnalyse);
 
 @override
 String toString() {
-  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall, unanalyzedSegmentIds: $unanalyzedSegmentIds)';
+  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall, unanalyzedSegmentIds: $unanalyzedSegmentIds, nothingToAnalyse: $nothingToAnalyse)';
 }
 
 
@@ -343,7 +345,7 @@ abstract mixin class $EnglishFeedbackEntityCopyWith<$Res>  {
   factory $EnglishFeedbackEntityCopyWith(EnglishFeedbackEntity value, $Res Function(EnglishFeedbackEntity) _then) = _$EnglishFeedbackEntityCopyWithImpl;
 @useResult
 $Res call({
- List<EnglishCorrectionEntity> corrections, String? overall, List<String> unanalyzedSegmentIds
+ List<EnglishCorrectionEntity> corrections, String? overall, List<String> unanalyzedSegmentIds, bool nothingToAnalyse
 });
 
 
@@ -360,12 +362,13 @@ class _$EnglishFeedbackEntityCopyWithImpl<$Res>
 
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? corrections = null,Object? overall = freezed,Object? unanalyzedSegmentIds = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? corrections = null,Object? overall = freezed,Object? unanalyzedSegmentIds = null,Object? nothingToAnalyse = null,}) {
   return _then(_self.copyWith(
 corrections: null == corrections ? _self.corrections : corrections // ignore: cast_nullable_to_non_nullable
 as List<EnglishCorrectionEntity>,overall: freezed == overall ? _self.overall : overall // ignore: cast_nullable_to_non_nullable
 as String?,unanalyzedSegmentIds: null == unanalyzedSegmentIds ? _self.unanalyzedSegmentIds : unanalyzedSegmentIds // ignore: cast_nullable_to_non_nullable
-as List<String>,
+as List<String>,nothingToAnalyse: null == nothingToAnalyse ? _self.nothingToAnalyse : nothingToAnalyse // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -450,10 +453,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds,  bool nothingToAnalyse)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _EnglishFeedbackEntity() when $default != null:
-return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case _:
+return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds,_that.nothingToAnalyse);case _:
   return orElse();
 
 }
@@ -471,10 +474,10 @@ return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds,  bool nothingToAnalyse)  $default,) {final _that = this;
 switch (_that) {
 case _EnglishFeedbackEntity():
-return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case _:
+return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds,_that.nothingToAnalyse);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -491,10 +494,10 @@ return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<EnglishCorrectionEntity> corrections,  String? overall,  List<String> unanalyzedSegmentIds,  bool nothingToAnalyse)?  $default,) {final _that = this;
 switch (_that) {
 case _EnglishFeedbackEntity() when $default != null:
-return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case _:
+return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds,_that.nothingToAnalyse);case _:
   return null;
 
 }
@@ -506,7 +509,7 @@ return $default(_that.corrections,_that.overall,_that.unanalyzedSegmentIds);case
 @JsonSerializable()
 
 class _EnglishFeedbackEntity implements EnglishFeedbackEntity {
-  const _EnglishFeedbackEntity({final  List<EnglishCorrectionEntity> corrections = const <EnglishCorrectionEntity>[], this.overall, final  List<String> unanalyzedSegmentIds = const <String>[]}): _corrections = corrections,_unanalyzedSegmentIds = unanalyzedSegmentIds;
+  const _EnglishFeedbackEntity({final  List<EnglishCorrectionEntity> corrections = const <EnglishCorrectionEntity>[], this.overall, final  List<String> unanalyzedSegmentIds = const <String>[], this.nothingToAnalyse = false}): _corrections = corrections,_unanalyzedSegmentIds = unanalyzedSegmentIds;
   factory _EnglishFeedbackEntity.fromJson(Map<String, dynamic> json) => _$EnglishFeedbackEntityFromJson(json);
 
 /// Liste des corrections proposees.
@@ -531,6 +534,9 @@ class _EnglishFeedbackEntity implements EnglishFeedbackEntity {
   return EqualUnmodifiableListView(_unanalyzedSegmentIds);
 }
 
+/// Aucune phrase anglaise de l'utilisateur dans la note : rien n'a été
+/// envoyé (la note le dit, ni « Aucune correction » ni erreur).
+@override@JsonKey() final  bool nothingToAnalyse;
 
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
@@ -545,16 +551,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other._corrections, _corrections)&&(identical(other.overall, overall) || other.overall == overall)&&const DeepCollectionEquality().equals(other._unanalyzedSegmentIds, _unanalyzedSegmentIds));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _EnglishFeedbackEntity&&const DeepCollectionEquality().equals(other._corrections, _corrections)&&(identical(other.overall, overall) || other.overall == overall)&&const DeepCollectionEquality().equals(other._unanalyzedSegmentIds, _unanalyzedSegmentIds)&&(identical(other.nothingToAnalyse, nothingToAnalyse) || other.nothingToAnalyse == nothingToAnalyse));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_corrections),overall,const DeepCollectionEquality().hash(_unanalyzedSegmentIds));
+int get hashCode => Object.hash(runtimeType,const DeepCollectionEquality().hash(_corrections),overall,const DeepCollectionEquality().hash(_unanalyzedSegmentIds),nothingToAnalyse);
 
 @override
 String toString() {
-  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall, unanalyzedSegmentIds: $unanalyzedSegmentIds)';
+  return 'EnglishFeedbackEntity(corrections: $corrections, overall: $overall, unanalyzedSegmentIds: $unanalyzedSegmentIds, nothingToAnalyse: $nothingToAnalyse)';
 }
 
 
@@ -565,7 +571,7 @@ abstract mixin class _$EnglishFeedbackEntityCopyWith<$Res> implements $EnglishFe
   factory _$EnglishFeedbackEntityCopyWith(_EnglishFeedbackEntity value, $Res Function(_EnglishFeedbackEntity) _then) = __$EnglishFeedbackEntityCopyWithImpl;
 @override @useResult
 $Res call({
- List<EnglishCorrectionEntity> corrections, String? overall, List<String> unanalyzedSegmentIds
+ List<EnglishCorrectionEntity> corrections, String? overall, List<String> unanalyzedSegmentIds, bool nothingToAnalyse
 });
 
 
@@ -582,12 +588,13 @@ class __$EnglishFeedbackEntityCopyWithImpl<$Res>
 
 /// Create a copy of EnglishFeedbackEntity
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? corrections = null,Object? overall = freezed,Object? unanalyzedSegmentIds = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? corrections = null,Object? overall = freezed,Object? unanalyzedSegmentIds = null,Object? nothingToAnalyse = null,}) {
   return _then(_EnglishFeedbackEntity(
 corrections: null == corrections ? _self._corrections : corrections // ignore: cast_nullable_to_non_nullable
 as List<EnglishCorrectionEntity>,overall: freezed == overall ? _self.overall : overall // ignore: cast_nullable_to_non_nullable
 as String?,unanalyzedSegmentIds: null == unanalyzedSegmentIds ? _self._unanalyzedSegmentIds : unanalyzedSegmentIds // ignore: cast_nullable_to_non_nullable
-as List<String>,
+as List<String>,nothingToAnalyse: null == nothingToAnalyse ? _self.nothingToAnalyse : nothingToAnalyse // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

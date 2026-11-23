@@ -45,7 +45,12 @@ class CoachFeedbackView extends StatelessWidget {
           const SizedBox(height: OatsSpace.md),
         ],
         if (corrections.isEmpty && !unanalyzed)
-          Text(LocaleKeys.history_detail_coach_perfect.tr(), style: o.small)
+          Text(
+            feedback.nothingToAnalyse
+                ? LocaleKeys.coach_nothing_to_analyse.tr()
+                : LocaleKeys.history_detail_coach_perfect.tr(),
+            style: o.small,
+          )
         else if (overall != null && overall.isNotEmpty) ...<Widget>[
           Text(overall, style: o.body),
           const SizedBox(height: OatsSpace.md),

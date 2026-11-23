@@ -35,6 +35,7 @@ import 'package:ici_transcript/core/providers/services/ollama.service.provider.d
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/translation.service.provider.dart';
+import 'package:ici_transcript/core/providers/services/transcription_server_arbiter.provider.dart';
 import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
@@ -63,6 +64,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   bool _coachTouched = false;
   bool _speakersTouched = false;
   bool _liveCoachTouched = false;
+  bool _startRequested = false;
 
   CalendarEvent? _nextEvent;
 
@@ -205,6 +207,25 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
 
   /// Demarre une nouvelle session de transcription.
   Future<void> startSession() async {
+    // Dès la demande : la passe du coach d'après l'appel s'arrête entre
+    // deux lots (attendue ci-dessous, elle retarderait le démarrage).
+    _startRequested = true;
+    try {
+      await _startSession();
+    } finally {
+      _startRequested = false;
+    }
+  }
+
+  /// Un enregistrement est demandé ou en cours (ou une dictée) : même
+  /// règle que le rattrapage des pertes, plus la demande en attente et
+  /// l'état de l'écran du direct.
+  bool _recordingWanted() =>
+      _startRequested ||
+      state.isRecording ||
+      ref.read(transcriptionServerArbiterProvider).backfillMustYield;
+
+  Future<void> _startSession() async {
     _log.info('startSession() appele');
 
     // Les modèles Voxtral, Ollama et Parakeet partagent la mémoire unifiée.
@@ -354,9 +375,10 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       await _saveLiveSpeakers(sessionId, segments, speakerLabels);
     }
 
-    // Ce que le coach en direct a trouvé reste avec la note, même coach
-    // d'après l'appel coupé (s'il tourne, il le reprend et complète).
-    if (sessionId != null && !coachEnabled) {
+    // Ce que le coach en direct a trouvé est rangé dès Arrêter : il
+    // survit à un échec ou à l'arrêt de l'app pendant la passe d'après
+    // l'appel (qui, si elle tourne, le reprend et complète).
+    if (sessionId != null) {
       await _saveLiveCoach(sessionId, segments);
     }
 
@@ -862,7 +884,17 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       skip: live.coached,
     );
     if (lines.isEmpty) {
-      if (sessionId != null) await _saveLiveCoach(sessionId, segments);
+      if (sessionId == null) return;
+      if (live.coached.isEmpty && coachableLines(segments).isEmpty) {
+        // Aucune phrase anglaise de l'utilisateur : la note le dit.
+        const EnglishFeedbackEntity nothing = EnglishFeedbackEntity(
+          nothingToAnalyse: true,
+        );
+        if (ref.mounted) state = state.copyWith(feedback: nothing);
+        await _saveFeedback(sessionId, nothing);
+      } else {
+        await _saveLiveCoach(sessionId, segments);
+      }
       return;
     }
     state = state.copyWith(isFeedbackLoading: true);
@@ -879,6 +911,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         ready.llm,
         segments,
         skipSegmentIds: live.coached,
+        shouldStop: _recordingWanted,
       );
       feedback = after.copyWith(
         corrections: mergeCorrections(live.found, after.corrections),

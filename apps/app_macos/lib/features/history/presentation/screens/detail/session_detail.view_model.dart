@@ -264,7 +264,22 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
 
     // Coach = phrases anglaises du micro UNIQUEMENT (pas l'audio du meeting).
     final List<TranscriptSegmentEntity> segments = pick(current);
-    if (coachableLines(segments).isEmpty) return;
+    if (coachableLines(segments).isEmpty) {
+      // Réessayer sans phrase : rien à faire. Coach sur une note sans
+      // anglais de l'utilisateur : la note le dit, rien n'est envoyé.
+      if (current.feedback?.unanalyzedSegmentIds.isNotEmpty ?? false) return;
+      const EnglishFeedbackEntity nothing = EnglishFeedbackEntity(
+        nothingToAnalyse: true,
+      );
+      await _store(
+        session.id,
+        (SessionAnalysis a) => a.copyWith(feedback: nothing),
+      );
+      return _set(
+        (SessionDetailState s) =>
+            s.copyWith(feedback: nothing, feedbackError: null),
+      );
+    }
 
     _set(
       (SessionDetailState s) =>

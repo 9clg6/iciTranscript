@@ -42,6 +42,7 @@ _EnglishFeedbackEntity _$EnglishFeedbackEntityFromJson(
           ?.map((e) => e as String)
           .toList() ??
       const <String>[],
+  nothingToAnalyse: json['nothingToAnalyse'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$EnglishFeedbackEntityToJson(
@@ -50,4 +51,5 @@ Map<String, dynamic> _$EnglishFeedbackEntityToJson(
   'corrections': instance.corrections,
   'overall': instance.overall,
   'unanalyzedSegmentIds': instance.unanalyzedSegmentIds,
+  'nothingToAnalyse': instance.nothingToAnalyse,
 };

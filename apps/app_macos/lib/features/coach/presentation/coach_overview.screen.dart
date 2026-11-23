@@ -92,6 +92,8 @@ class CoachOverviewScreen extends ConsumerWidget {
               ? LocaleKeys.coach_corrections.plural(count)
               : n.feedback.unanalyzedSegmentIds.isNotEmpty
               ? LocaleKeys.coach_unanalyzed.tr()
+              : n.feedback.nothingToAnalyse
+              ? LocaleKeys.coach_nothing_to_analyse.tr()
               : LocaleKeys.coach_no_correction.tr(),
           onTap: () => onOpen(n.session.id),
         ),

@@ -47,6 +47,10 @@ abstract class EnglishFeedbackEntity with _$EnglishFeedbackEntity {
     /// Phrases (ids de segments) dont la partie n'a pas pu être analysée
     /// (lot en échec) : la note propose de réessayer.
     @Default(<String>[]) List<String> unanalyzedSegmentIds,
+
+    /// Aucune phrase anglaise de l'utilisateur dans la note : rien n'a été
+    /// envoyé (la note le dit, ni « Aucune correction » ni erreur).
+    @Default(false) bool nothingToAnalyse,
   }) = _EnglishFeedbackEntity;
 
   /// Construit l'entite depuis un JSON.

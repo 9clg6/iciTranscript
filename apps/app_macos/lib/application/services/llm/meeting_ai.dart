@@ -207,9 +207,12 @@ bool isCoachable(TranscriptSegmentEntity s) =>
     !isTranscriptMarker(s.text) &&
     isSpokenEnglish(s.text);
 
-/// Anglais : au moins un mot-outil anglais et aucun mot-outil français
-/// (« on », « a » sont des deux langues : ils ne comptent pas comme
-/// français). Pas de veto par `questionLanguage` : un accent (« Hélène »)
+/// Anglais : au moins un mot-outil anglais et au plus UN mot-outil
+/// français. Un seul ne suffit pas à écarter une phrase : sigles (« EST »,
+/// « LE »), noms et marques (« La Poste », « du Pont », « Le Monde »),
+/// homographes (« pour me a coffee », « Des will… ») ; le franglais en a
+/// deux (« On fait le call… »). « on », « a » ne comptent pas comme
+/// français. Pas de veto par `questionLanguage` : un accent (« Hélène »)
 /// le fait pencher vers le français. « OK », « yes », « exactly » sont des
 /// interjections, pas des mots-outils.
 // ponytail: listes de mots fréquents ; un vrai détecteur si une 3e langue
@@ -222,7 +225,7 @@ bool isSpokenEnglish(String text) {
       .where((String w) => w.isNotEmpty)
       .toList();
   return words.any(_englishFunctionWords.contains) &&
-      !words.any(_frenchFunctionWords.contains);
+      words.where(_frenchFunctionWords.contains).length < 2;
 }
 
 const Set<String> _englishFunctionWords = <String>{
@@ -326,11 +329,19 @@ int? _timeOf(String original, List<CoachLine> batch) {
 /// Un lot en échec ne fait pas tout échouer : ses phrases vont dans
 /// `unanalyzedSegmentIds`. Tous en échec : l'erreur du dernier remonte.
 /// Rien à corriger : retour vide, aucune requête.
+///
+/// [shouldStop] est lu avant chaque lot : vrai (un enregistrement démarre,
+/// une génération locale retarderait sa transcription), le lot en cours a
+/// fini et compte, le reste est noté non analysé, sans erreur.
 Future<EnglishFeedbackEntity> coachMeeting(
   LlmProvider llm,
   List<TranscriptSegmentEntity> segments, {
   Set<String> skipSegmentIds = const <String>{},
+  bool Function()? shouldStop,
 }) async {
+  if (coachableLines(segments).isEmpty) {
+    return const EnglishFeedbackEntity(nothingToAnalyse: true);
+  }
   final List<List<CoachLine>> batches = coachBatches(
     coachableLines(segments, skip: skipSegmentIds),
   );
@@ -339,7 +350,13 @@ Future<EnglishFeedbackEntity> coachMeeting(
   String? overall;
   Object? lastError;
   int failed = 0;
+  int sent = 0;
   for (final List<CoachLine> batch in batches) {
+    if (shouldStop?.call() ?? false) {
+      unanalyzed.addAll(batch.map((CoachLine l) => l.id));
+      continue;
+    }
+    sent++;
     try {
       final EnglishFeedbackEntity part = parseFeedback(
         await llm.streamChat(coachRequest(batch)).join(),
@@ -354,7 +371,7 @@ Future<EnglishFeedbackEntity> coachMeeting(
       unanalyzed.addAll(batch.map((CoachLine l) => l.id));
     }
   }
-  if (batches.isNotEmpty && failed == batches.length) throw lastError!;
+  if (sent > 0 && failed == sent) throw lastError!;
   return EnglishFeedbackEntity(
     corrections: corrections,
     overall: overall,

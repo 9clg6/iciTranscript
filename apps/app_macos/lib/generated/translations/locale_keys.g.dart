@@ -74,6 +74,7 @@ abstract class  LocaleKeys {
   static const coach_unanalyzed = 'coach.unanalyzed';
   static const coach_corrections = 'coach.corrections';
   static const coach_no_correction = 'coach.no_correction';
+  static const coach_nothing_to_analyse = 'coach.nothing_to_analyse';
   static const coach_recurring_title = 'coach.recurring.title';
   static const coach_recurring_notes = 'coach.recurring.notes';
   static const coach_recurring = 'coach.recurring';
