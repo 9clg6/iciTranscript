@@ -1,4 +1,6 @@
+import ApplicationServices
 import Carbon
+import Cocoa
 import FlutterMacOS
 import Foundation
 
@@ -8,14 +10,31 @@ import Foundation
 /// - `register` {keyCode, modifiers} (Carbon virtual key code and modifier
 ///   mask) -> nil; replaces the previous shortcut; FlutterError
 ///   `SHORTCUT_UNAVAILABLE` when Carbon refuses it.
-/// - `unregister` -> nil (also disarms Escape).
+/// - `registerModifiers` {modifiers} (Carbon mask, at least two modifiers)
+///   -> nil: a modifier-only shortcut (⌥⌘), which Carbon cannot register.
+///   Watched with NSEvent global + local monitors, which only see key events
+///   when the app is trusted for Accessibility: FlutterError
+///   `ACCESSIBILITY_REQUIRED` otherwise (never a silently dead shortcut).
+///   Replaces the previous shortcut, keyed or not.
+/// - `unregister` -> nil (also disarms Escape and removes the monitors).
 /// - `keyLabel` {keyCode} -> String?: characters the key types in the
 ///   current keyboard layout, without modifiers (AZERTY: 13 -> "Z"); nil when
 ///   it cannot be translated.
 /// - `setCancelKeyEnabled` {enabled} -> nil: Escape is a hotkey only while
 ///   a dictation runs, so it keeps working in other apps the rest of the time.
 /// Event channel `com.icitranscript/global_shortcut_events`:
-/// {type: pressed | released | cancel}, always on the main thread.
+/// {type: pressed | released | cancel | aborted}, always on the main thread.
+/// Modifier-only: `pressed` when exactly the chosen modifiers become held
+/// (caps lock, fn and numeric pad flags ignored); `released` when one of
+/// them goes up; `aborted` (and no `released`) when a key or a mouse button
+/// goes down, or another modifier joins, while they are held: that was
+/// another app's shortcut (⌘⌥Esc, ⌘⌥-drag in Finder).
+/// NSEvent monitors (Apple documentation):
+/// - https://developer.apple.com/documentation/appkit/nsevent/addglobalmonitorforevents(matching:handler:)
+///   (events of other apps only; key events require Accessibility)
+/// - https://developer.apple.com/documentation/appkit/nsevent/addlocalmonitorforevents(matching:handler:)
+///   (this app's own events; returning the event leaves it unchanged)
+/// - https://developer.apple.com/documentation/appkit/nsevent/modifierflags-swift.struct/deviceindependentflagsmask
 ///
 /// Carbon hotkeys fire while another app is frontmost and need no
 /// Accessibility permission. Apple's Carbon reference pages are no longer
@@ -48,6 +67,17 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     /// part of ⌃⌥ of ⌃⌥Space when cancelling (at most 16 hotkeys).
     private var cancelRefs: [EventHotKeyRef] = []
     private var mainModifiers: UInt32 = 0
+
+    // Modifier-only shortcut (NSEvent monitors).
+    private var chordMask: NSEvent.ModifierFlags?
+    private var monitors: [Any] = []
+    private var chordDown = false
+    private var chordAborted = false
+    // A key went down while modifiers were held: no `pressed` until every
+    // modifier is up (releasing ⇧ of ⌘⌥⇧4 must not start a dictation).
+    private var chordTainted = false
+    private var lastFlags: NSEvent.ModifierFlags = []
+    private static let chordFlags: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
     private var handlerRef: EventHandlerRef?
     private var sink: FlutterEventSink?
     /// Pressed seen without its release yet (guards against repeats).
@@ -93,6 +123,22 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                 message: "RegisterEventHotKey failed",
                 details: Int(status)
             ))
+        case "registerModifiers":
+            guard let modifiers = args?["modifiers"] as? Int else {
+                result(FlutterError(code: "BAD_ARGS", message: "Missing modifiers", details: nil))
+                return
+            }
+            unregisterMain()
+            guard AXIsProcessTrusted() else {
+                result(FlutterError(
+                    code: "ACCESSIBILITY_REQUIRED",
+                    message: "Modifier-only shortcuts need Accessibility",
+                    details: nil
+                ))
+                return
+            }
+            installChord(Self.flags(fromCarbon: UInt32(modifiers)))
+            result(nil)
         case "keyLabel":
             guard let keyCode = args?["keyCode"] as? Int else {
                 result(FlutterError(code: "BAD_ARGS", message: "Missing keyCode", details: nil))
@@ -233,6 +279,92 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         if let ref = mainRef { UnregisterEventHotKey(ref) }
         mainRef = nil
         isDown = false
+        // Escape is then armed without modifiers only: ⌘⌥Esc stays a key
+        // down seen by the monitors (aborted), never a cancel hotkey.
+        mainModifiers = 0
+        removeChord()
+    }
+
+    // MARK: Modifier-only shortcut
+
+    private static func flags(fromCarbon mask: UInt32) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if mask & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        if mask & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        if mask & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if mask & UInt32(controlKey) != 0 { flags.insert(.control) }
+        return flags
+    }
+
+    private func installChord(_ mask: NSEvent.ModifierFlags) {
+        chordMask = mask
+        chordDown = false
+        chordAborted = false
+        chordTainted = false
+        lastFlags = NSEvent.modifierFlags.intersection(Self.chordFlags)
+        let events: NSEvent.EventTypeMask = [
+            .flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown,
+        ]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] event in
+            self?.onChordEvent(event)
+        }) {
+            monitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
+            self?.onChordEvent(event)
+            return event
+        }) {
+            monitors.append(local)
+        }
+    }
+
+    private func removeChord() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors = []
+        chordMask = nil
+        chordDown = false
+        chordAborted = false
+        chordTainted = false
+    }
+
+    private func onChordEvent(_ event: NSEvent) {
+        guard let mask = chordMask else { return }
+        let flags = event.modifierFlags.intersection(Self.chordFlags)
+        if event.type != .flagsChanged {
+            // Key or mouse button down with modifiers held: another app's
+            // shortcut or gesture.
+            if !flags.isEmpty { chordTainted = true }
+            if chordDown && !chordAborted {
+                chordAborted = true
+                emit("aborted")
+            }
+            return
+        }
+        let previous = lastFlags
+        lastFlags = flags
+        if flags.isEmpty { chordTainted = false }
+        if !chordDown {
+            // Exactly the chosen modifiers, reached by adding a key (never by
+            // releasing an extra one).
+            if flags == mask && previous.isStrictSubset(of: mask) && !chordTainted {
+                chordDown = true
+                chordAborted = false
+                emit("pressed")
+            }
+            return
+        }
+        if !flags.isSuperset(of: mask) {
+            // One of them went up.
+            chordDown = false
+            if !chordAborted { emit("released") }
+            chordAborted = false
+            chordTainted = !flags.isEmpty && chordTainted
+        } else if flags != mask && !chordAborted {
+            // Another modifier joined (⌘⌥⇧…): not our shortcut.
+            chordAborted = true
+            chordTainted = true
+            emit("aborted")
+        }
     }
 
     @discardableResult
