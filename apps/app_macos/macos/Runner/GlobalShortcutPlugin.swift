@@ -23,12 +23,24 @@ import Foundation
 /// - `setCancelKeyEnabled` {enabled} -> nil: Escape is a hotkey only while
 ///   a dictation runs, so it keeps working in other apps the rest of the time.
 /// Event channel `com.icitranscript/global_shortcut_events`:
-/// {type: pressed | released | cancel | aborted}, always on the main thread.
-/// Modifier-only: `pressed` when exactly the chosen modifiers become held
-/// (caps lock, fn and numeric pad flags ignored); `released` when one of
-/// them goes up; `aborted` (and no `released`) when a key or a mouse button
-/// goes down, or another modifier joins, while they are held: that was
-/// another app's shortcut (⌘⌥Esc, ⌘⌥-drag in Finder).
+/// {type: pressed | released | cancel | aborted | tapped}, always on the
+/// main thread.
+/// Modifier-only (`registerModifiers` {modifiers, holdMs}): a chord acts only
+/// once it is known to be ours. When exactly the chosen modifiers become held
+/// (caps lock, fn and numeric pad flags ignored) the press is undecided and
+/// NOTHING is emitted for holdMs; released before holdMs with nothing else ->
+/// `tapped`; still held at holdMs with nothing else -> `pressed`, then
+/// `released` when one of them goes up; any key, mouse button or extra
+/// modifier while undecided -> no event at all; after `pressed` -> `aborted`
+/// (and no `released`). "Nothing else" is decided by the system-wide event
+/// counters, not only by the monitors: a key down consumed by another app's
+/// hotkey (⌘⌥D, ⌘⌥Esc) is not delivered to a global monitor but is counted.
+/// - https://developer.apple.com/documentation/coregraphics/cgeventsource/counterforeventtype(_:eventtype:)
+///   ("count of events of a given type seen since the window server
+///   started"; modifiers count as flagsChanged, not keyDown; autorepeat not
+///   counted). Checked with a throwaway probe on 2026-11-23: a synthetic F19
+///   consumed by a Carbon hotkey was not seen by the global monitor but
+///   raised the .hidSystemState keyDown counter by one.
 /// NSEvent monitors (Apple documentation):
 /// - https://developer.apple.com/documentation/appkit/nsevent/addglobalmonitorforevents(matching:handler:)
 ///   (events of other apps only; key events require Accessibility)
@@ -68,11 +80,14 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     private var cancelRefs: [EventHotKeyRef] = []
     private var mainModifiers: UInt32 = 0
 
-    // Modifier-only shortcut (NSEvent monitors).
+    // Modifier-only shortcut (NSEvent monitors + event counters).
+    private enum ChordPhase { case idle, undecided, down, rejected }
     private var chordMask: NSEvent.ModifierFlags?
+    private var chordHold: TimeInterval = 0.3
     private var monitors: [Any] = []
-    private var chordDown = false
-    private var chordAborted = false
+    private var chordPhase: ChordPhase = .idle
+    private var chordCount: UInt32 = 0
+    private var chordTimer: DispatchWorkItem?
     // A key went down while modifiers were held: no `pressed` until every
     // modifier is up (releasing ⇧ of ⌘⌥⇧4 must not start a dictation).
     private var chordTainted = false
@@ -137,7 +152,8 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
                 ))
                 return
             }
-            installChord(Self.flags(fromCarbon: UInt32(modifiers)))
+            let holdMs = args?["holdMs"] as? Int ?? 300
+            installChord(Self.flags(fromCarbon: UInt32(modifiers)), hold: Double(holdMs) / 1000)
             result(nil)
         case "keyLabel":
             guard let keyCode = args?["keyCode"] as? Int else {
@@ -296,10 +312,10 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         return flags
     }
 
-    private func installChord(_ mask: NSEvent.ModifierFlags) {
+    private func installChord(_ mask: NSEvent.ModifierFlags, hold: TimeInterval) {
         chordMask = mask
-        chordDown = false
-        chordAborted = false
+        chordHold = hold
+        chordPhase = .idle
         chordTainted = false
         lastFlags = NSEvent.modifierFlags.intersection(Self.chordFlags)
         let events: NSEvent.EventTypeMask = [
@@ -322,10 +338,22 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         monitors.forEach { NSEvent.removeMonitor($0) }
         monitors = []
         chordMask = nil
-        chordDown = false
-        chordAborted = false
+        chordTimer?.cancel()
+        chordTimer = nil
+        chordPhase = .idle
         chordTainted = false
     }
+
+    /// Key and mouse button downs seen system-wide (HID state), including
+    /// those consumed by another app's hotkey.
+    private static func inputCount() -> UInt32 {
+        let types: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        return types.reduce(UInt32(0)) {
+            $0 &+ CGEventSource.counterForEventType(.hidSystemState, eventType: $1)
+        }
+    }
+
+    private var otherInputSinceSnapshot: Bool { Self.inputCount() != chordCount }
 
     private func onChordEvent(_ event: NSEvent) {
         guard let mask = chordMask else { return }
@@ -334,37 +362,82 @@ class GlobalShortcutPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             // Key or mouse button down with modifiers held: another app's
             // shortcut or gesture.
             if !flags.isEmpty { chordTainted = true }
-            if chordDown && !chordAborted {
-                chordAborted = true
+            switch chordPhase {
+            case .undecided: reject()
+            case .down:
+                chordPhase = .rejected
                 emit("aborted")
+            case .idle, .rejected: break
             }
             return
         }
         let previous = lastFlags
         lastFlags = flags
         if flags.isEmpty { chordTainted = false }
-        if !chordDown {
+        switch chordPhase {
+        case .idle:
             // Exactly the chosen modifiers, reached by adding a key (never by
             // releasing an extra one).
             if flags == mask && previous.isStrictSubset(of: mask) && !chordTainted {
-                chordDown = true
-                chordAborted = false
-                emit("pressed")
+                startUndecided()
             }
+        case .undecided:
+            if !flags.isSuperset(of: mask) {
+                // Released before the threshold: ours only if nothing else
+                // happened anywhere.
+                let clean = !otherInputSinceSnapshot
+                cancelTimer()
+                chordPhase = .idle
+                if clean { emit("tapped") }
+            } else if flags != mask {
+                reject() // another modifier joined (⌘⌥⇧…)
+            }
+        case .down:
+            if !flags.isSuperset(of: mask) {
+                chordPhase = .idle
+                // A key consumed by another app's hotkey while held.
+                emit(otherInputSinceSnapshot ? "aborted" : "released")
+            } else if flags != mask {
+                chordPhase = .rejected
+                chordTainted = true
+                emit("aborted")
+            }
+        case .rejected:
+            if !flags.isSuperset(of: mask) { chordPhase = .idle }
+        }
+    }
+
+    private func startUndecided() {
+        chordPhase = .undecided
+        chordCount = Self.inputCount()
+        let timer = DispatchWorkItem { [weak self] in self?.onHoldThreshold() }
+        chordTimer = timer
+        DispatchQueue.main.asyncAfter(deadline: .now() + chordHold, execute: timer)
+    }
+
+    private func onHoldThreshold() {
+        chordTimer = nil
+        guard chordPhase == .undecided, let mask = chordMask else { return }
+        let held = NSEvent.modifierFlags.intersection(Self.chordFlags) == mask
+        guard held, !otherInputSinceSnapshot else {
+            reject()
             return
         }
-        if !flags.isSuperset(of: mask) {
-            // One of them went up.
-            chordDown = false
-            if !chordAborted { emit("released") }
-            chordAborted = false
-            chordTainted = !flags.isEmpty && chordTainted
-        } else if flags != mask && !chordAborted {
-            // Another modifier joined (⌘⌥⇧…): not our shortcut.
-            chordAborted = true
-            chordTainted = true
-            emit("aborted")
-        }
+        chordPhase = .down
+        chordCount = Self.inputCount()
+        emit("pressed")
+    }
+
+    /// Not ours: no event for this press, wait for its modifiers to go up.
+    private func reject() {
+        cancelTimer()
+        chordPhase = .rejected
+        chordTainted = true
+    }
+
+    private func cancelTimer() {
+        chordTimer?.cancel()
+        chordTimer = nil
     }
 
     @discardableResult
