@@ -5,7 +5,6 @@ import 'package:core_foundation/logging/logger.dart';
 import 'package:flutter/services.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
-import 'package:ici_transcript/application/services/meeting/meeting_rules.dart';
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
 import 'package:ici_transcript/features/calendar/meeting_suggestion.provider.dart';
@@ -70,7 +69,9 @@ class StatusPanelSync {
   );
 
   bool get _idle =>
-      !_live.isRecording && !_live.isPaused && _live.finalisingRemaining == null;
+      !_live.isRecording &&
+      !_live.isPaused &&
+      _live.finalisingRemaining == null;
 
   void _changed() {
     if (_idle) {
@@ -142,8 +143,8 @@ class StatusPanelSync {
       case 'skipFinalising':
         if (_live.finalisingRemaining != null) _liveVm.skipFinalising();
       case 'answerNow':
-        final Object? id = (call.arguments as Map<Object?, Object?>?)?[
-          'questionId'];
+        final Object? id =
+            (call.arguments as Map<Object?, Object?>?)?['questionId'];
         // `retry` efface une réponse reçue : seulement une question à
         // demander.
         if (_answers.questions.any(
@@ -181,9 +182,10 @@ class StatusPanelSync {
         !(_live.isRecording || _live.isPaused)) {
       return Future<void>.value();
     }
-    return _stopping = _liveVm.stopSession().then<void>((_) {}).whenComplete(
-      () => _stopping = null,
-    );
+    return _stopping = _liveVm
+        .stopSession()
+        .then<void>((_) {})
+        .whenComplete(() => _stopping = null);
   }
 
   void _dispose() {
