@@ -105,6 +105,8 @@ LlmChatRequest buildLiveAnswerRequest({
     // Large : chez certains modèles, la réflexion compte dans cette borne ;
     // la tête et trois puces ne doivent jamais être coupées.
     maxTokens: kLlmAnswerMaxTokens,
+    // Réponse courte en direct : la latence prime (effort bas chez Claude).
+    preferLowLatency: true,
   );
 }
 
