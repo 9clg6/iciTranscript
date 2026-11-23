@@ -1084,6 +1084,48 @@ void main() {
     });
   });
 
+  // Revue PR #21 (commit 8fb93d2) : un passage non transcrit (tour 7) n'est
+  // la phrase de personne : ni la porte des questions, ni le contexte.
+  group('passage non transcrit', () {
+    test('« Passage non transcrit » n est ni une question ni du contexte', () {
+      run((FakeAsync async, LiveAnswersHarness h) {
+        final String passage = LiveTranscriptionService.untranscribedMarkerText(
+          62000,
+          68000,
+        );
+        expect(
+          LiveTranscriptionService.isUntranscribedMarker(passage),
+          isTrue,
+          reason: 'la forme rangée reste reconnue',
+        );
+        h.service.onSegmentFinalized(
+          h.segment(passage, atMs: 62000, id: 's1_output_untranscribed'),
+          speaker: 1,
+        );
+        async.flushMicrotasks();
+        expect(h.questions, isEmpty);
+
+        h.service.answerSegment(
+          h.segment(passage, atMs: 62000, id: 's1_output_untranscribed'),
+        );
+        async.flushMicrotasks();
+        expect(h.questions, isEmpty, reason: 'pas même à la main');
+
+        h.hear(q, atMs: 95000);
+        async.flushMicrotasks();
+        expect(
+          requestText(h.llm.last.request),
+          isNot(
+            contains(
+              LiveTranscriptionService.untranscribedMarkerText(62000, 68000),
+            ),
+          ),
+          reason: 'absent du contexte envoyé',
+        );
+      });
+    });
+  });
+
   group('même segment reçu deux fois', () {
     test('un segment déjà vu (même id, texte retouché) ne déclenche qu\'une '
         'fois', () {

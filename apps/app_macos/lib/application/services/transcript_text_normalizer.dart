@@ -113,4 +113,99 @@ abstract final class TranscriptTextNormalizer {
     }
     return true;
   }
+
+  /// Langues attendues des réunions (un seul endroit).
+  static const Set<String> expectedLanguages = <String>{'fr', 'en'};
+
+  /// En dessous, un texte n'est jamais jugé (trop peu d'indices).
+  static const int minWordsForLanguageCheck = 6;
+
+  // Mots-outils des langues attendues ; un texte attendu en contient
+  // toujours quelques-uns, quels que soient ses noms propres.
+  static const Set<String> _expectedWords = <String>{
+    // fr
+    'à', 'a', 'au', 'aux', 'avec', 'ce', 'c', 'ces', 'cette', 'dans', 'de',
+    'des', 'du', 'd', 'elle', 'en', 'est', 'et', 'il', 'ils', 'je', 'j',
+    'la', 'le', 'les', 'leur', 'l', 'lui', 'ma', 'mais', 'me', 'même',
+    'mes', 'moi', 'mon', 'ne', 'nous', 'on', 'ou', 'où', 'par', 'pas',
+    'pour', 'qu', 'que', 'qui', 'sa', 'se', 'ses', 'son', 'sur', 'ta', 'te',
+    'tes', 'toi', 'ton', 'tu', 'un', 'une', 'vos', 'votre', 'vous', 'y',
+    'ça', 'été', 'être', 'fait', 'faire', 'plus', 'très', 'tout', 'tous',
+    'non', 'oui', 'bien', 'donc', 'alors', 'voilà', 'merci', 'bonjour',
+    'aussi', 'comme', 'si', 'était', 'peu', 'faut',
+    // en
+    'the', 'an', 'and', 'or', 'but', 'if', 'of', 'to', 'in', 'at', 'by',
+    'for', 'with', 'from', 'as', 'is', 'are', 'was', 'were', 'be', 'been',
+    'it', 'its', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she',
+    'we', 'they', 'him', 'her', 'us', 'them', 'my', 'your', 'our', 'their',
+    'not', 'no', 'yes', 'so', 'do', 'does', 'did', 'have', 'has', 'had',
+    'will', 'would', 'can', 'could', 'should', 'what', 'which', 'who',
+    'when', 'where', 'why', 'how', 'there', 'here', 'then', 'than', 'just',
+    'also', 'very', 'okay', 'ok', 'up', 'out', 'about', 'into', 'over',
+    'again', 'please', 'let', 'next', 'new', 'send', 'went', 'well',
+  };
+
+  // Mots-outils fréquents de langues qu'on confond avec elles (es, it, de,
+  // pt, nl, pl, langues nordiques, hindi romanisé). Seulement des mots sans
+  // ambiguïté : pas ceux qui sont aussi courants en français, en anglais,
+  // dans le jargon ou les noms propres (todo, alt, del, per, Los Angeles,
+  // van der Berg, die, es, o, na, da, er…).
+  static const Set<String> _otherWords = <String>{
+    // es
+    'el', 'para', 'por', 'una', 'unos',
+    'está', 'estoy', 'esta', 'este', 'esto', 'todos', 'pero',
+    'muy', 'también', 'tenemos', 'vamos', 'hablar', 'sobre', 'nuevo',
+    'nueva', 'semana', 'mañana', 'tarde', 'reunión', 'seguro', 'próximo',
+    'hay', 'han', 'yo', 'usted', 'nosotros', 'sí',
+    // it
+    'questo', 'questa', 'deve', 'essere', 'entro', 'della', 'abbiamo',
+    'abbastanza', 'tutto', 'tutti', 'lavoro', 'dobbiamo', 'parlare',
+    'domani', 'sono', 'anche', 'molto', 'perché', 'che',
+    // de
+    'wir', 'müssen', 'das', 'für', 'noch', 'einmal', 'ich', 'nicht', 'dass',
+    'werden', 'und', 'ist', 'mit', 'auf', 'sie', 'ein',
+    'eine', 'dem', 'aber', 'auch', 'sehr', 'schon',
+    // pt
+    'nós', 'precisamos', 'próxima', 'eu', 'acho', 'isso', 'não',
+    'vai', 'nosso', 'nossa', 'você', 'muito', 'relatório',
+    // nl
+    'het', 'voor', 'nog', 'moeten', 'volgende', 'ik', 'denk', 'niet', 'dat',
+    'kunnen', 'een', 'van', 'zijn', 'wij', 'maar', 'ook', 'heel',
+    'bekijken',
+    // pl
+    'musimy', 'jeszcze', 'raz', 'następny', 'sprawdzić', 'jest',
+    'nie', 'się', 'że',
+    // nordique
+    'det', 'ikke', 'vi', 'denne', 'uken', 'og', 'jeg', 'har',
+    'sikkert', 'skal',
+    // hindi romanisé
+    'aap', 'kaise', 'hain', 'aur', 'aaj', 'ka', 'kaam', 'kya', 'hai', 'yaar',
+    'nahi', 'mera', 'tum', 'kyun', 'bahut', 'accha', 'theek',
+  };
+
+  static final RegExp _words = RegExp(r'\p{L}+', unicode: true);
+
+  /// Vrai si [text] (au moins [minWordsForLanguageCheck] mots) ressemble à
+  /// une autre langue que celles attendues : ses mots-outils étrangers
+  /// l'emportent sur ceux du français et de l'anglais. Noms propres,
+  /// nombres et noms de produits ne comptent pas.
+  // ponytail: listes de mots-outils, pas un vrai détecteur ; à remplacer
+  // par un modèle de langue si d'autres langues apparaissent.
+  static bool isUnexpectedLanguage(String text) {
+    final List<String> words = <String>[
+      for (final RegExpMatch m in _words.allMatches(text.toLowerCase()))
+        m.group(0)!,
+    ];
+    if (words.length < minWordsForLanguageCheck) return false;
+    int expected = 0;
+    int other = 0;
+    for (final String w in words) {
+      if (_expectedWords.contains(w)) {
+        expected++;
+      } else if (_otherWords.contains(w)) {
+        other++;
+      }
+    }
+    return other >= 2 && other > expected;
+  }
 }

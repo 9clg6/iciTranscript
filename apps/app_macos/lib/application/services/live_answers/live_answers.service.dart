@@ -213,10 +213,13 @@ class LiveAnswersService {
 
   // ---------------------------------------------------------------------------
 
+  // Seul filtre de la porte des questions et du contexte : un repère (perte
+  // ou passage non transcrit) n'est la phrase de personne.
   bool _accepts(TranscriptSegmentEntity s) =>
       _sessionId != null &&
       !_paused &&
-      !s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix);
+      !s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix) &&
+      !LiveTranscriptionService.isUntranscribedMarker(s.text);
 
   static String _normalized(String text) => fold(text)
       .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')

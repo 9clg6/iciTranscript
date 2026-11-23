@@ -213,6 +213,10 @@ final class FakeTranscriptionRemoteDataSource
     ),
   );
 
+  /// Événement interne de la source distante (ex. phrase perdue).
+  void emitControl(AudioSource source, String type) =>
+      _of(source).add(TranscriptEventRemoteModel(type: type));
+
   void emitDone(AudioSource source, String text, {UtteranceWindow? window}) {
     final TranscriptEventRemoteModel event = TranscriptEventRemoteModel(
       type: 'response.audio_transcript.done',
@@ -249,16 +253,28 @@ final class FakeTranscriptionRemoteDataSource
   @override
   Stream<AudioGap> get audioGaps => _gaps.stream;
 
+  /// Sources dont une phrase attend encore sa fin (l'arrêt les attend).
+  Set<AudioSource> active = <AudioSource>{};
+
   @override
-  Set<AudioSource> get activeSources => <AudioSource>{};
+  Set<AudioSource> get activeSources => active;
 
   @override
   UtteranceWindow? windowOf(TranscriptEventRemoteModel event) =>
       _windows[event];
 
+  /// Pertes rendues à la déconnexion (comme la vraie source : ce qui n'a
+  /// pas eu son `done` à l'arrêt devient une perte signalée).
+  List<AudioGap> gapsOnDisconnect = <AudioGap>[];
+
   @override
-  Future<void> disconnect() async =>
-      _states.add(domain.ConnectionState.disconnected);
+  Future<void> disconnect() async {
+    for (final AudioGap gap in gapsOnDisconnect) {
+      _gaps.add(gap);
+    }
+    gapsOnDisconnect = <AudioGap>[];
+    _states.add(domain.ConnectionState.disconnected);
+  }
 
   /// Sources visées par chaque commit final (null : toutes).
   final List<Set<AudioSource>?> finalCommitSources = <Set<AudioSource>?>[];
