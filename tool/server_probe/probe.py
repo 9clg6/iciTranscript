@@ -739,11 +739,19 @@ def check_note(sched_src, segs, end_s):
             best_prev = max(best_prev, b["i"])
     for a, b in zip(live, live[1:]):
         wa, wb = words(a["text"]), words(b["text"])
+        # b starts with the end of a (a junction overlap)...
         for k in range(min(len(wa), len(wb), 12), 2, -1):
             diff = sum(x != y for x, y in zip(wa[-k:], wb[:k]))
             if diff <= 1:
                 res["dup_end"].append((round(a["t"], 1), round(b["t"], 1), " ".join(wb[:k])))
                 break
+        else:
+            # ...or b repeats the end of a (same tail, one word may differ).
+            for k in range(min(len(wa), len(wb)), 3, -1):
+                diff = sum(x != y for x, y in zip(wa[-k:], wb[-k:]))
+                if diff <= 1 and k >= len(wb) - 3:
+                    res["dup_end"].append((round(a["t"], 1), round(b["t"], 1), " ".join(wb)))
+                    break
     res["markers"] = len(markers)
     return res
 
