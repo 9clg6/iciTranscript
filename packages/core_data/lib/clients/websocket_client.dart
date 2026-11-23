@@ -39,6 +39,10 @@ class WebSocketClient {
   /// reconnexion est restée 30 s bloquée sur `ready`).
   static const Duration connectTimeout = Duration(seconds: 10);
 
+  /// Borne de la prochaine poignée de main ; la source distante l'allonge
+  /// quand un serveur chargé accepte lentement.
+  Duration handshakeTimeout = connectTimeout;
+
   /// Indique si le client est connecte.
   bool get isConnected => _channel != null;
 
@@ -48,7 +52,7 @@ class WebSocketClient {
     final WebSocketChannel channel = _connectChannel(Uri.parse(url));
     // Un echec de connexion leve ici : le canal n'est jamais marque connecte.
     try {
-      await channel.ready.timeout(connectTimeout);
+      await channel.ready.timeout(handshakeTimeout);
     } on TimeoutException {
       unawaited(channel.sink.close().catchError((Object _) {}));
       rethrow;
