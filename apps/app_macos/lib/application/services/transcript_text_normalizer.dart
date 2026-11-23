@@ -146,34 +146,37 @@ abstract final class TranscriptTextNormalizer {
   };
 
   // Mots-outils fréquents de langues qu'on confond avec elles (es, it, de,
-  // pt, nl, pl, langues nordiques, hindi romanisé).
+  // pt, nl, pl, langues nordiques, hindi romanisé). Seulement des mots sans
+  // ambiguïté : pas ceux qui sont aussi courants en français, en anglais,
+  // dans le jargon ou les noms propres (todo, alt, del, per, Los Angeles,
+  // van der Berg, die, es, o, na, da, er…).
   static const Set<String> _otherWords = <String>{
     // es
-    'el', 'los', 'las', 'del', 'al', 'con', 'para', 'por', 'una', 'unos',
-    'es', 'está', 'estoy', 'esta', 'este', 'esto', 'todo', 'todos', 'pero',
+    'el', 'para', 'por', 'una', 'unos',
+    'está', 'estoy', 'esta', 'este', 'esto', 'todos', 'pero',
     'muy', 'también', 'tenemos', 'vamos', 'hablar', 'sobre', 'nuevo',
     'nueva', 'semana', 'mañana', 'tarde', 'reunión', 'seguro', 'próximo',
-    'hay', 'ha', 'han', 'yo', 'usted', 'nosotros', 'sí',
+    'hay', 'han', 'yo', 'usted', 'nosotros', 'sí',
     // it
     'questo', 'questa', 'deve', 'essere', 'entro', 'della', 'abbiamo',
-    'abbastanza', 'per', 'tutto', 'tutti', 'lavoro', 'dobbiamo', 'parlare',
+    'abbastanza', 'tutto', 'tutti', 'lavoro', 'dobbiamo', 'parlare',
     'domani', 'sono', 'anche', 'molto', 'perché', 'che',
     // de
     'wir', 'müssen', 'das', 'für', 'noch', 'einmal', 'ich', 'nicht', 'dass',
-    'bis', 'werden', 'und', 'der', 'die', 'ist', 'mit', 'auf', 'sie', 'ein',
-    'eine', 'den', 'dem', 'aber', 'auch', 'sehr', 'schon',
+    'werden', 'und', 'ist', 'mit', 'auf', 'sie', 'ein',
+    'eine', 'dem', 'aber', 'auch', 'sehr', 'schon',
     // pt
-    'nós', 'precisamos', 'o', 'da', 'próxima', 'eu', 'acho', 'isso', 'não',
-    'vai', 'com', 'nosso', 'nossa', 'você', 'muito', 'relatório',
+    'nós', 'precisamos', 'próxima', 'eu', 'acho', 'isso', 'não',
+    'vai', 'nosso', 'nossa', 'você', 'muito', 'relatório',
     // nl
     'het', 'voor', 'nog', 'moeten', 'volgende', 'ik', 'denk', 'niet', 'dat',
     'kunnen', 'een', 'van', 'zijn', 'wij', 'maar', 'ook', 'heel',
     'bekijken',
     // pl
-    'musimy', 'jeszcze', 'raz', 'na', 'następny', 'sprawdzić', 'jest',
+    'musimy', 'jeszcze', 'raz', 'następny', 'sprawdzić', 'jest',
     'nie', 'się', 'że',
     // nordique
-    'det', 'er', 'ikke', 'vi', 'alt', 'denne', 'uken', 'og', 'jeg', 'har',
+    'det', 'ikke', 'vi', 'denne', 'uken', 'og', 'jeg', 'har',
     'sikkert', 'skal',
     // hindi romanisé
     'aap', 'kaise', 'hain', 'aur', 'aaj', 'ka', 'kaam', 'kya', 'hai', 'yaar',
