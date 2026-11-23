@@ -48,8 +48,14 @@ final class _Run {
   /// Chunks voisés jamais transcrits.
   final List<int> lost = <int>[];
 
-  /// Par seconde de réunion : plus ancien chunk encore sans `done`.
-  final Map<int, int> oldestUnacked = <int, int>{};
+  /// Chunks reçus par le serveur (fin du jeu).
+  final Set<int> received = <int>{};
+
+  /// Par seconde de réunion : plus récent chunk reçu par le serveur.
+  final Map<int, int> newestReceived = <int, int>{};
+
+  /// Par seconde : lignes en direct (« Phrase numéro … ») à l'écran.
+  final Map<int, Set<String>> liveOnScreen = <int, Set<String>>{};
 
   /// Par seconde de réunion : repères de perte du micro, à l'écran et en
   /// base (provisoire compris).
@@ -64,15 +70,23 @@ final class _Run {
 
   late List<TranscriptSegmentEntity> finalMarkers;
 
-  /// Perdu avant la seconde [s] (chunks plus anciens que le plus ancien
-  /// encore en attente).
+  /// Jeté avant la seconde [s] : jamais reçu par le serveur alors qu'un
+  /// chunk plus récent l'était déjà (le tampon l'a évincé sans l'envoyer).
+  /// Pas « plus ancien que le plus ancien en attente » : l'audio évincé
+  /// APRÈS envoi reste en vol et compte dans l'attente (à 252 s, l'attente
+  /// commençait vers 80 s, la première perte à 113,9 s).
   List<int> lostBy(int s) {
-    final int? oldest = oldestUnacked[s];
+    final int newest = newestReceived[s] ?? -1;
     return <int>[
       for (final int id in lost)
-        if (oldest == null || id < oldest) id,
+        if (!received.contains(id) && id < newest) id,
     ];
   }
+
+  /// Première seconde où de l'audio a été jeté.
+  int get firstDrop => newestReceived.keys
+      .where((int s) => lostBy(s).isNotEmpty)
+      .reduce((int a, int b) => a < b ? a : b);
 }
 
 bool _isGapMarker(TranscriptSegmentEntity s) =>
@@ -104,7 +118,8 @@ _Run _play() {
     final LiveServiceHarness h = LiveServiceHarness(async, remote: remote)
       ..start(outputEnabled: false);
     int? evictionMs;
-    final Map<int, int> oldest = <int, int>{};
+    final Map<int, int> newest = <int, int>{};
+    final Map<int, Set<String>> live = <int, Set<String>>{};
     final Map<int, List<TranscriptSegmentEntity>> screen =
         <int, List<TranscriptSegmentEntity>>{};
     final Map<int, List<TranscriptSegmentEntity>> store =
@@ -129,10 +144,14 @@ _Run _play() {
       }
       if (id % 10 == 9) {
         final int s = (id + 1) ~/ 10;
-        final ({int startMs, int endMs})? pending = remote.pendingRange(
-          AudioSource.input,
-        );
-        if (pending != null) oldest[s] = (pending.startMs - h.t0) ~/ 100;
+        if (mic.receivedIds.isNotEmpty) {
+          newest[s] = mic.receivedIds.reduce((int a, int b) => a > b ? a : b);
+        }
+        live[s] = <String>{
+          for (final TranscriptSegmentEntity x
+              in h.transcription.segmentsStream.value)
+            if (x.text.startsWith('Phrase numéro')) x.id,
+        };
         screen[s] = h.transcription.segmentsStream.value
             .where(_isGapMarker)
             .toList();
@@ -145,7 +164,9 @@ _Run _play() {
     }
     async.elapse(const Duration(seconds: 90));
     run = _Run(h.session.id, evictionMs ?? -1)
-      ..oldestUnacked.addAll(oldest)
+      ..newestReceived.addAll(newest)
+      ..liveOnScreen.addAll(live)
+      ..received.addAll(mic.receivedIds)
       ..screen.addAll(screen)
       ..store.addAll(store)
       ..disk.addAll(disk)
@@ -244,39 +265,136 @@ void main() {
     expect(bad, isEmpty, reason: bad.join('\n'));
   });
 
-  test('tuée 60 s après la première éviction : le rattrapage au relancement '
-      'rend les phrases perdues', () async {
-    final int kill = first + 60;
-    final List<int> lost = run.lostBy(kill - _bound.inSeconds);
-    expect(lost, isNotEmpty);
-    final List<ProbeSentence> reference = <ProbeSentence>[
-      for (int k = 0; k * 100 < _lastId; k++)
-        (
-          source: 'input',
-          startMs: k * 10000,
-          endMs: k * 10000 + 7500,
-          text: _sentence(k),
-        ),
-    ];
-    final InMemoryTranscriptRepository repo = await runRecordedBackfill(
-      RecordedSession(
-        name: 'tuée',
-        sessionId: run.session,
-        stored: run.disk[kill]!,
-        recovered: const <RecoveredPiece>[],
-        recordedStarts: const <RecordedInterval>[],
-        reference: reference,
+  /// Instants de « l'app tuée » : juste après la première perte, puis toutes
+  /// les 8 s pendant le ralentissement, juste avant et juste après le
+  /// rétablissement, et à la fin (plage fermée).
+  List<int> killInstants() {
+    final int drop = run.firstDrop;
+    final int restore = _restoreId ~/ 10;
+    return <int>{
+      drop,
+      drop + 1,
+      for (int s = drop + 8; s < restore; s += 8) s,
+      restore - 1,
+      restore + 1,
+      restore + 10,
+      restore + 30,
+      _lastId ~/ 10,
+    }.where(run.disk.containsKey).toList()..sort();
+  }
+
+  final List<ProbeSentence> reference = <ProbeSentence>[
+    for (int k = 0; k * 100 < _lastId; k++)
+      (
+        source: 'input',
+        startMs: k * 10000,
+        endMs: k * 10000 + 7500,
+        text: _sentence(k),
       ),
-    );
-    final String note = repo
-        .of(AudioSource.input)
-        .map((TranscriptSegmentEntity s) => s.text)
-        .join(' ');
-    final List<int> missing = <int>[
-      for (final int k in <int>{for (final int id in lost) id ~/ 100})
-        if (!note.contains('Phrase lue $k,')) k,
+  ];
+
+  /// Lignes qui disent la phrase [k] : le texte rattrapé, ou la ligne en
+  /// direct rangée à l'heure de la phrase.
+  int said(List<TranscriptSegmentEntity> lines, int k) => lines
+      .where(
+        (TranscriptSegmentEntity l) =>
+            l.text.contains('Phrase lue $k,') ||
+            (l.text.startsWith('Phrase numéro') &&
+                l.timestampMs >= k * 10000 - 500 &&
+                l.timestampMs <= k * 10000 + 7500),
+      )
+      .length;
+
+  test('le banc jette bien de l audio, assez tôt pour tuer l app pendant la '
+      'perte', () {
+    expect(run.firstDrop, lessThan(_restoreId ~/ 10 - 60));
+    expect(killInstants().length, greaterThanOrEqualTo(16));
+    // Le balayage voit de la perte à presque chaque instant.
+    final List<int> withLoss = <int>[
+      for (final int kill in killInstants())
+        if (run.lostBy(kill - _bound.inSeconds).isNotEmpty) kill,
     ];
-    expect(missing, isEmpty, reason: 'phrases perdues non rendues : $missing');
+    expect(withLoss.length, greaterThanOrEqualTo(12), reason: '$withLoss');
+  });
+
+  test('tuée à chaque instant du ralentissement : la base, lue comme au '
+      'relancement, a chaque phrase dite dans la note ou sous un repère', () {
+    final List<String> bad = <String>[];
+    for (final int kill in killInstants()) {
+      final List<TranscriptSegmentEntity> disk = run.disk[kill]!
+          .where((TranscriptSegmentEntity x) => x.source == AudioSource.input)
+          .toList();
+      for (
+        int k = 0;
+        k * 10000 + 7500 <= (kill - _bound.inSeconds) * 1000;
+        k++
+      ) {
+        final bool covered = disk.any((TranscriptSegmentEntity m) {
+          final ({int startMs, int endMs})? r = markerRange(m.text);
+          return r != null &&
+              r.startMs <= k * 10000 + 1000 &&
+              r.endMs + 1000 >= k * 10000 + 7500;
+        });
+        if (!covered && said(disk, k) == 0) {
+          bad.add('tuée à $kill s : phrase $k');
+        }
+      }
+    }
+    expect(bad, isEmpty, reason: bad.join('\n'));
+  });
+
+  test(
+    'tuée à chaque instant du ralentissement : le rattrapage au '
+    'relancement rend chaque phrase perdue, et chaque phrase une fois',
+    () async {
+      final List<String> bad = <String>[];
+      for (final int kill in killInstants()) {
+        final InMemoryTranscriptRepository repo = await runRecordedBackfill(
+          RecordedSession(
+            name: 'tuée à $kill s',
+            sessionId: run.session,
+            stored: run.disk[kill]!,
+            recovered: const <RecoveredPiece>[],
+            recordedStarts: const <RecordedInterval>[],
+            reference: reference,
+          ),
+        );
+        final List<TranscriptSegmentEntity> lines = repo.of(AudioSource.input);
+        final Set<int> lostSentences = <int>{
+          for (final int id in run.lostBy(kill - _bound.inSeconds)) id ~/ 100,
+        };
+        for (final int k in lostSentences) {
+          if (!lines.any((l) => l.text.contains('Phrase lue $k,'))) {
+            bad.add('tuée à $kill s : phrase perdue $k non rendue');
+          }
+        }
+        for (
+          int k = 0;
+          k * 10000 + 7500 <= (kill - _bound.inSeconds) * 1000;
+          k++
+        ) {
+          final int n = said(lines, k);
+          if (n != 1) bad.add('tuée à $kill s : phrase $k dite $n fois');
+        }
+      }
+      expect(bad, isEmpty, reason: bad.join('\n'));
+    },
+  );
+
+  test('pendant la réunion, une ligne en direct affichée n est jamais retirée '
+      'de l écran par le repère qui grandit', () {
+    final List<int> seconds = run.liveOnScreen.keys.toList()..sort();
+    final Set<String> seen = <String>{};
+    final List<String> bad = <String>[];
+    for (final int s in seconds) {
+      final Set<String> now = run.liveOnScreen[s]!;
+      for (final String id in seen.difference(now)) {
+        bad.add('$s s : $id retirée de l écran');
+      }
+      seen.addAll(now);
+    }
+    expect(seen, isNotEmpty);
+    expect(bad.take(10).toList(), isEmpty, reason: '${bad.length} retraits');
   });
 
   test('quand la plage se ferme : le même repère (même id) porte '
