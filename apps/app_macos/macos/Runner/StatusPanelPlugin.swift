@@ -16,6 +16,9 @@ import Foundation
 //   (mouse-down monitoring needs no accessibility trust; never called for our own events)
 // - https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldterminateafterlastwindowclosed(_:)
 // - https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldhandlereopen(_:hasvisiblewindows:)
+// - https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldterminate(_:)
+// - https://developer.apple.com/documentation/appkit/nsapplication/reply(toapplicationshouldterminate:)
+//   (after terminateLater, the app must reply)
 // - https://developer.apple.com/documentation/appkit/nswindowdelegate/windowshouldclose(_:)
 //   ("not called when a user quits an application")
 // SF Symbols need macOS 11: below, plain drawn shapes.
@@ -64,12 +67,8 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
     private static let width: CGFloat = 340
     private static let padding: CGFloat = 14
 
-    /// Pastel green of the app, reserved for "live": the recording dot only.
-    private static let live = NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 0xA8 / 255, green: 0xE6 / 255, blue: 0xBC / 255, alpha: 1)
-            : NSColor(srgbRed: 0x2F / 255, green: 0x7D / 255, blue: 0x4F / 255, alpha: 1)
-    }
+    /// Green of the app, reserved for "live": the recording dot only.
+    fileprivate static let live = PanelColor.accent
 
     private let channel: FlutterMethodChannel
     private let statusItem: NSStatusItem
@@ -97,6 +96,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         )
         let instance = StatusPanelPlugin(channel: channel)
         registrar.addMethodCallDelegate(instance, channel: channel)
+        shared = instance
         // Dart may not listen yet: it also sends a first snapshot itself.
         channel.invokeMethod("ready", arguments: nil)
     }
@@ -114,10 +114,53 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             result(nil)
         case "terminate":
             result(nil)
-            NSApp.terminate(nil)
+            dartQuitDone = true
+            if quitPending {
+                quitPending = false
+                NSApp.reply(toApplicationShouldTerminate: true)
+            } else {
+                NSApp.terminate(nil)
+            }
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    /// The live plugin, for AppDelegate's quit routing; nil before the
+    /// Flutter view registers it.
+    private(set) static weak var shared: StatusPanelPlugin?
+
+    /// Native safety bound, a little above Dart's 30 s: the app can never
+    /// refuse to quit (logout and restart go through here too).
+    private static let quitTimeout: TimeInterval = 35
+    private var quitPending = false
+    private var dartQuitDone = false
+
+    /// Every way of quitting (Cmd+Q, app menu, Dock, logout) goes through
+    /// Dart `quit` (note saved, owned servers stopped), which answers with
+    /// `terminate`. Returns false when there is nothing to wait for.
+    func requestQuit() -> Bool {
+        if dartQuitDone { return false }
+        if quitPending { return true }
+        quitPending = true
+        closePanel()
+        channel.invokeMethod("quit", arguments: nil) { [weak self] reply in
+            // No Dart handler or a Dart error: do not wait for `terminate`.
+            if reply is FlutterError || (reply as? NSObject) === FlutterMethodNotImplemented {
+                self?.finishQuit()
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + StatusPanelPlugin.quitTimeout) { [weak self] in
+            self?.finishQuit()
+        }
+        return true
+    }
+
+    private func finishQuit() {
+        guard quitPending else { return }
+        quitPending = false
+        dartQuitDone = true
+        NSApp.reply(toApplicationShouldTerminate: true)
     }
 
     /// Brings the main window back (closed windows are only hidden) and
@@ -209,13 +252,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.delegate = self
         panel.onEscape = { [weak self] in self?.closePanel() }
-        let background = NSVisualEffectView()
-        background.material = .popover
-        background.state = .active
-        background.wantsLayer = true
-        background.layer?.cornerRadius = 10
-        background.layer?.masksToBounds = true
-        panel.contentView = background
+        panel.contentView = PanelBackground()
         return panel
     }
 
@@ -252,7 +289,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
+        stack.spacing = 8
         stack.edgeInsets = NSEdgeInsets(
             top: StatusPanelPlugin.padding, left: StatusPanelPlugin.padding,
             bottom: StatusPanelPlugin.padding, right: StatusPanelPlugin.padding
@@ -276,13 +313,14 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             stack.topAnchor.constraint(equalTo: content.topAnchor),
             stack.widthAnchor.constraint(equalToConstant: StatusPanelPlugin.width),
         ])
-        for view in stack.arrangedSubviews where view is NSBox {
+        for view in stack.arrangedSubviews where view is Hairline {
             view.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -2 * StatusPanelPlugin.padding)
                 .isActive = true
         }
         stack.layoutSubtreeIfNeeded()
         let size = NSSize(width: StatusPanelPlugin.width, height: stack.fittingSize.height)
         panel.setFrame(frameUnderItem(size: size), display: true)
+        panel.invalidateShadow()
     }
 
     /// Anchored under the status item, kept inside the screen.
@@ -307,9 +345,15 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         case "recording", "paused":
             let clock = StatusPanelPlugin.clock(elapsed)
             views.append(label(title ?? L.untitled, bold: true))
-            views.append(label(status == "paused" ? "\(L.paused) · \(clock)" : clock, secondary: true))
+            if status == "paused" {
+                views.append(label("\(L.paused) · \(clock)", secondary: true))
+            } else {
+                let time = row([LiveDot(), label(clock, secondary: true)])
+                time.spacing = 6
+                views.append(time)
+            }
             views.append(row([
-                button(L.stop, "stop"),
+                button(L.stop, "stop", primary: true),
                 button(status == "paused" ? L.resume : L.pause, "pauseResume"),
             ]))
         case "finalising":
@@ -321,7 +365,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             ]))
         default:
             views.append(label(L.idle, secondary: true))
-            views.append(row([button(L.start, "start")]))
+            views.append(row([button(L.start, "start", primary: true)]))
         }
         if snapshot["dictating"] as? Bool == true {
             views.append(label(L.dictating, secondary: true))
@@ -384,17 +428,17 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         let field = NSTextField(wrappingLabelWithString: text)
         let size: CGFloat = small ? 11 : 13
         field.font = bold ? .systemFont(ofSize: size, weight: .semibold) : .systemFont(ofSize: size)
-        field.textColor = secondary ? .secondaryLabelColor : .labelColor
+        field.textColor = secondary ? PanelColor.muted : PanelColor.ink
         field.preferredMaxLayoutWidth = StatusPanelPlugin.width - 2 * StatusPanelPlugin.padding
         field.isSelectable = false
         return field
     }
 
-    private func button(_ title: String, _ method: String) -> NSButton {
-        let b = NSButton(title: title, target: self, action: #selector(tap(_:)))
-        b.bezelStyle = .rounded
-        b.controlSize = .small
-        b.font = .systemFont(ofSize: 12)
+    /// Small outlined button; [primary] (Démarrer la note / Arrêter) is the
+    /// only filled one.
+    private func button(_ title: String, _ method: String, primary: Bool = false) -> NSButton {
+        let b = PanelButton(title: title, target: self, action: #selector(tap(_:)))
+        b.primary = primary
         b.identifier = NSUserInterfaceItemIdentifier(method)
         return b
     }
@@ -406,11 +450,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         return stack
     }
 
-    private func separator() -> NSBox {
-        let box = NSBox()
-        box.boxType = .separator
-        return box
-    }
+    private func separator() -> NSView { Hairline() }
 
     @objc private func tap(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue else { return }
@@ -431,5 +471,109 @@ final class StatusPanelWindow: NSPanel {
 
     override func cancelOperation(_ sender: Any?) {
         onEscape?()
+    }
+}
+
+/// Colors of the app (packages/core_presentation/lib/theme/oats_tokens.dart),
+/// resolved per appearance: white / near-black ground, no vibrancy.
+private enum PanelColor {
+    private static func pair(_ light: UInt32, _ dark: UInt32, alpha: CGFloat = 1) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return NSColor(
+                srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+                green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255,
+                alpha: alpha
+            )
+        }
+    }
+
+    static let ground = pair(0xFFFFFF, 0x121212)  // background
+    static let ink = pair(0x111111, 0xF2F2EF)  // ink
+    static let onInk = pair(0xFFFFFF, 0x111111)  // onInk
+    static let muted = pair(0x6C6E69, 0x8B8D87)  // muted
+    static let line = pair(0xE8E8E6, 0x262725)  // line (hairline)
+    static let hover = pair(0xF4F4F2, 0x1B1B1A)  // hover (pressed)
+    static let accent = pair(0x2F7D4F, 0xA8E6BC)  // accent, "live" only
+    static let border = pair(0x111111, 0xF2F2EF, alpha: 0.18)  // button outline
+}
+
+/// Panel ground: rounded 10, hairline border; the window adds the shadow.
+private final class PanelBackground: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
+        PanelColor.ground.setFill()
+        path.fill()
+        PanelColor.line.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+}
+
+/// 1 px separator between blocks.
+private final class Hairline: NSView {
+    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: 1) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        PanelColor.line.setFill()
+        bounds.fill()
+    }
+}
+
+/// The green recording dot before the elapsed time.
+private final class LiveDot: NSView {
+    override var intrinsicContentSize: NSSize { NSSize(width: 7, height: 7) }
+
+    override func draw(_ dirtyRect: NSRect) {
+        PanelColor.accent.setFill()
+        NSBezierPath(ovalIn: bounds).fill()
+    }
+}
+
+/// Small button: 1 px outline, transparent fill, radius 6, 12 pt medium;
+/// primary = filled with the ink color.
+private final class PanelButton: NSButton {
+    var primary = false
+
+    convenience init(title: String, target: AnyObject, action: Selector) {
+        self.init(frame: .zero)
+        self.title = title
+        self.target = target
+        self.action = action
+        isBordered = false
+        font = .systemFont(ofSize: 12, weight: .medium)
+        setButtonType(.momentaryChange)
+    }
+
+    override var intrinsicContentSize: NSSize {
+        let text = (title as NSString).size(withAttributes: [.font: font as Any])
+        return NSSize(width: ceil(text.width) + 20, height: 24)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
+        let pressed = isHighlighted
+        if primary {
+            (pressed ? PanelColor.muted : PanelColor.ink).setFill()
+            path.fill()
+        } else {
+            if pressed {
+                PanelColor.hover.setFill()
+                path.fill()
+            }
+            PanelColor.border.setStroke()
+            path.lineWidth = 1
+            path.stroke()
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font as Any,
+            .foregroundColor: primary ? PanelColor.onInk : PanelColor.ink,
+        ]
+        let size = (title as NSString).size(withAttributes: attributes)
+        (title as NSString).draw(
+            at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2),
+            withAttributes: attributes
+        )
     }
 }

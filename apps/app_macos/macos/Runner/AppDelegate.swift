@@ -17,6 +17,13 @@ class AppDelegate: FlutterAppDelegate {
     return false
   }
 
+  // Cmd+Q, the app menu, Dock › Quit, logout: the same Dart `quit` as the
+  // panel (note saved, owned servers stopped), bounded (StatusPanelPlugin).
+  // Without the plugin (engine not up), quit at once.
+  override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    return StatusPanelPlugin.shared?.requestQuit() == true ? .terminateLater : .terminateNow
+  }
+
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
   }
