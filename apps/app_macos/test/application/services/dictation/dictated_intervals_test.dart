@@ -11,6 +11,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../../helpers/live_service_fakes.dart';
+import '../../../helpers/voiced_pcm.dart';
 
 /// Dictée (T2) pendant une réunion : ses mots ne reviennent dans la note par
 /// AUCUNE passe faite plus tard sur le WAV micro.
@@ -237,11 +238,7 @@ void main() {
         final WavRecorder recorder = WavRecorder();
         await recorder.open('${dir.path}/${sessionId}_mic.wav');
         for (int id = 0; id < 300; id++) {
-          final Uint8List data = Uint8List(3200);
-          ByteData.sublistView(data)
-            ..setInt16(0, id & 0x7FFF, Endian.little)
-            ..setInt16(2, id >> 15, Endian.little);
-          await recorder.append(data);
+          await recorder.append(voicedChunk(<int>[id & 0x7FFF, id >> 15]));
         }
         await recorder.close();
         DictatedIntervalsStore(dir.path).add(sessionId, dictation);

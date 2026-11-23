@@ -14,6 +14,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Tour 7, point 4 — CHANGEMENT de décision. Sonde 5 : retranscrire ne répare
 // pas une phrase que le modèle rate de façon déterministe (3× du français
@@ -96,7 +97,7 @@ void main() {
       transcriber = _Counting();
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${sessionId}_system.wav');
-      await recorder.append(Uint8List(90 * 32000));
+      await recorder.append(voicedPcm(90 * 32000));
       await recorder.close();
       passage = TranscriptSegmentEntity(
         id: 'p',

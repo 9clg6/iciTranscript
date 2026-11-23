@@ -475,6 +475,7 @@ final class GapBackfillService {
       before: true,
     );
     String? before = left?.text;
+    int? beforeAt = left?.timestampMs;
     // L'union d'avant, rendue juste avant, est le vrai voisin : leurs marges
     // se recoupent, une phrase à la jonction ne doit pas revenir deux fois.
     final TranscriptSegmentEntity? recovered = _lastRecovered[gap.source];
@@ -482,6 +483,7 @@ final class GapBackfillService {
         recovered.timestampMs <= gap.endMs &&
         (left == null || recovered.timestampMs >= left.timestampMs)) {
       before = recovered.text;
+      beforeAt = recovered.timestampMs;
     }
     final String? after = _neighbour(intact, marker, before: false)?.text;
     // Exception : une phrase qui commence à la fin de la perte ou après, et
@@ -540,18 +542,39 @@ final class GapBackfillService {
         _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
         return result == _Part.saved ? _Part.cut : _Part.failed;
       }
+      // Porte de parole, comme en direct : un morceau dont l'audio n'a pas de
+      // parole est une hallucination du silence (« Merci. »), jamais rangé.
+      pieces = <({int offsetMs, String text})>[
+        for (int i = 0; i < pieces.length; i++)
+          if (_hasSpeech(
+            pcm,
+            pieces[i].offsetMs,
+            i + 1 < pieces.length ? pieces[i + 1].offsetMs : pcm.length ~/ 32,
+          ))
+            pieces[i],
+      ];
+      // Le voisin ne compte que s'il précède de peu (une phrase plus loin
+      // n'est pas la fin de celle-ci, même si elle lui ressemble).
+      final String? near =
+          before != null &&
+              beforeAt != null &&
+              pieces.isNotEmpty &&
+              from + pieces.first.offsetMs - beforeAt <=
+                  _neighbourSpan.inMilliseconds
+          ? before
+          : null;
       List<({int offsetMs, String text})> kept = trimOverlaps(
         pieces,
-        before: before,
+        before: near,
         after: last ? after : null,
       );
       if (edge != null) {
         final List<({int offsetMs, String text})> withEdge = trimOverlaps(
           pieces,
-          before: before,
+          before: near,
           after: edge.text,
         );
-        if (!_sameTexts(withEdge, trimOverlaps(pieces, before: before))) {
+        if (!_sameTexts(withEdge, trimOverlaps(pieces, before: near))) {
           kept = withEdge;
           _intactEdges.add(edge.id);
         }
@@ -565,17 +588,18 @@ final class GapBackfillService {
       // phrases (WAV) serait la racine, si le banc avait de vrais silences.
       // Même chose au début d'une tranche suivante : la fin d'une phrase déjà
       // rendue entière par la tranche d'avant.
-      if (before != null &&
+      if (near != null &&
           kept.isNotEmpty &&
           // Un fragment de fin commence au tout début de l'audio demandé ;
           // une phrase voisine qui ressemble (mêmes mots) commence plus loin.
           kept.first.offsetMs < 500 &&
           (!first || gap.startMs + kept.first.offsetMs < marker.timestampMs) &&
-          _sharedInOrder(kept.first.text, before) >= _tailRepeat) {
+          _sharedInOrder(kept.first.text, near) >= _tailRepeat) {
         kept = kept.sublist(1);
       }
       if (result == _Part.noAudio) result = _Part.nothingNew;
-      if (kept.isNotEmpty) {
+      // Une tranche sans parole est rattrapée : rien n'y a été dit.
+      if (kept.isNotEmpty || !_hasSpeech(pcm, 0, pcm.length ~/ 32)) {
         result = _Part.saved;
         _progressed = true;
         for (int k = 0; k < kept.length; k++) {
@@ -593,7 +617,10 @@ final class GapBackfillService {
             ),
           );
         }
-        before = kept.last.text;
+        if (kept.isNotEmpty) {
+          before = kept.last.text;
+          beforeAt = from + kept.last.offsetMs;
+        }
         if (!last) {
           // Ce qui est rendu sort du repère ; les phrases qu'il remplace
           // partent (rien n'est supprimé avant d'être rendu).
@@ -629,6 +656,32 @@ final class GapBackfillService {
   // une phrase sans pause à la borne est coupée en deux morceaux.
   static const Duration slice = Duration(seconds: 100);
   static const Duration _minTail = Duration(seconds: 15);
+
+  // Une phrase dure au plus 30 s : au-delà, ce n'est plus le voisin.
+  static const Duration _neighbourSpan = Duration(seconds: 35);
+
+  /// De la parole (porte RMS du direct, pas de 100 ms) dans [pcm] entre
+  /// [fromMs] et [toMs] (heures relatives au début de [pcm]).
+  static bool _hasSpeech(Uint8List pcm, int fromMs, int toMs) {
+    const int step = 3200;
+    final int first = (fromMs * 32 ~/ step).clamp(0, pcm.length ~/ step);
+    final int end = ((toMs * 32 + step - 1) ~/ step).clamp(
+      0,
+      (pcm.length + step - 1) ~/ step,
+    );
+    for (int c = first; c < end; c++) {
+      if (TranscriptionRemoteDataSourceImpl.isSpeechChunk(
+        Uint8List.sublistView(
+          pcm,
+          c * step,
+          math.min((c + 1) * step, pcm.length),
+        ),
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /// [pcm] coupé après le dernier silence (pas de 100 ms) de ses 10
   /// dernières secondes, pour ne pas couper une phrase ; sinon tel quel.

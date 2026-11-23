@@ -17,6 +17,7 @@ import 'package:ici_transcript/core/providers/services/process_manager.service.p
 
 import '../../../helpers/live_answers_fakes.dart';
 import '../../../helpers/live_service_fakes.dart';
+import '../../../helpers/voiced_pcm.dart';
 
 /// Seule la parole FINALE en direct alimente la porte et le contexte (T4) :
 /// formes réelles de main. Repère de perte = segment sauvé par
@@ -138,7 +139,7 @@ void main() {
     final File wav = File('${recordings.path}/${id}_system.wav');
     final WavRecorder recorder = WavRecorder();
     await recorder.open(wav.path);
-    await recorder.append(Uint8List(30 * 32000));
+    await recorder.append(voicedPcm(30 * 32000));
     await recorder.close();
     addTearDown(() async {
       if (wav.existsSync()) await wav.delete();

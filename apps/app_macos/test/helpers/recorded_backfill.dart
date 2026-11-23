@@ -11,6 +11,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 import '../fixtures/probe5_sequences.dart';
 import '../fixtures/probe7_overlap.dart';
 import 'live_service_fakes.dart';
+import 'voiced_pcm.dart';
 
 /// Session enregistrée par une sonde : l'état rangé avant le rattrapage
 /// (repères compris), le texte que le vrai rattrapage a rendu (heures de
@@ -195,12 +196,7 @@ Future<InMemoryTranscriptRepository> runRecordedBackfill(
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${session.sessionId}_$track.wav');
       for (int c = 0; c < chunks; c++) {
-        final Uint8List chunk = Uint8List(3200);
-        final ByteData d = ByteData.sublistView(chunk);
-        for (int o = 0; o < 3200; o += 2) {
-          d.setInt16(o, c * 4 + tag, Endian.little);
-        }
-        await recorder.append(chunk);
+        await recorder.append(voicedPcm(3200, value: c * 4 + tag));
       }
       await recorder.close();
     }
@@ -235,7 +231,7 @@ final class RecordedTranscriber implements PcmTranscriber {
 
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
-    final int v = ByteData.sublistView(pcm).getInt16(0, Endian.little);
+    final int v = voicedValue(pcm);
     final String source = v % 4 == 1 ? 'input' : 'output';
     final int startMs = (v ~/ 4) * 100;
     final int endMs = startMs + pcm.length ~/ 32;

@@ -9,6 +9,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Tour 5, point 6 : après la réunion, chaque repère « transcription
 // interrompue » est retranscrit depuis le WAV de sa source, sur
@@ -98,11 +99,9 @@ void main() {
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${sessionId}_$suffix.wav');
       for (int id = 0; id < 300; id++) {
-        final Uint8List data = Uint8List(3200);
-        ByteData.sublistView(data)
-          ..setInt16(0, (id + base) & 0x7FFF, Endian.little)
-          ..setInt16(2, (id + base) >> 15, Endian.little);
-        await recorder.append(data);
+        await recorder.append(
+          voicedChunk(<int>[(id + base) & 0x7FFF, (id + base) >> 15]),
+        );
       }
       await recorder.close();
     }

@@ -10,6 +10,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../fixtures/probe5_sequences.dart';
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Tour 7, exception à la règle par le temps (ajoutée par l'implémentation
 // pour garder gap_backfill_overlap_test vert) : un segment qui commence à
@@ -69,7 +70,7 @@ void main() {
       repo = InMemoryTranscriptRepository();
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${sessionId}_system.wav');
-      await recorder.append(Uint8List(160 * 32000));
+      await recorder.append(voicedPcm(160 * 32000));
       await recorder.close();
     });
 
