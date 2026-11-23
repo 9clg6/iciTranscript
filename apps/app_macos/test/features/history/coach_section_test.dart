@@ -5,6 +5,7 @@ import 'package:core_data/database/app_database.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
+import 'package:core_presentation/core_presentation.dart' show OatsButton;
 import 'package:dio/dio.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import 'package:ici_transcript/core/providers/services/api_key_store.provider.da
 import 'package:ici_transcript/core/providers/services/llm_dio.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.screen.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
 
@@ -63,7 +65,11 @@ class _ByIndexHttp extends RecordingHttpAdapter {
 /// `EnglishFeedbackEntity.unanalyzedSegmentIds` ; heure affichée « mm:ss »
 /// comme les tours de la transcription ; textes de fr.json :
 /// `coach.unanalyzed` (mention), `common.action.retry` (bouton),
-/// `history.detail.coach_perfect` (aucune correction).
+/// `history.detail.coach_perfect` (aucune correction),
+/// `coach.nothing_to_analyse` (aucune phrase anglaise de l'utilisateur :
+/// rien n'a été envoyé ; ni « Aucune correction » ni erreur). Relancer à
+/// la main reprend toutes les phrases (le direct ne fait rien sauter) et
+/// remplace le retour. Un retour rangé d'avant les nouveaux champs s'ouvre.
 void main() {
   group('une correction affichée', () {
     testWidgets('ce qui a été dit, la meilleure tournure, la raison et '
@@ -190,6 +196,8 @@ void main() {
       WidgetTester tester, {
       required List<TranscriptSegmentEntity> segments,
       EnglishFeedbackEntity? stored,
+      String? rawStored,
+      bool postCall = false,
       required FakeReply Function(int index) replyFor,
     }) async {
       await tester.runAsync(() => writeLlmPrefs(cloudAllowed: false));
@@ -203,10 +211,24 @@ void main() {
         ollamaSetupViewModelProvider.overrideWith(
           () => FakeOllamaSetupViewModel(kOllamaReady),
         ),
+        // Vrai coach d'après l'appel (`coachAfterCall`), sans serveur.
+        liveTranscriptionViewModelProvider.overrideWith(
+          FakeLiveTranscriptionViewModel.new,
+        ),
       ];
       await tester.runAsync(() async {
         final ProviderContainer c = ProviderContainer(overrides: overrides);
         await seedNote(c, segments);
+        if (rawStored != null) {
+          await c
+              .read(summaryServiceProvider)
+              .saveSummary(sessionId: 's1', content: rawStored);
+        }
+        if (postCall) {
+          await c
+              .read(liveTranscriptionViewModelProvider.notifier)
+              .coachAfterCall(segments, sessionId: 's1');
+        }
         if (stored != null) {
           await c
               .read(summaryServiceProvider)
@@ -224,7 +246,9 @@ void main() {
 
     Finder unanalyzed() => find.text('coach.unanalyzed'.tr());
     Finder retry() => find.text('common.action.retry'.tr());
-    Finder coachAction() => find.text('history.detail.english_coach'.tr());
+    // Le bouton de la barre du haut (la section porte le même titre).
+    Finder coachAction() =>
+        find.widgetWithText(OatsButton, 'history.detail.english_coach'.tr());
 
     final List<TranscriptSegmentEntity> meeting = <TranscriptSegmentEntity>[
       noteSegment(
@@ -419,6 +443,136 @@ void main() {
 
       expect(find.text('history.detail.coach_perfect'.tr()), findsOneWidget);
       expect(find.textContaining('llm.error.malformed'.tr()), findsNothing);
+      expect(unanalyzed(), findsNothing);
+    });
+
+    group('rien en anglais à analyser', () {
+      final List<TranscriptSegmentEntity> allFrench = <TranscriptSegmentEntity>[
+        noteSegment(
+          0,
+          'Je pense que le budget est validé pour la semaine.',
+          source: AudioSource.input,
+        ),
+        noteSegment(1, 'We need the budget by Friday.'),
+        noteSegment(2, 'On utilise Slack pour ça.', source: AudioSource.input),
+      ];
+      final List<TranscriptSegmentEntity> noMic = <TranscriptSegmentEntity>[
+        noteSegment(0, 'We need the budget by Friday.'),
+        noteSegment(1, 'Can you share the slides with the team?'),
+      ];
+
+      for (final (String name, List<TranscriptSegmentEntity> segments)
+          in <(String, List<TranscriptSegmentEntity>)>[
+            ('tout en français', allFrench),
+            ('aucune ligne du micro', noMic),
+          ]) {
+        testWidgets('$name, passe d\'après l\'appel faite : la note dit '
+            'qu\'il n\'y avait rien en anglais à analyser, jamais « Aucune '
+            'correction »', (WidgetTester tester) async {
+          await seed(
+            tester,
+            segments: segments,
+            postCall: true,
+            replyFor: (_) => ok(feedbackJson(<(String, String)>[])),
+          );
+
+          await open(tester);
+
+          expect(http.requests, isEmpty);
+          expect(find.text('coach.nothing_to_analyse'.tr()), findsOneWidget);
+          expect(find.text('history.detail.coach_perfect'.tr()), findsNothing);
+        });
+      }
+
+      testWidgets('« Coach anglais » à la demande sur une note tout en '
+          'français : même message, rien n\'est envoyé', (
+        WidgetTester tester,
+      ) async {
+        await seed(
+          tester,
+          segments: allFrench,
+          replyFor: (_) => ok(feedbackJson(<(String, String)>[])),
+        );
+        await open(tester);
+
+        await tester.tap(coachAction());
+        await until(
+          tester,
+          () =>
+              find.text('coach.nothing_to_analyse'.tr()).evaluate().isNotEmpty,
+        );
+
+        expect(http.requests, isEmpty);
+        expect(find.text('coach.nothing_to_analyse'.tr()), findsOneWidget);
+        expect(find.text('history.detail.coach_perfect'.tr()), findsNothing);
+      });
+    });
+
+    testWidgets('relancer à la main reprend TOUTES les phrases, même celles '
+        'corrigées en direct, et remplace leur retour', (
+      WidgetTester tester,
+    ) async {
+      await seed(
+        tester,
+        segments: meeting,
+        // Retour rangé après un direct qui avait corrigé seg-0.
+        stored: const EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[first],
+        ),
+        replyFor: (_) => ok(
+          feedbackJson(<(String, String)>[('He have sent', 'He has sent')]),
+        ),
+      );
+      await open(tester);
+
+      await tester.tap(coachAction());
+      await until(
+        tester,
+        () => find.textContaining('He has sent').evaluate().isNotEmpty,
+      );
+
+      final String sent = http.bodies.map(jsonEncode).join('\n');
+      expect(sent, contains('I am agree with you on this point.'));
+      expect(sent, contains('He have sent the deck to the client.'));
+      expect(sent, contains('We was ready for the demo yesterday.'));
+      expect(
+        (await saved(
+          tester,
+        ))?.corrections.map((EnglishCorrectionEntity c) => c.corrected),
+        <String>['He has sent'],
+      );
+    });
+
+    testWidgets('retour rangé avant ces champs (sans heure ni partie non '
+        'analysée) : la note s\'ouvre et le montre', (
+      WidgetTester tester,
+    ) async {
+      await seed(
+        tester,
+        segments: meeting,
+        rawStored: jsonEncode(<String, Object?>{
+          'summary': 'Résumé.',
+          'feedback': <String, Object?>{
+            'overall': 'Bon niveau.',
+            'corrections': <Map<String, String>>[
+              <String, String>{
+                'original': 'I am agree',
+                'corrected': 'I agree',
+                'category': 'grammar',
+                'explanation': '« agree » est un verbe.',
+              },
+            ],
+          },
+          'micText': null,
+          'speakers': <Object>[],
+        }),
+        replyFor: (_) => ok(feedbackJson(<(String, String)>[])),
+      );
+
+      await open(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('« agree » est un verbe.'), findsOneWidget);
       expect(unanalyzed(), findsNothing);
     });
   });

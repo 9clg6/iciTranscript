@@ -40,7 +40,8 @@ import '../../../helpers/llm_fakes.dart' show ScriptedLlmProvider, requestText;
 /// - chaque correction porte l'heure dans la note de la phrase qui contient
 ///   `original` (forme de réponse du modèle inchangée : il ne donne pas
 ///   d'heure ; introuvable = correction gardée, sans heure) ;
-/// - les phrases déjà corrigées en direct ne repartent pas.
+/// - les phrases déjà corrigées en direct ne repartent pas (arrêt entre
+///   deux lots : coach_stop_between_batches_test.dart).
 ///
 /// Pas de migration : l'heure et les phrases non analysées vivent dans le
 /// JSON de `summaries.content` (enveloppe [SessionAnalysis]).

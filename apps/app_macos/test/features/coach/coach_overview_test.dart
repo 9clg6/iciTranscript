@@ -4,6 +4,7 @@ import 'package:core_data/database/app_database.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:drift/drift.dart'
     show ApplyInterceptor, QueryExecutor, QueryInterceptor;
@@ -15,7 +16,10 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
+import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.state.dart';
 import 'package:ici_transcript/presentation/app.dart';
@@ -23,6 +27,7 @@ import 'package:ici_transcript/presentation/app.dart';
 import '../../helpers/fake_view_models.dart';
 import '../../helpers/local_model_fakes.dart';
 import '../../helpers/localized_app.dart';
+import '../../helpers/settings_fakes.dart' show InMemoryApiKeyStore;
 
 /// Lectures de la table `summaries` qui échouent ou n'aboutissent pas tant
 /// que le test le veut ; le reste de la base marche.
@@ -103,6 +108,9 @@ void main() {
   late Map<String, String?> stored;
   late Map<String, EnglishFeedbackEntity> shownFeedback;
 
+  /// Segments de la note, puis vraie passe du coach d'après l'appel.
+  late Map<String, List<TranscriptSegmentEntity>> spoken;
+
   String envelope(EnglishFeedbackEntity f) =>
       SessionAnalysis(feedback: f).toStored();
 
@@ -130,6 +138,7 @@ void main() {
     final List<Override> overrides = <Override>[
       ...fakes.overrides,
       ...localModelOverrides(db, InstantOllamaService(installed: true)),
+      apiKeyStoreProvider.overrideWithValue(InMemoryApiKeyStore()),
     ];
     await tester.runAsync(() async {
       final ProviderContainer c = ProviderContainer(overrides: overrides);
@@ -139,6 +148,14 @@ void main() {
           await c
               .read(summaryServiceProvider)
               .saveSummary(sessionId: s.id, content: content);
+        }
+        if (spoken[s.id] case final List<TranscriptSegmentEntity> lines) {
+          await c.read(transcriptRepositoryProvider).saveBatch(lines);
+          // Vraie passe d'après l'appel (`FakeLiveTranscriptionViewModel`
+          // ne remplace que build()).
+          await c
+              .read(liveTranscriptionViewModelProvider.notifier)
+              .coachAfterCall(lines, sessionId: s.id);
         }
       }
       c.dispose();
@@ -178,6 +195,7 @@ void main() {
   setUp(() {
     stored = <String, String?>{};
     shownFeedback = <String, EnglishFeedbackEntity>{};
+    spoken = <String, List<TranscriptSegmentEntity>>{};
   });
 
   testWidgets('aucune note avec des corrections : l\'état vide en français', (
@@ -274,6 +292,61 @@ void main() {
     expect(top('Revue produit'), lessThan(top('Atelier design')));
     expect(top('Atelier design'), lessThan(top('Point budget')));
     expect(find.text('coach.empty'.tr()), findsNothing);
+  });
+
+  testWidgets('note sans phrase anglaise de l\'utilisateur (passe faite) : '
+      'figure avec « rien en anglais à analyser », pas « Aucune correction »', (
+    WidgetTester tester,
+  ) async {
+    TranscriptSegmentEntity line(String text, AudioSource source) =>
+        TranscriptSegmentEntity(
+          id: 'design-${text.length}',
+          sessionId: design.id,
+          source: source,
+          text: text,
+          timestampMs: 5000,
+          createdAt: day(18),
+        );
+    spoken = <String, List<TranscriptSegmentEntity>>{
+      design.id: <TranscriptSegmentEntity>[
+        line('Je vous envoie le deck demain.', AudioSource.input),
+        line('We need the budget by Friday.', AudioSource.output),
+      ],
+    };
+    await pumpApp(tester, <SessionEntity>[design]);
+
+    await openCoachPage(tester);
+
+    expect(find.text('Atelier design'), findsOneWidget);
+    expect(find.text('coach.nothing_to_analyse'.tr()), findsOneWidget);
+    expect(find.text('coach.no_correction'.tr()), findsNothing);
+  });
+
+  testWidgets('une ligne abîmée parmi d\'autres, dont une d\'avant les '
+      'nouveaux champs : les autres notes restent listées', (
+    WidgetTester tester,
+  ) async {
+    stored = <String, String?>{
+      budget.id: '{"feedback": {"corrections": [{"original": ',
+      produit.id:
+          '{"summary": null, "feedback": {"overall": "Bon niveau.", '
+          '"corrections": [{"original": "I am agree", "corrected": "I agree", '
+          '"category": "grammar", "explanation": "Verbe."}]}, '
+          '"micText": null, "speakers": []}',
+      design.id: envelope(
+        EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[fix('grammar')],
+        ),
+      ),
+    };
+    await pumpApp(tester, <SessionEntity>[budget, produit, design]);
+
+    await openCoachPage(tester);
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Revue produit'), findsOneWidget);
+    expect(find.text('Atelier design'), findsOneWidget);
+    expect(find.text('common.error.generic'.tr()), findsNothing);
   });
 
   testWidgets('une enveloppe abîmée n\'empêche pas la liste', (

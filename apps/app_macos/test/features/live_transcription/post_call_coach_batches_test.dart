@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -17,9 +18,11 @@ import 'package:ici_transcript/core/providers/services/live_coach.service.provid
 import 'package:ici_transcript/core/providers/services/llm_dio.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
+import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 
 import '../../helpers/llm_fakes.dart'
     show noteSegment, seedNote, storedAnalysis, streamOf, writeLlmPrefs;
+import '../../helpers/fake_view_models.dart' show FakeSettingsViewModel;
 import '../../helpers/local_model_fakes.dart';
 import '../../helpers/settings_fakes.dart';
 
@@ -41,6 +44,31 @@ class _ByIndexHttp extends RecordingHttpAdapter {
     Future<void>? cancelFuture,
   ) {
     reply = replyFor(requests.length);
+    return super.fetch(options, requestStream, cancelFuture);
+  }
+}
+
+/// La 1re requête reste en vol jusqu'à [release] ; les suivantes répondent
+/// par [replyFor].
+class _GatedHttp extends _ByIndexHttp {
+  _GatedHttp(super.replyFor);
+
+  final Completer<void> _gate = Completer<void>();
+  final Completer<void> firstSent = Completer<void>();
+  int _seen = 0;
+
+  void release() => _gate.complete();
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    if (_seen++ == 0) {
+      firstSent.complete();
+      await _gate.future;
+    }
     return super.fetch(options, requestStream, cancelFuture);
   }
 }
@@ -113,10 +141,11 @@ void main() {
     required List<TranscriptSegmentEntity> segments,
     required FakeReply Function(int index) replyFor,
     LiveCoachService? live,
+    _ByIndexHttp? adapter,
   }) async {
     await writeLlmPrefs(cloudAllowed: false);
     db = memoryDatabase();
-    http = _ByIndexHttp(replyFor);
+    http = adapter ?? _ByIndexHttp(replyFor);
     final ProviderContainer c = ProviderContainer(
       overrides: <Override>[
         ...localModelOverrides(db, InstantOllamaService(installed: true)),
@@ -124,6 +153,7 @@ void main() {
         llmDioProvider.overrideWithValue(Dio()..httpClientAdapter = http),
         liveTranscriptionViewModelProvider.overrideWith(_LiveVm.new),
         if (live != null) liveCoachServiceProvider.overrideWithValue(live),
+        settingsViewModelProvider.overrideWith(FakeSettingsViewModel.new),
       ],
     );
     addTearDown(() async {
@@ -253,6 +283,36 @@ void main() {
     expect(saved, isNotNull, reason: 'l\'échec doit atteindre la note');
     expect(saved!.corrections, isEmpty);
     expect(saved.unanalyzedSegmentIds.toSet(), <String>{'seg-0', 'seg-2'});
+  });
+
+  test('modèle local, une longue note en passe d\'après l\'appel, un '
+      'enregistrement démarre : la passe s\'arrête après le lot en cours, '
+      'le reste est noté non analysé', () async {
+    final _GatedHttp gated = _GatedHttp(
+      (int i) =>
+          ok(feedbackJson(<(String, String)>[('phrase $i', 'corrigée $i')])),
+    );
+    final ProviderContainer c = await launch(
+      segments: hour,
+      replyFor: gated.replyFor,
+      adapter: gated,
+    );
+
+    final Future<void> pass = coach(c, hour);
+    await gated.firstSent.future;
+    await c.read(liveTranscriptionViewModelProvider.notifier).startSession();
+    gated.release();
+    await pass;
+
+    expect(http.requests, hasLength(1), reason: 'aucun lot après le démarrage');
+    final EnglishFeedbackEntity saved = (await storedAnalysis(db)).feedback!;
+    expect(saved.corrections, hasLength(1), reason: 'le lot en cours compte');
+    final Set<String> rest = <String>{
+      for (final TranscriptSegmentEntity s in hour)
+        if (!sentAt(0).contains(s.text)) s.id,
+    };
+    expect(rest, isNotEmpty);
+    expect(saved.unanalyzedSegmentIds.toSet(), rest);
   });
 
   group('après le coach en direct', () {

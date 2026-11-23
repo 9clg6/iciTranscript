@@ -16,6 +16,8 @@ void main() {
     'coach.live.state_unavailable',
     // Page « Coach anglais » : note sans correction, erreurs récurrentes.
     'coach.no_correction',
+    // Note sans phrase anglaise de l'utilisateur : rien n'a été analysé.
+    'coach.nothing_to_analyse',
     'coach.recurring.title',
     // Déjà là, réutilisés.
     'coach.empty',
@@ -46,6 +48,15 @@ void main() {
 
   test('une note sans correction se dit « Aucune correction »', () {
     expect(frValue('coach.no_correction'), 'Aucune correction');
+  });
+
+  test('« rien en anglais à analyser » ne se confond ni avec « Aucune '
+      'correction » ni avec une erreur', () {
+    final Object? v = frValue('coach.nothing_to_analyse');
+    expect(v, isA<String>());
+    expect(v, isNot(frValue('coach.no_correction')));
+    expect(v, isNot(frValue('history.detail.coach_perfect')));
+    expect((v! as String).toLowerCase(), contains('anglais'));
   });
 
   test('l\'état d\'échec du coach en direct dit « indisponible »', () {
