@@ -456,6 +456,19 @@ final class GapBackfillService {
         _intactEdges.add(edge.id);
       }
     }
+    // Le départ recule dans la phrase intacte d'avant : le premier morceau
+    // n'est souvent que sa fin, avec un mot qui diffère ou un début abîmé
+    // (sonde 9 : « L'Omavois, puis la gardienne… »). Un morceau d'avant la
+    // perte presque tout entier dans ce voisin (60 % de ses mots, dans
+    // l'ordre) est écarté ; celui qui dit autre chose reste.
+    // ponytail: coupe sur le texte ; partir du premier silence entre
+    // phrases (WAV) serait la racine, si le banc avait de vrais silences.
+    if (before != null &&
+        kept.isNotEmpty &&
+        gap.startMs + kept.first.offsetMs < marker.timestampMs &&
+        _sharedInOrder(kept.first.text, before) >= _tailRepeat) {
+      kept = kept.sublist(1);
+    }
     if (kept.isEmpty) return _Part.nothingNew;
     // Ids d'avant pour le premier morceau (un repère non coupé ne change pas).
     final String prefix = part == 0
@@ -497,6 +510,26 @@ final class GapBackfillService {
       }
     }
     return best;
+  }
+
+  static const double _tailRepeat = 0.6;
+
+  /// Part des mots de [piece], dans l'ordre, retrouvés dans [neighbour].
+  static double _sharedInOrder(String piece, String neighbour) {
+    final List<String> a = _keys(_words(piece));
+    final List<String> b = _keys(_words(neighbour));
+    if (a.isEmpty) return 0;
+    List<int> prev = List<int>.filled(b.length + 1, 0);
+    for (int i = 1; i <= a.length; i++) {
+      final List<int> cur = List<int>.filled(b.length + 1, 0);
+      for (int j = 1; j <= b.length; j++) {
+        cur[j] = a[i - 1] == b[j - 1]
+            ? prev[j - 1] + 1
+            : math.max(prev[j], cur[j - 1]);
+      }
+      prev = cur;
+    }
+    return prev[b.length] / a.length;
   }
 
   // Au moins deux mots communs, sauf si tout le morceau est répété : un
