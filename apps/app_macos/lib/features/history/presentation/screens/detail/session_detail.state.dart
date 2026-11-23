@@ -2,6 +2,7 @@ import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 import 'package:ici_transcript/application/services/session_analysis.dart';
 
 part 'session_detail.state.freezed.dart';
@@ -47,6 +48,9 @@ abstract class SessionDetailState with _$SessionDetailState {
 
     /// Cle du message d'erreur du dernier retour du coach (`llm.error.*`).
     String? feedbackError,
+
+    /// Questions posees pendant la reunion, avec la reponse gardee.
+    @Default(<LiveQuestion>[]) List<LiveQuestion> questions,
   }) = _SessionDetailState;
 
   /// Etat initial par defaut.

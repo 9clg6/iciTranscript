@@ -97,7 +97,7 @@ final class MeetingSuggestionControllerProvider
 }
 
 String _$meetingSuggestionControllerHash() =>
-    r'09c3a9f3c44763f9a7d236146eca546eb5bf01e7';
+    r'0c9d7f3d4865c14ff6304c920f4cd0f657905f35';
 
 /// Suggestion de démarrer une note affichée par le shell, ou null.
 

@@ -149,6 +149,9 @@ abstract class  LocaleKeys {
   static const history_detail_calendar_link = 'history.detail.calendar.link';
   static const history_detail_calendar_none = 'history.detail.calendar.none';
   static const history_detail_calendar = 'history.detail.calendar';
+  static const history_detail_questions = 'history.detail.questions';
+  static const history_detail_no_answer = 'history.detail.no_answer';
+  static const history_detail_answer_failed = 'history.detail.answer_failed';
   static const history_detail = 'history.detail';
   static const history = 'history';
   static const settings_title = 'settings.title';
@@ -269,5 +272,23 @@ abstract class  LocaleKeys {
   static const meeting_suggestion_dismiss = 'meeting.suggestion.dismiss';
   static const meeting_suggestion = 'meeting.suggestion';
   static const meeting = 'meeting';
+  static const live_answers_title = 'live_answers.title';
+  static const live_answers_empty = 'live_answers.empty';
+  static const live_answers_answer_latest = 'live_answers.answer_latest';
+  static const live_answers_answer_this = 'live_answers.answer_this';
+  static const live_answers_answer = 'live_answers.answer';
+  static const live_answers_local_manual_hint = 'live_answers.local_manual_hint';
+  static const live_answers_answering = 'live_answers.answering';
+  static const live_answers_copy = 'live_answers.copy';
+  static const live_answers_copied = 'live_answers.copied';
+  static const live_answers_dismiss = 'live_answers.dismiss';
+  static const live_answers_declined = 'live_answers.declined';
+  static const live_answers_truncated = 'live_answers.truncated';
+  static const live_answers_error_invalid_key = 'live_answers.error.invalid_key';
+  static const live_answers_error_rate_limited = 'live_answers.error.rate_limited';
+  static const live_answers_error_unreachable = 'live_answers.error.unreachable';
+  static const live_answers_error_malformed = 'live_answers.error.malformed';
+  static const live_answers_error = 'live_answers.error';
+  static const live_answers = 'live_answers';
 
 }
