@@ -597,6 +597,16 @@ void main() {
       log('feed_end', <String, Object?>{'label': label});
     }
 
+    // Kills the server this probe owns (its process group, noted by the
+    // runner in PROBE_DIR/server.pid). Never any other process.
+    Future<void> killServer() async {
+      final String pgid = File(
+        '${env['PROBE_DIR']}/server.pid',
+      ).readAsStringSync().trim();
+      await Process.run('kill', <String>['--', '-$pgid']);
+      log('server_kill', <String, Object?>{'pgid': pgid});
+    }
+
     Future<void> both(Future<void> Function(Proxy) f) async {
       await f(micProxy);
       await f(sysProxy);
@@ -775,6 +785,25 @@ void main() {
         seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
       );
       dumpSegments();
+    } else if (mode == 'dead') {
+      // A 6-minute meeting: the (own) server process is killed at 2:00, the
+      // app is hard-killed at 4:00. The runner restarts the server, then
+      // MODE=relaunch on the same STATE.
+      await start(mode);
+      await feed(
+        live60,
+        360,
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          120: killServer,
+          240: () async {
+            snap('before_kill');
+            dumpSegments();
+            log('kill_self');
+            Process.killPid(pid, ProcessSignal.sigkill);
+          },
+        },
+      );
     } else if (mode == 'R') {
       // Regression: plain run (R_SECONDS, live60 beyond 300 s) plus one
       // 3 s mic cut at 101 s.

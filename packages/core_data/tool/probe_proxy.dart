@@ -135,26 +135,86 @@ class Proxy {
       onDone: () => closedBy('client'),
       onError: (Object _) => closedBy('client'),
     );
+    // Server-to-client: the HTTP handshake and WebSocket ping/pong pass at
+    // once; only data frames (text, binary, continuation) and the close
+    // frame, kept behind them, are held by [lag] / [throttle]. A slow
+    // server is simulated without the proxy itself timing out keepalives
+    // or handshakes (probe ten).
     Future<void> held = Future<void>.value();
+    bool handshake = false;
+    List<int> inbuf = <int>[];
+    void schedule(Uint8List d) {
+      final DateTime now = DateTime.now();
+      DateTime due = now.add(lag);
+      if (throttle > 0 && _throttleStart != null) {
+        final int since = now.difference(_throttleStart!).inMilliseconds;
+        due = _throttleStart!
+            .add(Duration(milliseconds: (since / throttle).round()))
+            .add(lag);
+      }
+      if (!due.isAfter(now)) {
+        held = held.then((_) => pipe(client, d));
+        return;
+      }
+      held = held.then((_) async {
+        final Duration wait = due.difference(DateTime.now());
+        if (wait > Duration.zero) await Future<void>.delayed(wait);
+        pipe(client, d);
+      });
+    }
+
     final StreamSubscription<Uint8List> b = up.listen(
       (Uint8List d) {
-        final DateTime now = DateTime.now();
-        DateTime due = now.add(lag);
-        if (throttle > 0 && _throttleStart != null) {
-          final int since = now.difference(_throttleStart!).inMilliseconds;
-          due = _throttleStart!
-              .add(Duration(milliseconds: (since / throttle).round()))
-              .add(lag);
+        inbuf.addAll(d);
+        if (!handshake) {
+          int end = -1;
+          for (int i = 0; i + 3 < inbuf.length; i++) {
+            if (inbuf[i] == 13 &&
+                inbuf[i + 1] == 10 &&
+                inbuf[i + 2] == 13 &&
+                inbuf[i + 3] == 10) {
+              end = i + 4;
+              break;
+            }
+          }
+          if (end < 0) return;
+          // First bytes of the connection: nothing is held yet.
+          pipe(client, Uint8List.fromList(inbuf.sublist(0, end)));
+          inbuf = inbuf.sublist(end);
+          handshake = true;
         }
-        if (!due.isAfter(now)) {
-          held = held.then((_) => pipe(client, d));
-          return;
+        int at = 0;
+        while (inbuf.length - at >= 2) {
+          final int op = inbuf[at] & 0x0F;
+          final int len7 = inbuf[at + 1] & 0x7F;
+          final bool masked = (inbuf[at + 1] & 0x80) != 0;
+          int header = 2;
+          int len = len7;
+          if (len7 == 126) {
+            if (inbuf.length - at < 4) break;
+            len = (inbuf[at + 2] << 8) | inbuf[at + 3];
+            header = 4;
+          } else if (len7 == 127) {
+            if (inbuf.length - at < 10) break;
+            len = 0;
+            for (int k = 2; k < 10; k++) {
+              len = (len << 8) | inbuf[at + k];
+            }
+            header = 10;
+          }
+          if (masked) header += 4;
+          if (inbuf.length - at < header + len) break;
+          final Uint8List frame = Uint8List.fromList(
+            inbuf.sublist(at, at + header + len),
+          );
+          at += header + len;
+          if (op == 0x9 || op == 0xA) {
+            pipe(client, frame); // ping / pong: never delayed
+          } else {
+            schedule(frame);
+          }
         }
-        held = held.then((_) async {
-          final Duration wait = due.difference(DateTime.now());
-          if (wait > Duration.zero) await Future<void>.delayed(wait);
-          pipe(client, d);
-        });
+        inbuf = inbuf.sublist(at);
       },
       onDone: () => held.then((_) => closedBy('server')),
       onError: (Object _) => held.then((_) => closedBy('server')),
