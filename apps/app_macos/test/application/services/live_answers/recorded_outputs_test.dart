@@ -27,9 +27,12 @@ import '../../../helpers/probe_outputs.dart';
 ///   été mentionnés », « non spécifié/indiqué/précisé », « ne connaît pas »,
 ///   « aucune information ») ou que le texte n'est pas une question pour
 ///   l'utilisateur (« the question is a comment, not a question »). La phrase
-///   qui répond = la première phrase de la tête ; si la tête est un titre
-///   (sans ponctuation finale, ou finie par « : », suivi de puces), toute
-///   ligne compte. Un état du monde (« not yet approved », « yet to be
+///   qui répond = la première phrase de la tête : refus si elle refuse sans
+///   citer d'extrait fourni, ou si elle renvoie aux sources (« ici », « in
+///   the provided/given … ») ; si la tête est un titre (sans ponctuation
+///   finale, ou finie par « : », suivi de puces) : refus si la première puce
+///   refuse, ou si une ligne refuse et qu'aucune ne cite d'extrait fourni.
+///   Parenthèses : seuls `([Sn])` et `(User|Speaker…, heure)` sont nettoyés. Un état du monde (« not yet approved », « yet to be
 ///   confirmed », « does not include ») reste une réponse.
 /// - Jeton `NO_ANSWER` (avec ou sans crochets) ailleurs qu'en tête : la ligne
 ///   qui le porte est retirée ; s'il ne reste rien de substantiel (seulement
@@ -66,7 +69,6 @@ void main() {
       'contract/fr3-c#2',
       'contract/en2-c#2',
       'contract/en3-c#2',
-      'clean/fr1-c#0',
       'clean/en3-c#0',
       'contract/fr2-d#2',
     ]) {
@@ -80,6 +82,9 @@ void main() {
 
     for (final String key in <String>[
       // Réponses qui contiennent une négation : elles restent des réponses.
+      // Refus sourcé (« non spécifiée, à confirmer [S1] ») : montré, l'extrait
+      // du planning le dit ; mieux qu'une vraie réponse cachée (décision).
+      'clean/fr1-c#0',
       'contract/en2-a#1',
       'contract/fr3-b#2',
       'clean/fr1-a2#0',
