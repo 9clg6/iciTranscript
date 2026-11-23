@@ -9,6 +9,7 @@ import 'package:ici_transcript/core/providers/platform/now.provider.dart';
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
 import 'package:ici_transcript/features/calendar/calendar_prefs.provider.dart';
+import 'package:ici_transcript/features/history/presentation/screens/list/session_list.state.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.view_model.dart';
@@ -67,6 +68,17 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
     state = null;
   }
 
+  /// Démarrage automatique ; s'il échoue (serveur, micro refusé), la
+  /// suggestion s'affiche pour réessayer ou ignorer.
+  Future<void> _autoStart(MeetingSuggestion s) async {
+    await startOrShowNote(ref.read, event: s.event);
+    if (!ref.mounted) return;
+    final LiveTranscriptionState live = ref.read(
+      liveTranscriptionViewModelProvider,
+    );
+    if (!live.isRecording && !live.isPaused && state == null) state = s;
+  }
+
   void _onMicUsers(Set<String> bundleIds) {
     final DateTime now = ref.read(nowProvider)();
     // Ids seulement (jamais de titre ni de nom) : sert à compléter kCallApps
@@ -118,6 +130,10 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
       return;
     }
 
+    final SessionListState notes = ref.read(sessionListViewModelProvider);
+    // Liste des notes inconnue : impossible de savoir si une réunion a déjà
+    // sa note, donc rien de nouveau (ni invite ni démarrage).
+    if (!notes.loaded) return;
     final MeetingSuggestion? next = meetingSuggestion(
       now: now,
       events: events,
@@ -135,7 +151,7 @@ class MeetingSuggestionController extends _$MeetingSuggestionController {
     if (next == null) return;
     _shown.add(next.key);
     if (next.source == MeetingSource.calendar && prefs.autoStart) {
-      unawaited(startOrShowNote(ref.read, event: next.event));
+      unawaited(_autoStart(next));
       return;
     }
     state = next;
