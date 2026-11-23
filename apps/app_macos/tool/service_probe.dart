@@ -645,6 +645,55 @@ void main() {
       await stop(mode);
       await waitNoMarkers('after_stop', seconds: 60);
       dumpSegments();
+    } else if (mode == 'slow2') {
+      // Same source, same session: slow accepts of 12, 15, 25 s, then a
+      // fast one (1 s), then 12 s again; then a NEW session with one 12 s.
+      Future<void> slowCut(int d) async {
+        micProxy.setAcceptDelay(Duration(seconds: d));
+        micProxy.cut();
+      }
+
+      await start('S1');
+      await feed(
+        live,
+        330,
+        label: 'S1',
+        faults: <double, Future<void> Function()>{
+          40: () => slowCut(12),
+          100: () => slowCut(15),
+          160: () => slowCut(25),
+          240: () => slowCut(1),
+          280: () => slowCut(12),
+        },
+      );
+      await stop('S1');
+      await waitNoMarkers('after_S1', seconds: 60);
+      micProxy.setAcceptDelay(Duration.zero);
+      await start('S2');
+      await feed(
+        live,
+        90,
+        label: 'S2',
+        faults: <double, Future<void> Function()>{30: () => slowCut(12)},
+      );
+      await stop('S2');
+      await waitNoMarkers('after_S2', seconds: 60);
+      dumpSegments();
+    } else if (mode == 'R') {
+      // Regression: 5 min plain plus one 3 s mic cut.
+      await start(mode);
+      await feed(
+        live,
+        300,
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          101: () => micProxy.refuse(),
+          104: () => micProxy.reopen(),
+        },
+      );
+      await stop(mode);
+      await waitNoMarkers('after_stop', seconds: 60);
+      dumpSegments();
     } else if (mode == 'stopmid') {
       // Stop in the middle of a sentence; STOP_LAG lags the server first.
       final double lagS = double.tryParse(env['STOP_LAG'] ?? '') ?? 0;
