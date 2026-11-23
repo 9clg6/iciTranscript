@@ -227,7 +227,12 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                     loadingLabel: LocaleKeys.history_detail_coach_loading.tr(),
                     content: state.feedback == null
                         ? null
-                        : CoachFeedbackView(feedback: state.feedback!),
+                        : CoachFeedbackView(
+                            feedback: state.feedback!,
+                            onRetry: state.isFeedbackLoading
+                                ? null
+                                : _vm.retryUnanalyzed,
+                          ),
                     errorKey: state.feedbackError,
                   ),
                 ),

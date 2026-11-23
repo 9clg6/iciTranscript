@@ -1,7 +1,6 @@
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
-import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/services/session_history.service.dart';
 import 'package:core_domain/domain/usecases/get_session_detail.use_case.dart';
 import 'package:core_foundation/logging/logger.dart';
@@ -220,15 +219,52 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
   }
 
   /// Analyse (a la demande) l'anglais parle de la session, par le
-  /// fournisseur actif.
-  Future<void> analyzeEnglish() async {
+  /// fournisseur actif : phrases anglaises du micro, par lots ; un lot en
+  /// échec est rangé « non analysé » (la note propose de réessayer).
+  Future<void> analyzeEnglish() => _coach(
+    (SessionDetailState s) => s.segments,
+    (EnglishFeedbackEntity? old, EnglishFeedbackEntity found) => found,
+  );
+
+  /// « Réessayer » : seules les phrases non analysées repartent ; leurs
+  /// corrections s'ajoutent à celles déjà là.
+  Future<void> retryUnanalyzed() => _coach(
+    (SessionDetailState s) {
+      final Set<String> ids =
+          s.feedback?.unanalyzedSegmentIds.toSet() ?? const <String>{};
+      return <TranscriptSegmentEntity>[
+        for (final TranscriptSegmentEntity x in s.segments)
+          if (ids.contains(x.id)) x,
+      ];
+    },
+    (EnglishFeedbackEntity? old, EnglishFeedbackEntity found) =>
+        found.copyWith(
+          overall: old?.overall ?? found.overall,
+          corrections: mergeCorrections(
+            old?.corrections ?? const <EnglishCorrectionEntity>[],
+            found.corrections,
+          ),
+        ),
+  );
+
+  /// Coach sur les segments choisis par [pick] ; le résultat, combiné à
+  /// l'ancien retour par [combine], est rangé puis affiché. Tout en échec :
+  /// l'erreur est affichée, rien n'est rangé.
+  Future<void> _coach(
+    List<TranscriptSegmentEntity> Function(SessionDetailState s) pick,
+    EnglishFeedbackEntity Function(
+      EnglishFeedbackEntity? old,
+      EnglishFeedbackEntity found,
+    )
+    combine,
+  ) async {
     final SessionDetailState? current = state.value;
     final SessionEntity? session = current?.session;
     if (current == null || session == null || current.isFeedbackLoading) return;
 
-    // Coach = micro de l'utilisateur UNIQUEMENT (pas l'audio du meeting).
-    final String transcript = _micTranscript(current);
-    if (transcript.trim().isEmpty) return;
+    // Coach = phrases anglaises du micro UNIQUEMENT (pas l'audio du meeting).
+    final List<TranscriptSegmentEntity> segments = pick(current);
+    if (coachableLines(segments).isEmpty) return;
 
     _set(
       (SessionDetailState s) =>
@@ -242,11 +278,12 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
               s.copyWith(isFeedbackLoading: false, llmAvailable: false),
         );
       }
-      final EnglishFeedbackEntity feedback = await coachEnglish(
+      final EnglishFeedbackEntity found = await coachMeeting(
         ready.llm,
-        transcript,
+        segments,
       );
       if (!ref.mounted) return;
+      final EnglishFeedbackEntity feedback = combine(current.feedback, found);
       // Le coach garde le modele du resume deja range (pas de `model`).
       await _store(
         session.id,
@@ -316,13 +353,6 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
             !LiveTranscriptionService.isUntranscribedMarker(x.text),
       )
       .map(TranscriptFormatter.plainLine)
-      .join('\n');
-
-  /// Transcript du micro de l'utilisateur uniquement (source input), pour le
-  /// coach d'anglais : on ne corrige que ce que l'utilisateur a dit.
-  String _micTranscript(SessionDetailState s) => s.segments
-      .where((TranscriptSegmentEntity seg) => seg.source == AudioSource.input)
-      .map((TranscriptSegmentEntity seg) => seg.text)
       .join('\n');
 
   /// Range l'enveloppe stockee modifiee par [change] : on part de la base,

@@ -85,6 +85,26 @@
   },
   "coach": {
     "empty": "Vos retours d'anglais, réunion par réunion, s'afficheront ici. En attendant, ouvrez une note et choisissez « Coach anglais ».",
+    "unanalyzed": "Une partie de la réunion n'a pas été analysée.",
+    "corrections": {
+      "one": "{} correction",
+      "other": "{} corrections"
+    },
+    "no_correction": "Aucune correction",
+    "recurring": {
+      "title": "Erreurs récurrentes",
+      "notes": {
+        "one": "dans {} note",
+        "other": "dans {} notes"
+      }
+    },
+    "live": {
+      "option": "Coach en direct",
+      "description": "Corrige votre anglais pendant la réunion, par le service en ligne choisi.",
+      "unavailable": "Nécessite un service en ligne autorisé : en local, la transcription ralentirait.",
+      "state_unavailable": "Coach en direct indisponible",
+      "waiting": "Vos corrections s'afficheront ici."
+    },
     "category": {
       "grammar": "Grammaire",
       "conjugation": "Conjugaison",
