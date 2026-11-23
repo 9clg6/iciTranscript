@@ -484,6 +484,9 @@ final class FakeVoxServer {
   /// vite que le temps réel. Null : réponse en 400 ms, sans file. Peut
   /// changer en cours de test (serveur durablement ralenti puis rétabli).
   double? speed;
+
+  /// Retard ajouté à chaque réponse (proxy « Dlag » des sondes).
+  Duration lag = Duration.zero;
   Duration _busyUntil = Duration.zero;
 
   /// Met [audio] dans la file ; rend l'instant où il aura été traité.
@@ -614,11 +617,13 @@ final class FakeVoxSocket extends WebSocketClient {
       if (!autoReply) return;
       final int generation = _generation;
       final int n = ++_phrases;
-      final Duration delay = server.speed == null
-          ? const Duration(milliseconds: 400)
-          : server.busyUntil +
-                const Duration(milliseconds: 400) -
-                server.now!();
+      final Duration delay =
+          (server.speed == null
+              ? const Duration(milliseconds: 400)
+              : server.busyUntil +
+                    const Duration(milliseconds: 400) -
+                    server.now!()) +
+          server.lag;
       Timer(delay, () {
         if (!_connected || generation != _generation) return;
         for (final int id in utterance) {
