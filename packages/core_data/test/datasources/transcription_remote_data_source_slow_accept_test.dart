@@ -222,4 +222,50 @@ void main() {
       );
     });
   });
+
+  // Revue PR #25, point 5 : l'app vit des jours dans la barre de menus ; la
+  // borne apprise ne doit pas survivre à la séance. Une nouvelle note
+  // (connexion de début de séance) repart à 10 s.
+  test('une nouvelle séance repart à 10 s, quoi que la précédente ait '
+      'appris', () {
+    fakeAsync((FakeAsync async) {
+      final DataSourceBench b = DataSourceBench(async);
+      async.elapse(const Duration(seconds: 1));
+      int id = 0;
+      void outage(int seconds) {
+        b.mic
+          ..acceptDelay = const Duration(seconds: 15)
+          ..drop();
+        for (int i = 0; i < seconds * 10; i++, id++) {
+          b.tick(
+            id,
+            voiced: <AudioSource, bool>{AudioSource.input: id % 50 < 40},
+          );
+        }
+      }
+
+      outage(40); // apprend 20 s
+      b.dataSource.disconnect(); // fin de la note
+      async.elapse(const Duration(hours: 6));
+      b.mic.acceptDelay = Duration.zero;
+      b.dataSource.connect(systemAudioEnabled: false); // nouvelle note
+      async.elapse(const Duration(seconds: 1));
+
+      final Duration drop = async.elapsed;
+      outage(40);
+      final List<Duration> attempts = b.mic.connectAttempts
+          .where((Duration t) => t >= drop)
+          .toList();
+      expect(attempts.length, greaterThanOrEqualTo(2));
+      expect(
+        attempts[1] - attempts[0],
+        greaterThanOrEqualTo(const Duration(seconds: 10)),
+      );
+      expect(
+        attempts[1] - attempts[0],
+        lessThanOrEqualTo(const Duration(milliseconds: 11500)),
+        reason: 'borne de départ de la séance : 10 s',
+      );
+    });
+  });
 }
