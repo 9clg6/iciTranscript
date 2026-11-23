@@ -31,6 +31,7 @@
 		A1B2C3D4E5F6A7B8C9D0E1F3 /* AudioCapturePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* AudioCapturePlugin.swift */; };
 		15DF8B1E5A36BDE4D4190969 /* CalendarPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2369EDC0C5307568C58C52C4 /* CalendarPlugin.swift */; };
 		3E6841B4CD2DE57829845C9A /* MeetingDetectionPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894A3DE1C64EE6E1AE9E576E /* MeetingDetectionPlugin.swift */; };
+		FBA2045EE7065DC5D10553A7 /* StatusPanelPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E55DEDFDE60C73B40D53F00 /* StatusPanelPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0A2 /* KeychainPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0B2 /* DocumentTextPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */; };
 		B7C1E2F3A4D5B6C7D8E9F0C2 /* FilePickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */; };
@@ -93,6 +94,7 @@
 		A1B2C3D4E5F6A7B8C9D0E1F2 /* AudioCapturePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapturePlugin.swift; sourceTree = "<group>"; };
 		2369EDC0C5307568C58C52C4 /* CalendarPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarPlugin.swift; sourceTree = "<group>"; };
 		894A3DE1C64EE6E1AE9E576E /* MeetingDetectionPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetectionPlugin.swift; sourceTree = "<group>"; };
+		9E55DEDFDE60C73B40D53F00 /* StatusPanelPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPanelPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentTextPlugin.swift; sourceTree = "<group>"; };
 		B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePickerPlugin.swift; sourceTree = "<group>"; };
@@ -209,6 +211,7 @@
 				A1B2C3D4E5F6A7B8C9D0E1F2 /* AudioCapturePlugin.swift */,
 				2369EDC0C5307568C58C52C4 /* CalendarPlugin.swift */,
 				894A3DE1C64EE6E1AE9E576E /* MeetingDetectionPlugin.swift */,
+				9E55DEDFDE60C73B40D53F00 /* StatusPanelPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0A1 /* KeychainPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0B1 /* DocumentTextPlugin.swift */,
 				B7C1E2F3A4D5B6C7D8E9F0C1 /* FilePickerPlugin.swift */,
@@ -466,6 +469,7 @@
 				A1B2C3D4E5F6A7B8C9D0E1F3 /* AudioCapturePlugin.swift in Sources */,
 				15DF8B1E5A36BDE4D4190969 /* CalendarPlugin.swift in Sources */,
 				3E6841B4CD2DE57829845C9A /* MeetingDetectionPlugin.swift in Sources */,
+				FBA2045EE7065DC5D10553A7 /* StatusPanelPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0A2 /* KeychainPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0B2 /* DocumentTextPlugin.swift in Sources */,
 				B7C1E2F3A4D5B6C7D8E9F0C2 /* FilePickerPlugin.swift in Sources */,

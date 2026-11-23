@@ -19,7 +19,14 @@ class MainFlutterWindow: NSWindow {
     MeetingDetectionPlugin.register(with: flutterViewController.registrar(forPlugin: "MeetingDetectionPlugin"))
     GlobalShortcutPlugin.register(with: flutterViewController.registrar(forPlugin: "GlobalShortcutPlugin"))
     TextOutputPlugin.register(with: flutterViewController.registrar(forPlugin: "TextOutputPlugin"))
+    StatusPanelPlugin.register(with: flutterViewController.registrar(forPlugin: "StatusPanelPlugin"))
 
     super.awakeFromNib()
+  }
+
+  /// Close button and Cmd+W only hide the window: the app stays in the menu
+  /// bar and the Dock, a recording goes on. Quitting does not go through here.
+  override func performClose(_ sender: Any?) {
+    orderOut(sender)
   }
 }
