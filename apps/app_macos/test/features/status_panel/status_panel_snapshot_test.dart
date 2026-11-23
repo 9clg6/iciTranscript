@@ -36,7 +36,12 @@ import '../../helpers/localized_app.dart';
 // - `answerNow` {questionId: String} : proposer une réponse à la question
 //   affichée (modèle local, à la demande) ;
 // - `openWindow` : Dart répond par `showWindow` ;
-// - `quit` : Dart arrête la note en cours (sauvée), puis `terminate`.
+// - `quit` (aussi ⌘Q et Dock › Quitter, routés par le natif) : Dart
+//   arrête la note en cours (sauvée ; la finalisation est passée, l'audio
+//   reste sur disque et le rattrapage reprend au lancement suivant), puis
+//   arrête les serveurs lancés par Oats (registre des processus), puis
+//   `terminate` ; idempotent, `terminate` part en 30 s au plus même si un
+//   arrêt reste bloqué (voir status_panel_quit_test.dart).
 //
 // Instantané (Map JSON, uniquement String, int, bool, null, List, Map) :
 // - `status` : `idle` | `recording` | `paused` | `finalising` (après
@@ -320,6 +325,62 @@ void main() {
       );
 
       expect(s['transcript'], isEmpty);
+    });
+
+    // Repères des deux sortes, au milieu des phrases : L1 L2 repère L3 donne
+    // L1 L2 L3 (le repère ne prend pas la place de L1).
+    final Map<String, String> markers = <String, String>{
+      'perte « Transcription interrompue… »':
+          LiveTranscriptionService.gapMarkerText(61000, 83000),
+      'passage non transcrit « Passage non transcrit (…) »':
+          LiveTranscriptionService.untranscribedMarkerText(61000, 83000),
+    };
+    markers.forEach((String kind, String marker) {
+      test('repère de $kind entre deux phrases : jamais montré, ne prend pas '
+          'de place', () {
+        expect(
+          LiveTranscriptionService.isUntranscribedMarker(marker) ||
+              marker.startsWith(LiveTranscriptionService.gapMarkerPrefix),
+          isTrue,
+          reason: 'repère tel que le service l\'écrit',
+        );
+        final Map<String, Object?> s = snap(
+          live: recording(
+            segments: <TranscriptSegmentEntity>[
+              line('L1 bonjour.'),
+              line('L2 le budget.', source: AudioSource.input),
+              line(marker),
+              line('L3 la suite.'),
+            ],
+          ),
+        );
+
+        expect(texts(s), <Object?>[
+          'L1 bonjour.',
+          'L2 le budget.',
+          'L3 la suite.',
+        ]);
+      });
+    });
+
+    test('les deux sortes de repères ensemble : aucune ne s\'affiche', () {
+      final Map<String, Object?> s = snap(
+        live: recording(
+          segments: <TranscriptSegmentEntity>[
+            line('L1.'),
+            line(LiveTranscriptionService.untranscribedMarkerText(2000, 4000)),
+            line('L2.'),
+            line(LiveTranscriptionService.gapMarkerText(5000, 9000)),
+            line('L3.'),
+            line(
+              LiveTranscriptionService.untranscribedMarkerText(9000, 9500),
+              source: AudioSource.input,
+            ),
+          ],
+        ),
+      );
+
+      expect(texts(s), <Object?>['L1.', 'L2.', 'L3.']);
     });
   });
 

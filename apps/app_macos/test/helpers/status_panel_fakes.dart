@@ -30,6 +30,9 @@ class FakeStatusPanelPlatform {
   /// [failUpdates] décroît ; 0 = de nouveau normal).
   int failUpdates = 0;
 
+  /// Appelé à chaque appel Dart → Swift (ex. noter l'état au `terminate`).
+  void Function(MethodCall call)? onCall;
+
   /// Instantanés reçus par `update`, dans l'ordre.
   List<Map<Object?, Object?>> get updates => calls
       .where((MethodCall c) => c.method == 'update')
@@ -48,6 +51,7 @@ class FakeStatusPanelPlatform {
       (MethodCall call) async {
         calls.add(call);
         log.add('panel.${call.method}');
+        onCall?.call(call);
         if (call.method == 'update' && failUpdates > 0) {
           failUpdates--;
           throw PlatformException(code: 'PANEL_UNAVAILABLE');
