@@ -143,11 +143,18 @@ ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts) {
   );
 }
 
-/// Groupe entre crochets ou parenthèses fait de tags `S<n>`, d'heures,
-/// « User » ou « Speaker n » : remplacé par les citations canoniques
-/// fournies, le reste retiré.
-final RegExp _citationGroup = RegExp(
-  r'(\s*)([\[(])([^\[\]()]*|\[[^\[\]]*\])([\])])',
+/// Groupe entre crochets fait de tags `S<n>`, d'heures, « User » ou
+/// « Speaker n » : remplacé par les citations canoniques fournies, le reste
+/// retiré.
+final RegExp _citationGroup = RegExp(r'(\s*)\[([^\[\]]*)\]');
+
+/// Parenthèses nettoyées, et seulement elles : `([S1])` (citations
+/// canoniques) et `(User, 00:00:01)`. « (14:30) » ou « (S2) » restent du
+/// texte.
+final RegExp _citationInParens = RegExp(r'\(\s*((?:\[S\d+\][\s,;]*)+)\)');
+final RegExp _speakerTimeInParens = RegExp(
+  r'\s*\((?:User|Speaker \d+)[\s,]+\d{1,2}:\d{2}(?::\d{2})?'
+  r'(?:[\s,]+\d{1,2}:\d{2}(?::\d{2})?)*\s*\)',
 );
 final RegExp _tag = RegExp(r'\bS(\d+)\b');
 final RegExp _time = RegExp(r'\b\d{1,2}:\d{2}(?::\d{2})?\b');
@@ -166,21 +173,20 @@ String _clean(String line, int count) {
   ].join(' ');
 
   String out = line.replaceAllMapped(_documentTag, (Match m) => '[S${m[1]}]');
-  // Deux passes : `([S1])` devient `[S1]` après la première.
-  for (int pass = 0; pass < 2; pass++) {
-    out = out.replaceAllMapped(_citationGroup, (Match m) {
-      final String inner = m[3]!;
-      final String rest = inner
-          .replaceAll(kCitation, '')
-          .replaceAll(_tag, '')
-          .replaceAll(_time, '')
-          .replaceAll(RegExp(r'\b(User|Speaker \d+)\b'), '')
-          .replaceAll(RegExp(r'[\s,;:]'), '');
-      if (rest.isNotEmpty) return m[0]!;
-      final String tags = canonical(_tag.allMatches(inner));
-      return tags.isEmpty ? '' : '${m[1]}$tags';
-    });
-  }
+  out = out
+      .replaceAllMapped(_citationInParens, (Match m) => m[1]!.trim())
+      .replaceAll(_speakerTimeInParens, '')
+      .replaceAllMapped(_citationGroup, (Match m) {
+        final String inner = m[2]!;
+        final String rest = inner
+            .replaceAll(_tag, '')
+            .replaceAll(_time, '')
+            .replaceAll(RegExp(r'\b(User|Speaker \d+)\b'), '')
+            .replaceAll(RegExp(r'[\s,;:]'), '');
+        if (rest.isNotEmpty) return m[0]!;
+        final String tags = canonical(_tag.allMatches(inner));
+        return tags.isEmpty ? '' : '${m[1]}$tags';
+      });
   final bool bullet = _bulletMarker.hasMatch(out.trimLeft());
   final String body = out.trimLeft().replaceFirst(_bulletMarker, '');
   final String withoutPreamble = body.replaceFirst(_preamble, '').trim();
@@ -225,14 +231,38 @@ final RegExp _refusal = RegExp(
   caseSensitive: false,
 );
 
-/// Refus en prose : la phrase qui répond (la première de la tête) le dit ;
-/// si la tête est un titre suivi de puces, toute ligne compte.
+/// Phrase qui renvoie aux sources au lieu de répondre (« … n'est pas donné
+/// ici », « not stated in the provided information »).
+final RegExp _pointsBack = RegExp(
+  r"\bici\b|\bin the (provided|given)\b",
+  caseSensitive: false,
+);
+
+/// Première phrase, citations qui la suivent comprises.
+final RegExp _firstSentence = RegExp(r'^.*?[.!?](\s*\[S\d+\])*(?=\s|$)');
+
+/// Refus en prose (lignes déjà nettoyées : seules les citations vers un
+/// extrait fourni restent).
+/// - Tête-phrase : la première phrase refuse sans citer d'extrait, ou
+///   renvoie aux sources.
+/// - Tête-titre (sans ponctuation finale ou finie par « : », suivie de
+///   puces) : la première puce refuse, ou une ligne refuse et aucune puce ne
+///   cite d'extrait.
+/// Une négation appuyée sur un extrait cité (« Breakfast is not provided.
+/// [S1] ») reste une réponse.
 bool _isRefusal(List<String> lines) {
   final String head = lines.first.replaceFirst(_trailingCitations, '');
   final bool title =
       lines.length > 1 && (!_finalStop.hasMatch(head) || head.endsWith(':'));
-  if (title) return lines.any(_refusal.hasMatch);
-  return _refusal.hasMatch(lines.first.split(RegExp(r'(?<=[.!?])\s')).first);
+  if (title) {
+    return _refusal.hasMatch(lines[1]) ||
+        (lines.any(_refusal.hasMatch) &&
+            !lines.skip(1).any(kCitation.hasMatch));
+  }
+  final String sentence =
+      _firstSentence.firstMatch(lines.first)?[0] ?? lines.first;
+  return _pointsBack.hasMatch(sentence) ||
+      (_refusal.hasMatch(sentence) && !kCitation.hasMatch(sentence));
 }
 
 /// Mots outils après lesquels une ligne ne peut pas finir.
