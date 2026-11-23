@@ -34,16 +34,20 @@ Map<String, Object?> statusPanelSnapshot({
     'title': status == 'idle' ? null : live.sessionTitle,
     'transcript': _transcript(live),
     'question': questions.isEmpty ? null : _question(questions.last),
-    'suggestion': suggestion == null
-        ? null
-        : <String, Object?>{
-            'kind': suggestion.source.name,
-            'title': suggestionTitle(suggestion),
-            'detail': suggestionDetail(suggestion),
-          },
+    'suggestion': suggestion == null ? null : statusPanelSuggestion(suggestion),
     'dictating': dictating,
+    // Un seul « Démarrer la note » : celui de la suggestion s'il y en a une.
+    'showStart': status == 'idle' && suggestion == null,
   };
 }
+
+/// Suggestion telle que le panneau l'affiche (`suggestion`, `suggest`).
+Map<String, Object?> statusPanelSuggestion(MeetingSuggestion s) =>
+    <String, Object?>{
+      'kind': s.source.name,
+      'title': suggestionTitle(s),
+      'detail': suggestionDetail(s),
+    };
 
 /// Phrase finie : ni phrase en cours, ni passage provisoire, ni repère
 /// (perte ou passage non transcrit).
@@ -75,6 +79,8 @@ Map<String, Object?> _question(LiveQuestion q) => <String, Object?>{
   'text': q.text,
   'state': q.status.name,
   'answer': answerPlainText(q.answer),
-  'truncated': q.truncated,
+  // Coupée au milieu d'une phrase OU lignes non montrées : pour le panneau,
+  // une seule mention « réponse raccourcie » (le contrat n'a qu'une clé).
+  'truncated': q.truncated || q.shortened,
   'sources': <Object?>[for (final AnswerSource s in q.sources) s.title],
 };

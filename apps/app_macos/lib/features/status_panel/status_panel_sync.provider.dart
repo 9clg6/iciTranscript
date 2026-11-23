@@ -5,6 +5,7 @@ import 'package:core_foundation/logging/logger.dart';
 import 'package:flutter/services.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
+import 'package:ici_transcript/application/services/meeting/meeting_rules.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
@@ -46,7 +47,10 @@ class StatusPanelSync {
   StatusPanelSync._(this._ref) {
     kStatusPanelChannel.setMethodCallHandler(_onCall);
     _ref.listen(liveTranscriptionViewModelProvider, (_, _) => _changed());
-    _ref.listen(meetingSuggestionControllerProvider, (_, _) => _changed());
+    _ref.listen(meetingSuggestionControllerProvider, (_, MeetingSuggestion? s) {
+      _changed();
+      _suggest(s);
+    });
     _ref.listen(dictationActiveProvider, (_, _) => _changed());
     _questions = _answers.questionsStream.listen((_) => _changed());
     _send(force: true);
@@ -61,6 +65,7 @@ class StatusPanelSync {
   Future<void>? _starting;
   Future<void>? _stopping;
   Future<void>? _quitting;
+  final Set<String> _suggested = <String>{};
   final List<Completer<void>> _idleWaiters = <Completer<void>>[];
 
   LiveAnswersService get _answers => _ref.read(liveAnswersServiceProvider);
@@ -94,6 +99,20 @@ class StatusPanelSync {
       return;
     }
     _send();
+  }
+
+  /// Une NOUVELLE suggestion se remarque pendant un appel : le natif ouvre
+  /// le panneau sans activer l'app. Une fois par clé, jamais pendant une
+  /// note ni une dictée.
+  void _suggest(MeetingSuggestion? s) {
+    if (s == null || !_idle || _ref.read(dictationActiveProvider)) return;
+    if (!_suggested.add(s.key)) return;
+    unawaited(
+      _invoke('suggest', <String, Object?>{
+        'key': s.key,
+        ...statusPanelSuggestion(s),
+      }),
+    );
   }
 
   /// Envoie l'instantané s'il a changé ([force] : même inchangé), puis
