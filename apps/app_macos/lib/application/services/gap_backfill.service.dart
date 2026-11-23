@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
@@ -209,6 +210,23 @@ final class GapBackfillService {
       if (replaced.first.timestampMs < start) {
         start = replaced.first.timestampMs;
       }
+      // Symétrique de la fin : un segment remplacé peut porter l'heure d'une
+      // phrase plus récente que son audio (sonde 8). On retranscrit depuis
+      // le dernier segment intact avant lui (au plus 30 s) ; trimOverlaps
+      // retire la fin de ce voisin : rien n'est supprimé sans être rendu.
+      // ponytail: départ [edgeTolerance] après le début du voisin (son texte
+      // arrive ~1 s après son audio) pour ne pas le retranscrire en entier ;
+      // un texte du voisin un peu différent resterait sinon en double.
+      final int first = replaced.first.timestampMs;
+      final TranscriptSegmentEntity? previous = live
+          .where((TranscriptSegmentEntity x) => x.timestampMs < first)
+          .lastOrNull;
+      final int back =
+          previous != null &&
+              first - previous.timestampMs < _afterReplacedSpan.inMilliseconds
+          ? math.min(first, previous.timestampMs + tolerance)
+          : first - _afterReplacedSpan.inMilliseconds;
+      if (back < start) start = back;
       final int last = replaced.last.timestampMs;
       final TranscriptSegmentEntity? next = live
           .where((TranscriptSegmentEntity x) => x.timestampMs > last)
