@@ -15,6 +15,8 @@ class QuestionAnswerView extends StatelessWidget {
     this.status,
     this.statusTone = QuestionStatusTone.neutral,
     this.truncatedLabel,
+    this.shortenedLabel,
+    this.unsourcedLabel,
     this.actions = const <Widget>[],
     this.footer = const <Widget>[],
     super.key,
@@ -34,6 +36,12 @@ class QuestionAnswerView extends StatelessWidget {
 
   /// Mention d'une réponse coupée, affichée si la réponse l'est.
   final String? truncatedLabel;
+
+  /// Mention d'une réponse raccourcie (lignes reçues non montrées).
+  final String? shortenedLabel;
+
+  /// Mention d'une réponse qui ne cite aucun extrait (à vérifier).
+  final String? unsourcedLabel;
 
   /// Petites actions à droite de l'en-tête (icônes à info-bulle).
   final List<Widget> actions;
@@ -72,21 +80,23 @@ class QuestionAnswerView extends StatelessWidget {
           const SizedBox(height: OatsSpace.sm),
           _StatusLine(s, tone: statusTone),
         ],
-        if (question.truncated && truncatedLabel != null) ...<Widget>[
+        for (final (IconData icon, String label) in <(IconData, String)>[
+          if (question.truncated && truncatedLabel != null)
+            (Icons.content_cut_outlined, truncatedLabel!),
+          if (question.shortened && shortenedLabel != null)
+            (Icons.unfold_less, shortenedLabel!),
+          if (question.status == LiveQuestionStatus.answered &&
+              question.sources.isEmpty &&
+              unsourcedLabel != null)
+            (Icons.help_outline, unsourcedLabel!),
+        ]) ...<Widget>[
           const SizedBox(height: OatsSpace.xs),
           Row(
             children: <Widget>[
-              Icon(
-                Icons.content_cut_outlined,
-                size: OatsIconSize.sm,
-                color: o.faint,
-              ),
+              Icon(icon, size: OatsIconSize.sm, color: o.faint),
               const SizedBox(width: OatsSpace.xs),
               Flexible(
-                child: Text(
-                  truncatedLabel!,
-                  style: o.meta.copyWith(color: o.faint),
-                ),
+                child: Text(label, style: o.meta.copyWith(color: o.faint)),
               ),
             ],
           ),

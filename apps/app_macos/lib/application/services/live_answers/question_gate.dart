@@ -15,7 +15,8 @@ const int kMinQuestionWords = 3;
 /// - une phrase finissant par « ? » est candidate si elle compte au moins
 ///   [kMinQuestionWords] mots et n'est ni une salutation, ni de la
 ///   logistique de réunion (« Vous m'entendez ? »), ni une affirmation
-///   suivie d'un tag (« …, d'accord ? ») ;
+///   suivie d'un tag de remplissage (« …, d'accord ? ») ; suivie d'un tag
+///   de confirmation (« …, right? », « …, non ? »), si ;
 /// - une phrase sans ponctuation finale (sortie ASR) est candidate si elle
 ///   compte au moins [kMinQuestionWords] mots et commence, après
 ///   « et / alors / donc / mais / and / so », par une forme interrogative ;
@@ -68,10 +69,11 @@ final RegExp _formula = RegExp(
   r"voir mon|on mute|en sourdine|you're muted",
 );
 
-/// « …, d'accord ? », « …, right? » : un tag après une affirmation.
+/// « …, d'accord ? », « …, tu vois ? » : un tag de remplissage après une
+/// affirmation. Un tag qui demande confirmation (« …, right? », « …, isn't
+/// it? », « …, non ? », « …, n'est-ce pas ? ») fait, lui, une question.
 final RegExp _tagAfterStatement = RegExp(
-  r",\s*(d'accord|ok|okay|right|non|hein|tu vois|vous voyez|n'est-ce pas|"
-  r"isn't it|you know|correct|yes|no|oui)\s*\?",
+  r",\s*(d'accord|ok|okay|hein|tu vois|vous voyez|you know|yes|oui)\s*\?",
   caseSensitive: false,
 );
 

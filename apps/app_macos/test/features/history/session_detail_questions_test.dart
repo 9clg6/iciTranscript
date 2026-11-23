@@ -182,4 +182,26 @@ void main() {
       lessThan(FontWeight.values.indexOf(FontWeight.w600)),
     );
   });
+
+  testWidgets('réponse gardée sans source : marquée « sans source » ; avec '
+      'source : non', (WidgetTester tester) async {
+    await pumpNote(tester, const <LiveQuestion>[
+      LiveQuestion(
+        id: 'q-nosrc',
+        sessionId: 's1',
+        text: 'Combien coûte la licence par utilisateur ?',
+        timestampMs: 120000,
+        status: LiveQuestionStatus.answered,
+        answer: 'La licence coûte 40 € par mois.',
+      ),
+    ]);
+    expect(find.text('live_answers.unsourced'.tr()), findsOneWidget);
+  });
+
+  testWidgets('réponse gardée avec source : pas « sans source »', (
+    WidgetTester tester,
+  ) async {
+    await pumpNote(tester, const <LiveQuestion>[answered]);
+    expect(find.text('live_answers.unsourced'.tr()), findsNothing);
+  });
 }

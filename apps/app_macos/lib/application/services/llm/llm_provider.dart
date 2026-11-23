@@ -42,6 +42,7 @@ class LlmChatRequest {
     required this.messages,
     required this.maxTokens,
     this.model,
+    this.preferLowLatency = false,
   });
 
   /// Consignes systeme.
@@ -55,6 +56,11 @@ class LlmChatRequest {
 
   /// Modele demande ; null = modele rapide par defaut du fournisseur.
   final String? model;
+
+  /// Réponse courte où la latence prime (réponses en direct). Un
+  /// fournisseur qui a un réglage pour cela l'applique, les autres
+  /// l'ignorent.
+  final bool preferLowLatency;
 }
 
 /// Fournisseur LLM : une requete de chat -> un flux de morceaux de texte.

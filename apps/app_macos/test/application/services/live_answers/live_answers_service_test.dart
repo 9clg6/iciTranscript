@@ -430,7 +430,7 @@ void main() {
         h.hear(q);
         async.flushMicrotasks();
         h.llm.last.reply(
-          'La livraison est prévue pour le lot 1 au début du mo',
+          'La livraison est prévue pour le lot 1 au début du',
         );
         async.flushMicrotasks();
 
@@ -438,7 +438,7 @@ void main() {
         expect(h.only.truncated, isTrue);
         expect(
           h.only.answer,
-          'La livraison est prévue pour le lot 1 au début du mo',
+          'La livraison est prévue pour le lot 1 au début du',
         );
       });
     });
@@ -972,7 +972,7 @@ void main() {
         h.hear(q);
         async.flushMicrotasks();
         h.llm.last.reply(
-          'La livraison est prévue pour le lot 1 au début du mo',
+          'La livraison est prévue pour le lot 1 au début du',
         );
         async.flushMicrotasks();
 
@@ -980,7 +980,7 @@ void main() {
         expect(saved.truncated, isTrue);
         expect(
           saved.answer,
-          'La livraison est prévue pour le lot 1 au début du mo',
+          'La livraison est prévue pour le lot 1 au début du',
         );
       });
     });

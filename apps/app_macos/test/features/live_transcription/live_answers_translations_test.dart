@@ -15,6 +15,8 @@ void main() {
     'live_answers.answer_latest': 'Répondre',
     'live_answers.answer_this': 'Répondre à cette phrase',
     'live_answers.answer': 'Proposer une réponse',
+    'live_answers.shortened': 'Réponse raccourcie',
+    'live_answers.unsourced': 'Sans source : à vérifier',
     'live_answers.local_manual_hint':
         'Modèle local : les réponses se demandent, cliquez sur « Proposer une réponse ».',
     'live_answers.answering': 'Réponse en cours…',

@@ -17,8 +17,10 @@ import 'package:ici_transcript/application/services/live_answers/question_gate.d
 ///   phrase SANS ponctuation finale (sortie ASR) est candidate si elle
 ///   commence (après « et / alors / donc / mais / and / so ») par une forme
 ///   interrogative ; une phrase finissant par « . » ou « ! » ne l'est jamais ;
-///   une affirmation suivie d'un tag (« …, d'accord ? », « …, right? ») non
-///   plus.
+///   une affirmation suivie d'un tag de remplissage (« …, d'accord ? »,
+///   « …, ok ? », « …, tu vois ? ») non plus ; suivie d'un tag qui demande
+///   confirmation (« …, right? », « …, isn't it? », « …, non ? », « …, n'est-ce
+///   pas ? »), si : voir question_gate_recorded_test.dart.
 void main() {
   TranscriptSegmentEntity seg(
     String text, {

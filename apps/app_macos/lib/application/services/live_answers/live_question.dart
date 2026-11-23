@@ -88,6 +88,7 @@ class LiveQuestion {
     this.status = LiveQuestionStatus.detected,
     this.answer = '',
     this.truncated = false,
+    this.shortened = false,
     this.failure,
     this.sources = const <AnswerSource>[],
     this.model,
@@ -124,6 +125,10 @@ class LiveQuestion {
   /// La réponse s'arrête au milieu d'une phrase.
   final bool truncated;
 
+  /// Des lignes reçues ne sont pas montrées (réponse trop longue).
+  // ponytail: pas rangé en base ; une note rouverte ne le signale plus.
+  final bool shortened;
+
   /// Raison de l'échec quand [status] vaut `failed`.
   final LiveAnswerFailure? failure;
 
@@ -141,6 +146,7 @@ class LiveQuestion {
     LiveQuestionStatus? status,
     String? answer,
     bool? truncated,
+    bool? shortened,
     Object? failure = _keep,
     List<AnswerSource>? sources,
     Object? model = _keep,
@@ -156,6 +162,7 @@ class LiveQuestion {
     status: status ?? this.status,
     answer: answer ?? this.answer,
     truncated: truncated ?? this.truncated,
+    shortened: shortened ?? this.shortened,
     failure: identical(failure, _keep)
         ? this.failure
         : failure as LiveAnswerFailure?,
