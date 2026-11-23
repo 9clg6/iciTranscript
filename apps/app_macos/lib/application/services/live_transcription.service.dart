@@ -929,14 +929,20 @@ final class LiveTranscriptionService {
     _chainWrite(id, () async {
       await Future.wait(absorbedWrites);
       if (!await _saveWithRetry(marker)) return;
+      // Une seule émission : l'union remplace les absorbés à l'écran.
+      _transcriptionService.segmentsStream.add(
+        List<TranscriptSegmentEntity>.from(
+            _transcriptionService.segmentsStream.value,
+          )
+          ..removeWhere(
+            (TranscriptSegmentEntity x) =>
+                x.id == id || absorbed.contains(x.id),
+          )
+          ..add(marker),
+      );
       _sortAndDedupeSegments();
       for (final String other in absorbed) {
         await _transcriptionService.discardProvisional(other);
-        _transcriptionService.segmentsStream.add(
-          List<TranscriptSegmentEntity>.from(
-            _transcriptionService.segmentsStream.value,
-          )..removeWhere((TranscriptSegmentEntity x) => x.id == other),
-        );
       }
     });
   }
@@ -951,7 +957,8 @@ final class LiveTranscriptionService {
       if (attempt > 0) {
         await Future<void>.delayed(Duration(seconds: 1 << (attempt - 1)));
       }
-      if (await _transcriptionService.saveSegment(segment)) return true;
+      // Rangé sans être montré : l'appelant l'affiche en une fois.
+      if (await _transcriptionService.saveProvisional(segment)) return true;
     }
     _log.error('Repère non rangé après $_markerWriteAttempts essais');
     return false;
