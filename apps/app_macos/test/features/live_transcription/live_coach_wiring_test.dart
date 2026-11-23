@@ -69,7 +69,17 @@ void main() {
     live = LiveServiceHarness(FakeAsync());
     db = memoryDatabase();
     http = RecordingHttpAdapter(
-      reply: BodyReply(200, streamOf(LlmProviderId.anthropic, '{}')),
+      // Réponse valable : « aucune correction ».
+      reply: BodyReply(
+        200,
+        streamOf(
+          LlmProviderId.anthropic,
+          jsonEncode(<String, Object?>{
+            'overall': 'Bon niveau.',
+            'corrections': <Object>[],
+          }),
+        ),
+      ),
     );
     c = ProviderContainer(
       overrides: <Override>[
@@ -223,24 +233,24 @@ void main() {
       },
     );
 
-    test(
-      'envoi coupé en pleine réunion : le lot suivant ne part pas',
-      () async {
-        await launch(cloud: true, interval: const Duration(milliseconds: 50));
-        await startRecording(liveCoach: true);
-        await userSays('I am agree with you on this point.');
-        await eventually(() => expect(http.requests, hasLength(1)));
+    test('envoi coupé en pleine réunion : le lot suivant ne part pas', () async {
+      await launch(cloud: true, interval: const Duration(milliseconds: 50));
+      await startRecording(liveCoach: true);
+      await userSays('I am agree with you on this point.');
+      await eventually(() => expect(http.requests, hasLength(1)));
+      // Le 1er lot a réussi : le coach n'est pas indisponible avant la coupure.
+      await eventually(() => expect(coach().coachedSegmentIds, isNotEmpty));
+      expect(coach().snapshot.unavailable, isFalse);
 
-        await PrefsStore().update(<String, Object?>{
-          LlmSettings.cloudAllowedKey: false,
-        });
-        await userSays('He have sent the deck to the client.');
-        await eventually(() => expect(coach().snapshot.unavailable, isTrue));
+      await PrefsStore().update(<String, Object?>{
+        LlmSettings.cloudAllowedKey: false,
+      });
+      await userSays('He have sent the deck to the client.');
+      await eventually(() => expect(coach().snapshot.unavailable, isTrue));
 
-        expect(http.requests, hasLength(1));
-        expect(sentAnywhere('He have sent the deck'), isFalse);
-      },
-    );
+      expect(http.requests, hasLength(1));
+      expect(sentAnywhere('He have sent the deck'), isFalse);
+    });
 
     test(
       'une phrase dictée pendant la réunion n\'atteint jamais le coach',

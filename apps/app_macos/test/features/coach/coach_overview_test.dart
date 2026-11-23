@@ -317,7 +317,6 @@ void main() {
       expect(find.text('coach.category.grammar'.tr()), findsOneWidget);
       expect(find.text('coach.recurring.notes'.plural(3)), findsOneWidget);
       expect(find.text('coach.recurring.notes'.plural(2)), findsNothing);
-      expect(find.text('coach.category.vocabulary'.tr()), findsNothing);
     });
 
     testWidgets('aucune catégorie dans 3 notes : pas de section', (

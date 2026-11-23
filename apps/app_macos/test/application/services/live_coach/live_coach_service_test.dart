@@ -38,7 +38,8 @@ import '../../../helpers/live_answers_fakes.dart'
 ///   `Future<LiveAnswerModel?>`, `interval` vaut 20 s par défaut ; modèle relu à chaque lot ;
 /// - `start(sessionId)`, `Future<void> stop()`,
 ///   `void onSegmentFinalized(TranscriptSegmentEntity)` ;
-/// - `LiveCoachSnapshot get snapshot` (`corrections`, `unavailable`),
+/// - `LiveCoachSnapshot get snapshot` (`sessionId` de la note, `corrections`,
+///   `unavailable`),
 ///   `Stream<LiveCoachSnapshot> get snapshots`,
 ///   `Set<String> get coachedSegmentIds`.
 /// Réponse du modèle : même JSON que le coach d'après l'appel ; heure d'une
@@ -308,7 +309,9 @@ void main() {
       expect(coach.snapshot.corrections.single.corrected, 'I agree');
       expect(coach.coachedSegmentIds, contains(s.id));
 
+      expect(coach.snapshot.sessionId, 's1');
       coach.start('s2');
+      expect(coach.snapshot.sessionId, 's2');
       expect(coach.snapshot.corrections, isEmpty);
       expect(coach.coachedSegmentIds, isEmpty);
     });

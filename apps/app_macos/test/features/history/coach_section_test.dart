@@ -332,7 +332,13 @@ void main() {
       await open(tester);
 
       await tester.tap(retry());
-      await until(tester, () => http.requests.isNotEmpty);
+      // Fin de la nouvelle tentative : requête partie, plus rien en cours.
+      await until(
+        tester,
+        () =>
+            http.requests.isNotEmpty &&
+            find.text('history.detail.coach_loading'.tr()).evaluate().isEmpty,
+      );
 
       expect(unanalyzed(), findsOneWidget);
       expect(retry(), findsOneWidget);

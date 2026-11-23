@@ -45,15 +45,20 @@ class _ByIndexHttp extends RecordingHttpAdapter {
   }
 }
 
-/// Coach en direct qui a déjà trouvé [found] sur les phrases [coached].
+/// Coach en direct qui a déjà trouvé [found] sur les phrases [coached]
+/// pendant la note [sessionId].
 class _FoundLive extends LiveCoachService {
-  _FoundLive(this.found, this.coached) : super(resolveModel: () async => null);
+  _FoundLive(this.found, this.coached, {this.sessionId = 's1'})
+    : super(resolveModel: () async => null);
+
+  final String sessionId;
 
   final List<EnglishCorrectionEntity> found;
   final Set<String> coached;
 
   @override
-  LiveCoachSnapshot get snapshot => LiveCoachSnapshot(corrections: found);
+  LiveCoachSnapshot get snapshot =>
+      LiveCoachSnapshot(sessionId: sessionId, corrections: found);
 
   @override
   Set<String> get coachedSegmentIds => coached;
@@ -73,13 +78,16 @@ class _FoundLive extends LiveCoachService {
 /// - tout échoue : la note le dit quand même (toutes les phrases anglaises
 ///   de l'utilisateur rangées non analysées) ; aujourd'hui l'échec reste
 ///   dans l'état du direct et n'atteint jamais la note ;
-/// - ce que le coach en direct a trouvé est rangé avec, et ses phrases ne
-///   repartent pas (pas de doublon, pas de travail refait).
+/// - ce que le coach en direct a trouvé POUR CETTE NOTE est rangé avec, et
+///   ses phrases ne repartent pas (pas de doublon, pas de travail refait) ;
+///   ce qu'il a gardé d'une note précédente n'est jamais mêlé à celle-ci.
 ///
 /// API supposée : `coachAfterCall(segments, {sessionId})`, segments =
-/// `List<TranscriptSegmentEntity>` (remplace la version qui prenait un texte : elle ne
-/// voyait ni source, ni heure, ni repère) ; lit `liveCoachServiceProvider`
-/// (`snapshot.corrections`, `coachedSegmentIds`).
+/// `List<TranscriptSegmentEntity>` (remplace la version qui prenait un
+/// texte : elle ne voyait ni source, ni heure, ni repère) ; lit
+/// `liveCoachServiceProvider` (`snapshot.sessionId`, `snapshot.corrections`,
+/// `coachedSegmentIds`) et ne s'en sert que si `snapshot.sessionId` est
+/// celui de la note.
 void main() {
   late AppDatabase db;
   late RecordingHttpAdapter http;
@@ -314,6 +322,32 @@ void main() {
       expect(
         (await storedAnalysis(db)).feedback?.corrections.single.corrected,
         'I agree',
+      );
+    });
+
+    test('résultats du direct d\'une AUTRE note (direct coupé pour celle-ci) : '
+        'ni rangés ici, ni utilisés pour sauter des phrases', () async {
+      final ProviderContainer c = await launch(
+        segments: meeting,
+        live: _FoundLive(
+          const <EnglishCorrectionEntity>[foundLive],
+          <String>{'seg-0', 'seg-1'},
+          sessionId: 'note-precedente',
+        ),
+        replyFor: (_) => ok(
+          feedbackJson(<(String, String)>[('He have sent', 'He has sent')]),
+        ),
+      );
+
+      await coach(c, meeting);
+
+      expect(allSent(), contains('I am agree with you'));
+      expect(allSent(), contains('He have sent the deck'));
+      expect(
+        (await storedAnalysis(db)).feedback?.corrections.map(
+          (EnglishCorrectionEntity x) => x.corrected,
+        ),
+        <String>['He has sent'],
       );
     });
   });
