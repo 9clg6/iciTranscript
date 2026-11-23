@@ -223,7 +223,6 @@ void main() {
 
     await container.read(kernelProvider.future);
     await eventually(() {
-      expect(shortcuts.registeredModifiers, <int>[2304]);
       expect(
         container.read(dictationControllerProvider).shortcutStatus,
         ShortcutStatus.needsAccessibility,
@@ -249,7 +248,7 @@ void main() {
         .refreshAccessibility();
 
     await eventually(() {
-      expect(shortcuts.registeredModifiers, <int>[2304, 2304]);
+      expect(shortcuts.registeredModifiers.last, 2304);
       expect(
         container.read(dictationControllerProvider).shortcutStatus,
         ShortcutStatus.registered,

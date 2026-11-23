@@ -19,7 +19,8 @@ import 'package:ici_transcript/core/platform/app_data_directory.dart';
 /// - un prefs.json d'avant (code de touche + modificateurs) se lit sans
 ///   changement ;
 /// - modificateurs seuls illisibles (un seul modificateur, ⇧ seul, masque 0)
-///   : défaut ⌃⌥Espace, jamais un raccourci inutilisable.
+///   ou code de touche présent mais illisible : défaut ⌃⌥Espace, jamais un
+///   raccourci inutilisable.
 ///
 /// Masques Carbon : cmd 256, shift 512, option 2048, control 4096 ;
 /// ⌘⌥ = 2304.
@@ -127,6 +128,19 @@ void main() {
 
     expect(s.shortcut.keyCode, isNull);
     expect(s.shortcut.modifiers, 4608);
+  });
+
+  test('code de touche présent mais illisible : défaut ⌃⌥Espace, jamais '
+      'lu comme modificateurs seuls', () async {
+    writeByHand(<String, Object>{
+      'dictation_key_code': 'abc',
+      'dictation_modifiers': 4096 | 2048,
+    });
+
+    final DictationSettings s = await DictationPreferences().load();
+
+    expect(s.shortcut.keyCode, 49);
+    expect(s.shortcut.modifiers, 4096 | 2048);
   });
 
   for (final ({String name, int modifiers}) bad
