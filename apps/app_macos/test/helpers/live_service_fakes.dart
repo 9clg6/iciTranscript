@@ -213,6 +213,10 @@ final class FakeTranscriptionRemoteDataSource
     ),
   );
 
+  /// Événement interne de la source distante (ex. phrase perdue).
+  void emitControl(AudioSource source, String type) =>
+      _of(source).add(TranscriptEventRemoteModel(type: type));
+
   void emitDone(AudioSource source, String text, {UtteranceWindow? window}) {
     final TranscriptEventRemoteModel event = TranscriptEventRemoteModel(
       type: 'response.audio_transcript.done',
@@ -249,8 +253,11 @@ final class FakeTranscriptionRemoteDataSource
   @override
   Stream<AudioGap> get audioGaps => _gaps.stream;
 
+  /// Sources dont une phrase attend encore sa fin (l'arrêt les attend).
+  Set<AudioSource> active = <AudioSource>{};
+
   @override
-  Set<AudioSource> get activeSources => <AudioSource>{};
+  Set<AudioSource> get activeSources => active;
 
   @override
   UtteranceWindow? windowOf(TranscriptEventRemoteModel event) =>
