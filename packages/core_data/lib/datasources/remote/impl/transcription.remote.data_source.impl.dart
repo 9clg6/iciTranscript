@@ -850,10 +850,23 @@ class _Unacked {
 
   /// La socket est tombée : l'audio jeté après envoi ne sera pas transcrit.
   void sentEvictionsLost() {
+    // Un commit gardé en tête pour une phrase dont tout l'audio est jeté
+    // repartirait seul sur la nouvelle socket : sans audio, pas de `done`,
+    // et chaque `done` suivant prendrait la fenêtre d'avant.
+    final bool headOrphan =
+        _sentEvicted.isNotEmpty &&
+        !_sentEvicted.last.closed &&
+        queue.isNotEmpty &&
+        queue.first.timestampMs == null &&
+        queue.first.window != null;
     for (final _Range range in _sentEvicted) {
       if (range.startMs != null) _markLost(range.startMs!, range.endMs!);
     }
     _sentEvicted.clear();
+    if (headOrphan) {
+      final _Outgoing commit = queue.removeFirst();
+      if (_sentCount > 0) _forgetSent(commit);
+    }
   }
 
   void loseAll() {
