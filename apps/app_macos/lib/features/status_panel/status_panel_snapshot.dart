@@ -1,6 +1,6 @@
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
-import 'package:ici_transcript/application/services/live_transcription.service.dart';
+import 'package:ici_transcript/application/services/transcript_grouping.dart';
 import 'package:ici_transcript/application/services/meeting/meeting_rules.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
@@ -45,12 +45,12 @@ Map<String, Object?> statusPanelSnapshot({
   };
 }
 
-/// Phrase finie : ni phrase en cours, ni passage provisoire, ni repère de
-/// perte.
+/// Phrase finie : ni phrase en cours, ni passage provisoire, ni repère
+/// (perte ou passage non transcrit).
 bool _finished(TranscriptSegmentEntity s) =>
     !s.id.startsWith('current_') &&
     !s.id.endsWith('_pending') &&
-    !s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix);
+    !isTranscriptMarker(s.text);
 
 List<Object?> _transcript(LiveTranscriptionState live) {
   final List<TranscriptSegmentEntity> done = live.segments
