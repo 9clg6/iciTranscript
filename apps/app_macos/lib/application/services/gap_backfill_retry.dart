@@ -123,6 +123,14 @@ final class GapBackfillRetry {
       await _write(pending);
       return false;
     }
+    // Noté en attente AVANT la tentative, sans la compter : si l'app se
+    // termine pendant (Quitter passe la finalisation et arrête le serveur),
+    // le lancement suivant reprend la session et la tentative coupée ne
+    // compte pas.
+    if (!pending.containsKey(sessionId)) {
+      pending[sessionId] = 0;
+      await _write(pending);
+    }
     final BackfillOutcome outcome = await _backfill.backfill(
       sessionId,
       recordingsDirectory: _directory,
