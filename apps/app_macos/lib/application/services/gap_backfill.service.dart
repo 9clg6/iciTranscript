@@ -542,6 +542,17 @@ final class GapBackfillService {
         _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
         return result == _Part.saved ? _Part.cut : _Part.failed;
       }
+      // Porte de parole, comme en direct : un morceau dont l'audio n'a pas de
+      // parole est une hallucination du silence (« Merci. »), jamais rangé.
+      pieces = <({int offsetMs, String text})>[
+        for (int i = 0; i < pieces.length; i++)
+          if (_hasSpeech(
+            pcm,
+            pieces[i].offsetMs,
+            i + 1 < pieces.length ? pieces[i + 1].offsetMs : pcm.length ~/ 32,
+          ))
+            pieces[i],
+      ];
       // Le voisin ne compte que s'il précède de peu (une phrase plus loin
       // n'est pas la fin de celle-ci, même si elle lui ressemble).
       final String? near =
@@ -587,7 +598,8 @@ final class GapBackfillService {
         kept = kept.sublist(1);
       }
       if (result == _Part.noAudio) result = _Part.nothingNew;
-      if (kept.isNotEmpty) {
+      // Une tranche sans parole est rattrapée : rien n'y a été dit.
+      if (kept.isNotEmpty || !_hasSpeech(pcm, 0, pcm.length ~/ 32)) {
         result = _Part.saved;
         _progressed = true;
         for (int k = 0; k < kept.length; k++) {
@@ -647,6 +659,29 @@ final class GapBackfillService {
 
   // Une phrase dure au plus 30 s : au-delà, ce n'est plus le voisin.
   static const Duration _neighbourSpan = Duration(seconds: 35);
+
+  /// De la parole (porte RMS du direct, pas de 100 ms) dans [pcm] entre
+  /// [fromMs] et [toMs] (heures relatives au début de [pcm]).
+  static bool _hasSpeech(Uint8List pcm, int fromMs, int toMs) {
+    const int step = 3200;
+    final int first = (fromMs * 32 ~/ step).clamp(0, pcm.length ~/ step);
+    final int end = ((toMs * 32 + step - 1) ~/ step).clamp(
+      0,
+      (pcm.length + step - 1) ~/ step,
+    );
+    for (int c = first; c < end; c++) {
+      if (TranscriptionRemoteDataSourceImpl.isSpeechChunk(
+        Uint8List.sublistView(
+          pcm,
+          c * step,
+          math.min((c + 1) * step, pcm.length),
+        ),
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   /// [pcm] coupé après le dernier silence (pas de 100 ms) de ses 10
   /// dernières secondes, pour ne pas couper une phrase ; sinon tel quel.
