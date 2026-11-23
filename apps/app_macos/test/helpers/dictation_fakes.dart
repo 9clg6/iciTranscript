@@ -57,11 +57,17 @@ final class FakeGlobalShortcutChannel extends GlobalShortcutChannel {
   /// absente).
   bool registerModifiersResult = true;
 
-  // ponytail: absent de GlobalShortcutChannel tant que le raccourci
-  // modificateurs seuls n'est pas codé ; devient alors une vraie surcharge.
+  /// Seuil d'appui transmis à chaque `registerModifiers` (null : non
+  /// transmis).
+  final List<Duration?> registeredHoldThresholds = <Duration?>[];
+
   @override
-  Future<bool> registerModifiers({required int modifiers}) async {
+  Future<bool> registerModifiers({
+    required int modifiers,
+    Duration? holdThreshold,
+  }) async {
     registeredModifiers.add(modifiers);
+    registeredHoldThresholds.add(holdThreshold);
     return registerModifiersResult;
   }
 

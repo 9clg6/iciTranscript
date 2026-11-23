@@ -12,29 +12,36 @@ import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
 ///
 /// MethodChannel `com.icitranscript/global_shortcut`
 /// - `registerModifiers` {modifiers: int (masque Carbon : cmd 256, shift
-///   512, option 2048, control 4096 ; au moins deux, dont ⌃, ⌥ ou ⌘)} →
-///   null. Remplace le raccourci précédent (à touche ou modificateurs
-///   seuls). Lève PlatformException `ACCESSIBILITY_REQUIRED` si
-///   l'Accessibilité n'est pas accordée : rien n'est posé (jamais un
-///   raccourci posé mais muet). Dart : `registerModifiers(modifiers:)` rend
-///   vrai si posé, faux sinon (refus ou plugin absent), sans lever.
+///   512, option 2048, control 4096 ; au moins deux, dont ⌃, ⌥ ou ⌘),
+///   holdMs: int (seuil d'appui, = `DictationController.holdThreshold`,
+///   seule source de la valeur)} → null. Remplace le raccourci précédent (à
+///   touche ou modificateurs seuls). Lève PlatformException
+///   `ACCESSIBILITY_REQUIRED` si l'Accessibilité n'est pas accordée : rien
+///   n'est posé (jamais un raccourci posé mais muet). Dart :
+///   `registerModifiers(modifiers:, holdThreshold:)` rend vrai si posé, faux
+///   sinon (refus ou plugin absent), sans lever.
 /// - `unregister` retire aussi la surveillance des modificateurs.
 /// - `setCancelKeyEnabled` : inchangé (Échap pendant une dictée).
 ///
-/// EventChannel `com.icitranscript/global_shortcut_events`, mêmes types :
-/// - `pressed` : exactement les modificateurs choisis sont enfoncés (aucun
-///   autre modificateur, aucune autre touche) ;
-/// - `released` : l'un d'eux est relâché après un `pressed`, sans autre
-///   touche entre-temps ;
-/// - `aborted` (nouveau) : une touche autre qu'un modificateur (Échap
-///   comprise) est enfoncée pendant que les modificateurs sont tenus après
-///   un `pressed` : l'utilisateur tape un raccourci d'une autre app (⌘⌥Échap,
-///   ⌘⌥D). Aucun `released` ne suit pour cet appui ; un `released` égaré est
-///   ignoré par la dictée. Échap tapée avec les modificateurs tenus donne
-///   `aborted`, jamais `cancel` ;
+/// EventChannel `com.icitranscript/global_shortcut_events`. Un accord n'agit
+/// qu'une fois su être le nôtre (revue de la PR #29 : ⌘⌥I, ⌘⌥Échap, ⌘⌥D ne
+/// doivent ni allumer le point orange du micro ni couper une phrase de
+/// réunion). Dès que exactement les modificateurs choisis sont enfoncés
+/// (aucun autre modificateur, aucune autre touche), l'appui est INDÉCIS :
+/// - pendant `holdMs`, une autre touche (Échap comprise) ou un bouton de
+///   souris → RIEN n'est émis pour cet appui, ni maintenant ni au
+///   relâchement ;
+/// - relâché avant `holdMs` sans rien d'autre → `tapped` (nouveau) : appui
+///   bref, bascule ;
+/// - tenu `holdMs` sans rien d'autre → `pressed`, émis au seuil : appui
+///   maintenu confirmé ; puis `released` au relâchement ;
+/// - après `pressed`, une autre touche ou un clic → `aborted` (aucun
+///   `released` ne suit ; un `released` égaré est ignoré par la dictée).
+///   Échap tapée avec les modificateurs tenus donne `aborted` ou rien,
+///   jamais `cancel` ;
 /// - `cancel` : inchangé, Échap pendant une dictée, modificateurs relâchés.
 ///
-/// Le passage de `aborted` dans le flux Dart est épinglé dans
+/// Le passage de `tapped` et `aborted` dans le flux Dart est épinglé dans
 /// global_shortcut_channel_test.dart.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -55,17 +62,21 @@ void main() {
   setUp(calls.clear);
   tearDown(() => messenger.setMockMethodCallHandler(method, null));
 
-  test('registerModifiers envoie le masque seul, sans code de touche ; vrai '
-      'si posé', () async {
+  test('registerModifiers envoie le masque et le seuil d appui, sans code de '
+      'touche ; vrai si posé', () async {
     answer((_) => null);
 
     final bool ok = await GlobalShortcutChannel().registerModifiers(
       modifiers: 256 | 2048,
+      holdThreshold: const Duration(milliseconds: 300),
     );
 
     expect(ok, isTrue);
     expect(calls.single.method, 'registerModifiers');
-    expect(calls.single.arguments, <String, Object>{'modifiers': 2304});
+    expect(calls.single.arguments, <String, Object>{
+      'modifiers': 2304,
+      'holdMs': 300,
+    });
   });
 
   test('Accessibilité absente : faux, sans lever', () async {
@@ -73,6 +84,7 @@ void main() {
 
     final bool ok = await GlobalShortcutChannel().registerModifiers(
       modifiers: 2304,
+      holdThreshold: const Duration(milliseconds: 300),
     );
 
     expect(ok, isFalse);
@@ -81,6 +93,7 @@ void main() {
   test('plugin absent : faux, sans lever', () async {
     final bool ok = await GlobalShortcutChannel().registerModifiers(
       modifiers: 2304,
+      holdThreshold: const Duration(milliseconds: 300),
     );
 
     expect(ok, isFalse);
