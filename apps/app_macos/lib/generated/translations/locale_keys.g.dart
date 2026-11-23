@@ -128,6 +128,8 @@ abstract class  LocaleKeys {
   static const live_answers_dismiss = 'live_answers.dismiss';
   static const live_answers_declined = 'live_answers.declined';
   static const live_answers_truncated = 'live_answers.truncated';
+  static const live_answers_shortened = 'live_answers.shortened';
+  static const live_answers_unsourced = 'live_answers.unsourced';
   static const live_answers_error_invalid_key = 'live_answers.error.invalid_key';
   static const live_answers_error_rate_limited = 'live_answers.error.rate_limited';
   static const live_answers_error_unreachable = 'live_answers.error.unreachable';

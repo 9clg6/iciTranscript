@@ -149,6 +149,8 @@
     "dismiss": "Ignorer",
     "declined": "Pas de réponse utile à proposer.",
     "truncated": "Réponse incomplète",
+    "shortened": "Réponse raccourcie",
+    "unsourced": "Sans source : à vérifier",
     "error": {
       "invalid_key": "Clé API refusée : vérifiez-la dans Réglages.",
       "rate_limited": "Trop de demandes chez le fournisseur : réessayez dans un instant.",
