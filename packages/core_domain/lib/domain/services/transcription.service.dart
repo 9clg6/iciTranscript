@@ -1,4 +1,5 @@
 import 'package:core_domain/domain/entities/session.entity.dart';
+import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:core_domain/domain/params/stop_session.param.dart';
@@ -43,10 +44,11 @@ final class TranscriptionService {
   final BehaviorSubject<bool> isTranscribingStream =
       BehaviorSubject<bool>.seeded(false);
 
-  /// Demarre une nouvelle session de transcription.
-  Future<void> startSession() async {
+  /// Demarre une nouvelle session de transcription, liee a [link] s'il y en
+  /// a un.
+  Future<void> startSession({SessionCalendarLink? link}) async {
     final ResultState<SessionEntity> result = await _startSessionUseCase
-        .execute();
+        .executeLinked(link);
     result.when(
       success: (SessionEntity session) {
         currentSessionStream.add(session);

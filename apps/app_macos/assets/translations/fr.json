@@ -17,7 +17,8 @@
     "label": {
       "today": "Aujourd'hui",
       "yesterday": "Hier",
-      "done": "Terminé"
+      "done": "Terminé",
+      "tomorrow": "Demain"
     }
   },
   "app": {
@@ -42,7 +43,14 @@
       "attendees": {
         "one": "{} participant",
         "other": "{} participants"
-      }
+      },
+      "connect": "Connecter l'agenda",
+      "denied": "Oats n'a pas accès à votre agenda. Autorisez-le dans Réglages Système › Confidentialité et sécurité › Calendriers.",
+      "open_settings": "Ouvrir Réglages Système",
+      "empty": "Aucune réunion aujourd'hui ni demain.",
+      "in_progress": "En cours",
+      "start_note": "Démarrer la note",
+      "error": "Impossible de lire l'agenda."
     }
   },
   "documents": {
@@ -136,29 +144,6 @@
       "not_captured": "Non capté"
     }
   },
-  "live_answers": {
-    "title": "Questions",
-    "empty": "Les questions des autres participants apparaîtront ici.",
-    "answer_latest": "Répondre",
-    "answer_this": "Répondre à cette phrase",
-    "answer": "Proposer une réponse",
-    "local_manual_hint": "Modèle local : les réponses se demandent, cliquez sur « Proposer une réponse ».",
-    "answering": "Réponse en cours…",
-    "copy": "Copier la réponse",
-    "copied": "Réponse copiée",
-    "dismiss": "Ignorer",
-    "declined": "Pas de réponse utile à proposer.",
-    "truncated": "Réponse incomplète",
-    "shortened": "Réponse raccourcie",
-    "unsourced": "Sans source : à vérifier",
-    "error": {
-      "invalid_key": "Clé API refusée : vérifiez-la dans Réglages.",
-      "rate_limited": "Trop de demandes chez le fournisseur : réessayez dans un instant.",
-      "unreachable": "Modèle injoignable : vérifiez la connexion, puis réessayez.",
-      "malformed": "Réponse illisible du modèle : réessayez.",
-      "other": "La réponse a échoué : réessayez."
-    }
-  },
   "history": {
     "detail": {
       "copy": "Copier",
@@ -181,6 +166,12 @@
       "coach_perfect": "Aucune correction : votre anglais est impeccable.",
       "transcript": "Transcription",
       "transcript_empty": "Aucune transcription pour cette note.",
+      "calendar": {
+        "unlink": "Retirer le lien",
+        "change": "Changer d'événement",
+        "link": "Lier à un événement",
+        "none": "Aucun événement ce jour-là."
+      },
       "questions": "Questions posées",
       "no_answer": "Sans réponse",
       "answer_failed": "La réponse avait échoué."
@@ -252,6 +243,18 @@
       "test_unreachable": "Injoignable",
       "test_failed": "Échec du test"
     },
+    "calendar": {
+      "title": "Agenda et réunions",
+      "connect": "Connecter l'agenda",
+      "disconnect": "Déconnecter",
+      "denied": "Oats n'a pas accès à votre agenda. Autorisez-le dans Réglages Système › Confidentialité et sécurité › Calendriers.",
+      "open_settings": "Ouvrir Réglages Système",
+      "calendars": "Agendas inclus",
+      "detection": "Détecter les réunions",
+      "auto_start": "Démarrer la note automatiquement pour les événements de l'agenda",
+      "mic_unsupported": "Détecter les appels demande macOS 14 ou plus récent. Ici, seuls les événements de l'agenda déclenchent une suggestion.",
+      "privacy": "Rien de votre agenda ni de vos appels ne quitte ce Mac."
+    },
     "dictation": {
       "title": "Dictée",
       "enabled": "Dictée vocale",
@@ -300,5 +303,35 @@
     "installing": "Installation en cours…",
     "failed": "L'installation a échoué. Ouvrez un Terminal et exécutez :\n{}",
     "no_uvx": "uv a été installé mais uvx est introuvable.\nRedémarrez Oats ou ajoutez ~/.local/bin à votre PATH."
+  },
+  "meeting": {
+    "suggestion": {
+      "call_title": "Appel détecté",
+      "start": "Démarrer la note",
+      "dismiss": "Ignorer"
+    }
+  },
+  "live_answers": {
+    "title": "Questions",
+    "empty": "Les questions des autres participants apparaîtront ici.",
+    "answer_latest": "Répondre",
+    "answer_this": "Répondre à cette phrase",
+    "answer": "Proposer une réponse",
+    "local_manual_hint": "Modèle local : les réponses se demandent, cliquez sur « Proposer une réponse ».",
+    "answering": "Réponse en cours…",
+    "copy": "Copier la réponse",
+    "copied": "Réponse copiée",
+    "dismiss": "Ignorer",
+    "declined": "Pas de réponse utile à proposer.",
+    "truncated": "Réponse incomplète",
+    "shortened": "Réponse raccourcie",
+    "unsourced": "Sans source : à vérifier",
+    "error": {
+      "invalid_key": "Clé API refusée : vérifiez-la dans Réglages.",
+      "rate_limited": "Trop de demandes chez le fournisseur : réessayez dans un instant.",
+      "unreachable": "Modèle injoignable : vérifiez la connexion, puis réessayez.",
+      "malformed": "Réponse illisible du modèle : réessayez.",
+      "other": "La réponse a échoué : réessayez."
+    }
   }
 }

@@ -28,6 +28,10 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Oats reads your calendar to show upcoming meetings and link notes to them</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Oats reads your calendar to show upcoming meetings and link notes to them</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Oats needs microphone access to transcribe your voice</string>
 	<key>NSScreenCaptureUsageDescription</key>

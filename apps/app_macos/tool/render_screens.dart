@@ -46,6 +46,12 @@ import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.sta
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.state.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
+import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
+import 'package:ici_transcript/application/services/meeting/meeting_rules.dart';
+import 'package:ici_transcript/core/providers/platform/now.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
+import 'package:ici_transcript/features/calendar/calendar_prefs.provider.dart';
+import 'package:ici_transcript/features/calendar/meeting_suggestion.provider.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings_dictation.view_model.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
@@ -461,6 +467,138 @@ SessionDetailState _failed(SessionDetailState s) => s.copyWith(
   feedbackError: LocaleKeys.llm_error_unreachable,
 );
 
+// --- Agenda (T5) : contenus inventés ---------------------------------------
+
+final DateTime _calNow = _at(0, 10, 5);
+
+CalendarEvent _ev(
+  String id,
+  String title,
+  DateTime start,
+  Duration length, {
+  List<String> names = const <String>[],
+  int? count,
+  String calendar = 'Travail',
+}) => CalendarEvent(
+  id: id,
+  title: title,
+  start: start,
+  end: start.add(length),
+  calendarId: calendar,
+  calendarTitle: calendar,
+  attendeeNames: names,
+  attendeeCount: count ?? names.length,
+);
+
+const List<String> _team = <String>[
+  'Camille Rousseau',
+  'Théo Martin',
+  'Inès Bernard',
+  'Lucas Petit',
+  'Sarah Lambert',
+  'Hugo Moreau',
+];
+
+final List<CalendarEvent> _calEvents = <CalendarEvent>[
+  _ev(
+    'e1',
+    'Point d’équipe produit',
+    _at(0, 9, 45),
+    const Duration(minutes: 45),
+    names: _team,
+  ),
+  _ev(
+    'e2',
+    'Revue des maquettes d’onboarding',
+    _at(0, 11, 0),
+    const Duration(minutes: 45),
+    names: _team.sublist(0, 3),
+  ),
+  _ev(
+    'e3',
+    'Atelier de cadrage du programme de fidélité avec les équipes marketing, '
+        'données, juridique et support client',
+    _at(0, 15, 0),
+    const Duration(minutes: 90),
+    names: _team,
+    count: 14,
+  ),
+  _ev(
+    'e4',
+    'Dentiste',
+    _at(0, 18, 0),
+    const Duration(minutes: 30),
+    calendar: 'Perso',
+  ),
+  _ev(
+    'e5',
+    'Comité de pilotage',
+    _at(-1, 9, 30),
+    const Duration(hours: 1),
+    names: _team.sublist(2),
+    count: 5,
+  ),
+];
+
+final SessionEntity _linked =
+    FakeData.createSession(
+      id: 's-linked',
+      title: 'Point d’équipe produit',
+      createdAt: _at(0, 9, 46),
+      updatedAt: _at(0, 9, 46),
+      durationSeconds: 41 * 60,
+      status: SessionStatus.completed,
+    ).copyWith(
+      calendarEventId: 'e1',
+      calendarEventTitle: 'Point d’équipe produit',
+      attendees: _team,
+    );
+
+class _FeedFake extends CalendarFeedController {
+  _FeedFake(this.value);
+  final CalendarFeed value;
+  @override
+  Future<CalendarFeed> build() async => value;
+}
+
+class _CalendarPrefsFake extends CalendarPrefsController {
+  @override
+  Future<CalendarPrefs> build() async => const CalendarPrefs(
+    connected: true,
+    calendarIds: <String>['Travail', 'Équipe'],
+  );
+}
+
+class _SuggestionFake extends MeetingSuggestionController {
+  _SuggestionFake(this.value);
+  final MeetingSuggestion? value;
+  @override
+  MeetingSuggestion? build() => value;
+}
+
+List<Override> _calendar({
+  CalendarFeed feed = const CalendarNotConnected(),
+  MeetingSuggestion? suggestion,
+  bool micSupported = true,
+}) => <Override>[
+  nowProvider.overrideWithValue(() => _calNow),
+  calendarFeedControllerProvider.overrideWith(() => _FeedFake(feed)),
+  calendarPrefsControllerProvider.overrideWith(_CalendarPrefsFake.new),
+  calendarListProvider.overrideWith(
+    (Ref ref) async => const <CalendarInfo>[
+      CalendarInfo(id: 'Travail', title: 'Travail'),
+      CalendarInfo(id: 'Équipe', title: 'Équipe'),
+      CalendarInfo(id: 'Perso', title: 'Perso'),
+    ],
+  ),
+  meetingDetectionSupportedProvider.overrideWith(
+    (Ref ref) async => micSupported,
+  ),
+  meetingSuggestionControllerProvider.overrideWith(
+    () => _SuggestionFake(suggestion),
+  ),
+];
+
 List<Override> _overrides(
   List<SessionEntity> sessions, {
   required AppDatabase db,
@@ -587,6 +725,7 @@ void main() {
         SessionDetailState Function(SessionDetailState)? detail,
         AppDatabase? db,
         FakeFilePicker? picker,
+        List<Override> extra = const <Override>[],
         LiveAnswersService? answers,
       }) async {
         final AppDatabase base = db ?? memoryDatabase();
@@ -603,16 +742,20 @@ void main() {
           RepaintBoundary(
             key: key,
             child: ProviderScope(
-              overrides: _overrides(
-                sessions,
-                db: base,
-                picker: picker ?? FakeFilePicker(),
-                ollama: ollama,
-                settings: settings,
-                dictation: dictation,
-                detail: detail,
-                answers: answers,
-              ),
+              overrides: <Override>[
+                ..._overrides(
+                  sessions,
+                  db: base,
+                  picker: picker ?? FakeFilePicker(),
+                  ollama: ollama,
+                  settings: settings,
+                  dictation: dictation,
+                  detail: detail,
+                  answers: answers,
+                ),
+                // Jamais le vrai agenda : états figés.
+                ...extra.isEmpty ? _calendar() : extra,
+              ],
               child: EasyLocalization(
                 supportedLocales: const <Locale>[Locale('fr')],
                 path: 'assets/translations',
@@ -863,6 +1006,76 @@ void main() {
           await tester.tap(find.text('Revue de sprint 14'));
           await _pump(tester, 10);
           await _shot(tester, key, 'detail-${d.key}-$suffix');
+        });
+      }
+
+      // Agenda et réunions (T5).
+      final CalendarFeed events = CalendarEvents(_calEvents, day: _at(0, 0, 0));
+      for (final MapEntry<String, CalendarFeed> f in <String, CalendarFeed>{
+        'events': events,
+        'connect': const CalendarNotConnected(),
+        'denied': const CalendarDenied(),
+      }.entries) {
+        shoot('calendar-home-${f.key}', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            extra: _calendar(feed: f.value),
+          );
+          await _shot(tester, key, 'calendar-home-${f.key}-$suffix');
+        });
+      }
+
+      for (final MapEntry<String, MeetingSuggestion> m
+          in <String, MeetingSuggestion>{
+            'event': MeetingSuggestion(
+              source: MeetingSource.calendar,
+              key: 'event:e3',
+              event: _calEvents[2],
+            ),
+            'call': const MeetingSuggestion(
+              source: MeetingSource.call,
+              key: 'call:us.zoom.xos:0',
+              appName: 'Zoom',
+              bundleId: 'us.zoom.xos',
+            ),
+          }.entries) {
+        shoot('calendar-suggestion-${m.key}', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            extra: _calendar(feed: events, suggestion: m.value),
+          );
+          await _shot(tester, key, 'calendar-suggestion-${m.key}-$suffix');
+        });
+      }
+
+      shoot('calendar-note-linked', (WidgetTester tester) async {
+        final GlobalKey key = await pumpApp(tester, <SessionEntity>[
+          _linked,
+          ..._sessions,
+        ], extra: _calendar(feed: events));
+        await tester.tap(find.text('Point d’équipe produit').last);
+        await _pump(tester, 10);
+        await _shot(tester, key, 'calendar-note-linked-$suffix');
+      });
+
+      for (final bool mic in <bool>[true, false]) {
+        final String name = mic ? 'connected' : 'macos13';
+        shoot('calendar-settings-$name', (WidgetTester tester) async {
+          final GlobalKey key = await pumpApp(
+            tester,
+            _sessions,
+            extra: _calendar(feed: events, micSupported: mic),
+          );
+          await tester.tap(find.text('Réglages'));
+          await _pump(tester, 10);
+          final Finder title = find.text('Agenda et réunions');
+          await tester.ensureVisible(title);
+          await _pump(tester, 5);
+          await tester.drag(title, Offset(0, 40 - tester.getTopLeft(title).dy));
+          await _pump(tester, 10);
+          await _shot(tester, key, 'calendar-settings-$name-$suffix');
         });
       }
 
