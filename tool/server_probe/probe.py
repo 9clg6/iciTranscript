@@ -682,8 +682,11 @@ def coverage(sentence, text_words):
 def note_state(ev, sess, before_backfill):
     """Segments of [sess]: the final dump, or the latest version of each id
     seen before the first backfill transcription (deletions not visible)."""
+    dumps = [e for e in ev if e["ev"] == "segments"]
     if not before_backfill:
-        return [g for g in [e for e in ev if e["ev"] == "segments"][-1]["list"] if g["session"] == sess]
+        return [g for g in dumps[-1]["list"] if g["session"] == sess]
+    if not any(e["ev"] == "segment" for e in ev):  # relaunch: the store as the kill left it
+        return [g for g in dumps[0]["list"] if g["session"] == sess]
     cut = next((e["t"] for e in ev if e["ev"] == "transcribe_start"), float("inf"))
     last = {}
     for e in ev:
@@ -760,8 +763,9 @@ def cmd_notecheck(a):
     """Every reference sentence is in the note OR its audio is under a marker."""
     ev = [json.loads(l) for l in open(a.run)]
     sched = json.loads((AUDIO / a.audio / "schedule.json").read_text())
-    sess = a.session or next(e["session"] for e in ev if e["ev"] == "meeting_started")
-    feed = next(e for e in ev if e["ev"] == "feed_start" and (a.session is None or True))
+    sess = a.session or next((e["session"] for e in ev if e["ev"] == "meeting_started"), None) \
+        or [e for e in ev if e["ev"] == "segments"][0]["list"][0]["session"]
+    feed = next((e for e in ev if e["ev"] == "feed_start"), None)
     end_s = float(a.end or feed["seconds"])
     out = {"run": Path(a.run).stem}
     for state in ("before_backfill", "final"):

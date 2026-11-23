@@ -368,6 +368,7 @@ void main() {
       ];
       log('relaunch_killed', <String, Object?>{'ids': killed});
       snap('relaunch_before');
+      dumpSegments(); // the store as the kill left it
       await RepairInterruptedSessionsUseCase(
         sessionRepository: store,
         transcriptRepository: store,
@@ -384,6 +385,16 @@ void main() {
       snap('relaunch_enqueued');
       await retry.retryPending();
       snap('relaunch_after_retry');
+      final Stopwatch wait = Stopwatch()..start();
+      while (wait.elapsed.inSeconds < int.parse(env['WAIT_MARKERS'] ?? '0') &&
+          store.segments.values.any(
+            (TranscriptSegmentEntity x) =>
+                x.text.startsWith(LiveTranscriptionService.gapMarkerPrefix),
+          )) {
+        await retry.retryPending();
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      snap('relaunch_after_wait');
       dumpSegments();
       await retry.dispose();
       await closeProbeLog();
@@ -453,8 +464,47 @@ void main() {
       ]);
       log('load', <String, Object?>{'avg': (r.stdout as String).trim()});
     });
+    // The STORE, read during the run: markers present, logged on change.
+    String lastStore = '';
+    final Timer storeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final List<Map<String, Object?>> m = <Map<String, Object?>>[
+        for (final TranscriptSegmentEntity x in store.segments.values)
+          if (x.text.startsWith(LiveTranscriptionService.gapMarkerPrefix) ||
+              x.text.startsWith('Passage non transcrit'))
+            <String, Object?>{
+              'id': x.id,
+              'src': x.source == AudioSource.input ? 'mic' : 'sys',
+              'text': x.text,
+            },
+      ];
+      final String key = jsonEncode(m);
+      if (key == lastStore) return;
+      lastStore = key;
+      log('store_markers', <String, Object?>{'list': m});
+    });
     final Map<String, String> seen = <String, String>{};
+    Map<String, TranscriptSegmentEntity> onScreen =
+        <String, TranscriptSegmentEntity>{};
     transcription.segmentsStream.listen((List<TranscriptSegmentEntity> list) {
+      final Map<String, TranscriptSegmentEntity> now =
+          <String, TranscriptSegmentEntity>{
+            for (final TranscriptSegmentEntity s in list) s.id: s,
+          };
+      // Lines that leave the screen (same session only: a new session
+      // replaces the whole list).
+      final String? sess = list.isEmpty ? null : list.first.sessionId;
+      for (final TranscriptSegmentEntity gone in onScreen.values) {
+        if (!now.containsKey(gone.id) && gone.sessionId == sess) {
+          log('segment_removed', <String, Object?>{
+            'session': gone.sessionId,
+            'src': gone.source == AudioSource.input ? 'mic' : 'sys',
+            'ts': gone.timestampMs / 1000,
+            'id': gone.id,
+            'text': gone.text,
+          });
+        }
+      }
+      onScreen = now;
       for (final TranscriptSegmentEntity s in list) {
         if (seen[s.id] == s.text) continue;
         seen[s.id] = s.text;
@@ -621,7 +671,10 @@ void main() {
       snap('before_stop');
       await stop(mode);
       snap('after_stop');
-      await waitNoMarkers('after_stop', seconds: 60);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
       dumpSegments();
     } else if (mode == 'slow') {
       // Mic cuts followed by slow WebSocket accepts of 12, 15 and 25 s.
@@ -643,7 +696,10 @@ void main() {
         },
       );
       await stop(mode);
-      await waitNoMarkers('after_stop', seconds: 60);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
       dumpSegments();
     } else if (mode == 'slow2') {
       // Same source, same session: slow accepts of 12, 15, 25 s, then a
@@ -701,13 +757,23 @@ void main() {
         label: mode,
         faults: <double, Future<void> Function()>{
           1: () async => both((Proxy p) async => p.setThrottle(f)),
+          if (env['KILL_AT'] != null)
+            double.parse(env['KILL_AT']!): () async {
+              snap('before_kill');
+              dumpSegments();
+              log('kill_self');
+              Process.killPid(pid, ProcessSignal.sigkill);
+            },
           secs - 80: () => both((Proxy p) => p.refuse()),
           secs - 60: () => both((Proxy p) => p.reopen()),
         },
       );
       await stop(mode);
       buf.cancel();
-      await waitNoMarkers('after_stop', seconds: 60);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
       dumpSegments();
     } else if (mode == 'R') {
       // Regression: plain run (R_SECONDS, live60 beyond 300 s) plus one
@@ -724,7 +790,10 @@ void main() {
         },
       );
       await stop(mode);
-      await waitNoMarkers('after_stop', seconds: 60);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
       dumpSegments();
     } else if (mode == 'stopmid') {
       // Stop in the middle of a sentence; STOP_LAG lags the server first.
@@ -743,7 +812,10 @@ void main() {
         },
       );
       await stop(mode);
-      await waitNoMarkers('after_stop', seconds: 60);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
       dumpSegments();
     } else if (mode == 'long20b') {
       // 20 min of live60 with an early 60 s mic outage at 120 s.
@@ -758,7 +830,10 @@ void main() {
         },
       );
       await stop(mode);
-      await waitNoMarkers('after_stop', seconds: 60);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
       dumpSegments();
     } else if (mode == 'D' || mode == 'long20') {
       // D: refusal 60-210 s over 300 s. long20: 20 min of live60 with a 3 s
@@ -785,7 +860,10 @@ void main() {
       snap('before_stop');
       await stop(mode);
       snap('after_stop');
-      await waitNoMarkers('after_stop', seconds: 60);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
       dumpSegments();
     } else if (mode == 'yield') {
       // A: refusal from 20 s until its stop drain gives up -> gap -> backfill.
@@ -868,6 +946,7 @@ void main() {
       dumpSegments();
     }
     loadTimer.cancel();
+    storeTimer.cancel();
     log('done_mode', <String, Object?>{'t': now()});
     await raw['mic']?.cancel();
     await raw['sys']?.cancel();
