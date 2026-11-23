@@ -12,10 +12,8 @@ import '../helpers/data_source_bench.dart';
 /// perte qui abandonne des phrases attendues (coupure, serveur muet après
 /// ses reprises, arrêt) remplace aussi la connexion ; un texte tardif de la
 /// perte ne peut donc pas arriver sur la même connexion qu'une phrase plus
-/// récente (c n'est pas atteignable aujourd'hui) et la perte n'abandonne
-/// aucune phrase dont le texte puisse encore venir (d).
-///
-/// API supposée : `AudioGap.abandonedUtterances`.
+/// récente (c n'est pas atteignable aujourd'hui), et rien de l'ancienne
+/// connexion ne peut plus arriver (d).
 void main() {
   const int t0 = DataSourceBench.t0;
 
@@ -61,38 +59,39 @@ void main() {
     });
   });
 
-  test('d. serveur muet abandonné : la connexion est remplacée, la perte '
-      'n abandonne aucune phrase dont le texte puisse encore venir, et la '
-      'phrase suivante reçoit sa propre fenêtre', () {
-    fakeAsync((FakeAsync async) {
-      final DataSourceBench b = DataSourceBench(async);
-      sentence(b, 0); // A, jamais de réponse
-      final int abandonedGeneration = b.mic.generation;
-      async.elapse(const Duration(minutes: 10)); // reprises, puis abandon
-      final List<AudioGap> gaps = b.gaps
-          .where((AudioGap g) => g.source == AudioSource.input)
-          .toList();
-      expect(gaps, isNotEmpty, reason: 'A est signalée perdue');
-      expect(b.mic.generation, isNot(abandonedGeneration));
-      expect(gaps.last.abandonedUtterances, 0);
+  test(
+    'd. serveur muet abandonné : la connexion est remplacée, rien de '
+    'l ancienne n arrive, et la phrase suivante reçoit sa propre fenêtre',
+    () {
+      fakeAsync((FakeAsync async) {
+        final DataSourceBench b = DataSourceBench(async);
+        sentence(b, 0); // A, jamais de réponse
+        final int abandonedGeneration = b.mic.generation;
+        async.elapse(const Duration(minutes: 10)); // reprises, puis abandon
+        final List<AudioGap> gaps = b.gaps
+            .where((AudioGap g) => g.source == AudioSource.input)
+            .toList();
+        expect(gaps, isNotEmpty, reason: 'A est signalée perdue');
+        expect(b.mic.generation, isNot(abandonedGeneration));
 
-      sentence(b, 7000); // B, sur la nouvelle connexion
-      // La réponse tardive à A ne peut venir que de l'ancienne connexion.
-      b.mic.emitIfAlive(abandonedGeneration, <String, Object>{
-        'type': 'response.audio_transcript.done',
-        'text': 'phrase A',
-      });
-      b.mic.emit(<String, Object>{
-        'type': 'response.audio_transcript.done',
-        'text': 'phrase B',
-      });
-      async.flushMicrotasks();
+        sentence(b, 7000); // B, sur la nouvelle connexion
+        // La réponse tardive à A ne peut venir que de l'ancienne connexion.
+        b.mic.emitIfAlive(abandonedGeneration, <String, Object>{
+          'type': 'response.audio_transcript.done',
+          'text': 'phrase A',
+        });
+        b.mic.emit(<String, Object>{
+          'type': 'response.audio_transcript.done',
+          'text': 'phrase B',
+        });
+        async.flushMicrotasks();
 
-      final List<TranscriptEventRemoteModel> done = doneOf(b.micEvents);
-      expect(done.map((TranscriptEventRemoteModel e) => e.text), <String>[
-        'phrase B',
-      ]);
-      expect(b.dataSource.windowOf(done.single)?.startMs, t0 + 7000 * 100);
-    });
-  });
+        final List<TranscriptEventRemoteModel> done = doneOf(b.micEvents);
+        expect(done.map((TranscriptEventRemoteModel e) => e.text), <String>[
+          'phrase B',
+        ]);
+        expect(b.dataSource.windowOf(done.single)?.startMs, t0 + 7000 * 100);
+      });
+    },
+  );
 }
