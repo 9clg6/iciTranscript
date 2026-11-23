@@ -1,7 +1,7 @@
 import Cocoa
 import FlutterMacOS
 
-class MainFlutterWindow: NSWindow {
+class MainFlutterWindow: NSWindow, NSWindowDelegate {
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
@@ -21,12 +21,17 @@ class MainFlutterWindow: NSWindow {
     TextOutputPlugin.register(with: flutterViewController.registrar(forPlugin: "TextOutputPlugin"))
     StatusPanelPlugin.register(with: flutterViewController.registrar(forPlugin: "StatusPanelPlugin"))
 
+    // Flutter leaves the window delegate unset (checked 2026-11-23).
+    delegate = self
     super.awakeFromNib()
   }
 
   /// Close button and Cmd+W only hide the window: the app stays in the menu
-  /// bar and the Dock, a recording goes on. Quitting does not go through here.
-  override func performClose(_ sender: Any?) {
-    orderOut(sender)
+  /// bar and the Dock, a recording goes on. Quitting does not go through here
+  /// (windowShouldClose(_:) doc). The close button does not call
+  /// performClose(_:), hence the delegate.
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    orderOut(nil)
+    return false
   }
 }
