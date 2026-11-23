@@ -1669,7 +1669,8 @@ final class LiveTranscriptionService {
       isFinal: true,
       sources: <AudioSource>{AudioSource.input},
     );
-    _clearMicPhrase();
+    // La phrase de réunion en cours garde son id : son `done` remplace le
+    // provisoire déjà sauvé (sinon deux lignes dans la note).
     return d;
   }
 

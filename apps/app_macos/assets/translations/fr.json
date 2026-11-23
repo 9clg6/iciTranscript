@@ -286,7 +286,7 @@
       "shortcut": "Raccourci",
       "shortcut_change": "Modifier",
       "shortcut_recording": "Tapez le raccourci…",
-      "shortcut_recording_hint": "Échap pour annuler. Ajoutez ⌃, ⌥ ou ⌘ à la touche.",
+      "shortcut_recording_hint": "Échap pour annuler. Deux modificateurs seuls (⌥ et ⌘, par exemple) ou des modificateurs et une touche.",
       "shortcut_unavailable": "Ce raccourci est déjà pris par une autre app. Choisissez-en un autre.",
       "shortcut_space": "{}Espace",
       "key_code": "Touche {}",
