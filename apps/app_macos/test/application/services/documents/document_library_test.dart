@@ -89,26 +89,29 @@ void main() {
   ).join('\n\n');
 
   group('ajout depuis un chemin', () {
-    test('un .md est découpé avec chunkDocument et rangé dans l\'ordre', () async {
-      final String text = paragraphs(4, 'budget');
-      final String path = writeFile(dir, 'Plan de recrutement.md', text);
+    test(
+      'un .md est découpé avec chunkDocument et rangé dans l\'ordre',
+      () async {
+        final String text = paragraphs(4, 'budget');
+        final String path = writeFile(dir, 'Plan de recrutement.md', text);
 
-      final LibraryDocument doc = await withClock(
-        Clock.fixed(DateTime(2026, 11, 22, 10, 30)),
-        () => library.importFile(path),
-      );
+        final LibraryDocument doc = await withClock(
+          Clock.fixed(DateTime(2026, 11, 22, 10, 30)),
+          () => library.importFile(path),
+        );
 
-      expect(doc.title, 'Plan de recrutement');
-      expect(doc.type, DocumentType.md);
-      expect(doc.addedAt, DateTime(2026, 11, 22, 10, 30));
-      expect(doc.excerptCount, chunkDocument(text).length);
-      expect(await storedChunks(doc.id), chunkDocument(text));
-      expect(
-        await storedPositions(doc.id),
-        List<int>.generate(chunkDocument(text).length, (int i) => i),
-      );
-      expect(await count('document_chunks_fts'), chunkDocument(text).length);
-    });
+        expect(doc.title, 'Plan de recrutement');
+        expect(doc.type, DocumentType.md);
+        expect(doc.addedAt, DateTime(2026, 11, 22, 10, 30));
+        expect(doc.excerptCount, chunkDocument(text).length);
+        expect(await storedChunks(doc.id), chunkDocument(text));
+        expect(
+          await storedPositions(doc.id),
+          List<int>.generate(chunkDocument(text).length, (int i) => i),
+        );
+        expect(await count('document_chunks_fts'), chunkDocument(text).length);
+      },
+    );
 
     test('un .txt est accepté', () async {
       final String path = writeFile(dir, 'notes.txt', 'Le budget est validé.');
@@ -135,21 +138,24 @@ void main() {
       'sans_extension',
       'archive.md.zip',
     ]) {
-      test('$name : type refusé avec un message explicite, rien rangé', () async {
-        final String path = writeFile(dir, name, 'Du texte lisible.');
+      test(
+        '$name : type refusé avec un message explicite, rien rangé',
+        () async {
+          final String path = writeFile(dir, name, 'Du texte lisible.');
 
-        await expectLater(
-          library.importFile(path),
-          throwsA(
-            isA<UnsupportedDocumentTypeException>().having(
-              (UnsupportedDocumentTypeException e) => e.path,
-              'path',
-              path,
+          await expectLater(
+            library.importFile(path),
+            throwsA(
+              isA<UnsupportedDocumentTypeException>().having(
+                (UnsupportedDocumentTypeException e) => e.path,
+                'path',
+                path,
+              ),
             ),
-          ),
-        );
-        await expectNothingStored();
-      });
+          );
+          await expectNothingStored();
+        },
+      );
     }
 
     for (final MapEntry<String, String> empty in <String, String>{
@@ -249,7 +255,11 @@ void main() {
 
     test('un ré-import qui échoue au milieu garde la version précédente '
         'entière et cherchable', () async {
-      final String path = writeFile(dir, 'plan.md', 'Ancienne version du plan.');
+      final String path = writeFile(
+        dir,
+        'plan.md',
+        'Ancienne version du plan.',
+      );
       final LibraryDocument first = await library.importFile(path);
       File(path).writeAsStringSync(paragraphs(5, 'nouveau'));
       await failOnThirdChunk();
@@ -258,26 +268,39 @@ void main() {
 
       final List<LibraryDocument> docs = await library.list();
       expect(docs.map((LibraryDocument d) => d.id), <String>[first.id]);
-      expect(await storedChunks(first.id), <String>['Ancienne version du plan.']);
+      expect(await storedChunks(first.id), <String>[
+        'Ancienne version du plan.',
+      ]);
       expect(await library.search('ancienne version'), hasLength(1));
       expect(await library.search('nouveau0'), isEmpty);
     });
   });
 
   group('lu une fois à l\'ajout', () {
-    test('fichier supprimé ensuite : le document reste listé et cherchable', () async {
-      final String path = writeFile(dir, 'budget.md', 'Le budget marketing 2027.');
-      await library.importFile(path);
+    test(
+      'fichier supprimé ensuite : le document reste listé et cherchable',
+      () async {
+        final String path = writeFile(
+          dir,
+          'budget.md',
+          'Le budget marketing 2027.',
+        );
+        await library.importFile(path);
 
-      File(path).deleteSync();
+        File(path).deleteSync();
 
-      expect(await library.list(), hasLength(1));
-      final List<DocumentExcerpt> hits = await library.search('marketing');
-      expect(hits.single.text, 'Le budget marketing 2027.');
-    });
+        expect(await library.list(), hasLength(1));
+        final List<DocumentExcerpt> hits = await library.search('marketing');
+        expect(hits.single.text, 'Le budget marketing 2027.');
+      },
+    );
 
     test('fichier déplacé ensuite : le document reste cherchable', () async {
-      final String path = writeFile(dir, 'budget.md', 'Le budget marketing 2027.');
+      final String path = writeFile(
+        dir,
+        'budget.md',
+        'Le budget marketing 2027.',
+      );
       await library.importFile(path);
 
       File(path).renameSync('${dir.path}/ailleurs.md');
@@ -304,13 +327,16 @@ void main() {
       expect(await library.search('beta0'), hasLength(1));
     });
 
-    test('deux fichiers de même nom dans deux dossiers sont deux documents', () async {
-      final Directory other = Directory('${dir.path}/autre')..createSync();
-      await library.importFile(writeFile(dir, 'plan.md', 'Plan A.'));
-      await library.importFile(writeFile(other, 'plan.md', 'Plan B.'));
+    test(
+      'deux fichiers de même nom dans deux dossiers sont deux documents',
+      () async {
+        final Directory other = Directory('${dir.path}/autre')..createSync();
+        await library.importFile(writeFile(dir, 'plan.md', 'Plan A.'));
+        await library.importFile(writeFile(other, 'plan.md', 'Plan B.'));
 
-      expect(await library.list(), hasLength(2));
-    });
+        expect(await library.list(), hasLength(2));
+      },
+    );
   });
 
   group('PDF par le canal com.icitranscript/document_text', () {
@@ -353,29 +379,35 @@ void main() {
       await expectNothingStored();
     });
 
-    test('PDF protégé ou abîmé (PlatformException) : refusé comme illisible', () async {
-      final String path = writeFile(dir, 'protege.pdf', '%PDF-1.4');
-      mockPdfChannel(
-        (MethodCall call) async =>
-            throw PlatformException(code: 'unreadable', message: 'locked'),
-      );
+    test(
+      'PDF protégé ou abîmé (PlatformException) : refusé comme illisible',
+      () async {
+        final String path = writeFile(dir, 'protege.pdf', '%PDF-1.4');
+        mockPdfChannel(
+          (MethodCall call) async =>
+              throw PlatformException(code: 'unreadable', message: 'locked'),
+        );
 
-      await expectLater(
-        library.importFile(path),
-        throwsA(isA<UnreadableDocumentException>()),
-      );
-      await expectNothingStored();
-    });
+        await expectLater(
+          library.importFile(path),
+          throwsA(isA<UnreadableDocumentException>()),
+        );
+        await expectNothingStored();
+      },
+    );
 
-    test('canal absent (MissingPluginException) : refusé comme illisible', () async {
-      final String path = writeFile(dir, 'rapport.pdf', '%PDF-1.4');
+    test(
+      'canal absent (MissingPluginException) : refusé comme illisible',
+      () async {
+        final String path = writeFile(dir, 'rapport.pdf', '%PDF-1.4');
 
-      await expectLater(
-        library.importFile(path),
-        throwsA(isA<UnreadableDocumentException>()),
-      );
-      await expectNothingStored();
-    });
+        await expectLater(
+          library.importFile(path),
+          throwsA(isA<UnreadableDocumentException>()),
+        );
+        await expectNothingStored();
+      },
+    );
 
     test('un PDF au texte trop long est refusé', () async {
       final DocumentLibrary small = DocumentLibrary(db, maxTextChars: 50);
@@ -420,19 +452,22 @@ void main() {
       expect(await library.list(), isEmpty);
     });
 
-    test('renommer change le titre de la liste et des extraits trouvés', () async {
-      final LibraryDocument doc = await library.importFile(
-        writeFile(dir, 'b27.md', 'Le budget marketing 2027.'),
-      );
+    test(
+      'renommer change le titre de la liste et des extraits trouvés',
+      () async {
+        final LibraryDocument doc = await library.importFile(
+          writeFile(dir, 'b27.md', 'Le budget marketing 2027.'),
+        );
 
-      await library.rename(doc.id, '  Budget 2027  ');
+        await library.rename(doc.id, '  Budget 2027  ');
 
-      expect((await library.list()).single.title, 'Budget 2027');
-      expect(
-        (await library.search('marketing')).single.documentTitle,
-        'Budget 2027',
-      );
-    });
+        expect((await library.list()).single.title, 'Budget 2027');
+        expect(
+          (await library.search('marketing')).single.documentTitle,
+          'Budget 2027',
+        );
+      },
+    );
 
     test('renommer avec un titre vide garde l\'ancien titre', () async {
       final LibraryDocument doc = await library.importFile(
@@ -455,13 +490,17 @@ void main() {
 
       await library.delete(budget.id);
 
-      expect((await library.list()).map((LibraryDocument d) => d.title),
-          <String>['rh']);
+      expect(
+        (await library.list()).map((LibraryDocument d) => d.title),
+        <String>['rh'],
+      );
       expect(await storedChunks(budget.id), isEmpty);
       expect(await count('document_chunks_fts'), 1);
       expect(await library.search('budget0'), isEmpty);
       expect(
-        (await library.search('budget')).map((DocumentExcerpt e) => e.documentTitle),
+        (await library.search(
+          'budget',
+        )).map((DocumentExcerpt e) => e.documentTitle),
         <String>['rh'],
       );
     });

@@ -10,6 +10,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../fixtures/probe7_overlap.dart';
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 // Revue PR #25, point 1 : le repère provisoire (mis à jour chaque seconde,
 // id `<session>_<source>_pending`) s'écrit sans passer par la fusion, et
@@ -79,12 +80,7 @@ void main() {
     final WavRecorder recorder = WavRecorder();
     await recorder.open('${dir.path}/${sessionId}_system.wav');
     for (int c = 0; c < 3200; c++) {
-      final Uint8List chunk = Uint8List(3200);
-      final ByteData d = ByteData.sublistView(chunk);
-      for (int o = 0; o < 3200; o += 2) {
-        d.setInt16(o, c * 4 + 2, Endian.little);
-      }
-      await recorder.append(chunk);
+      await recorder.append(voicedPcm(3200, value: c * 4 + 2));
     }
     await recorder.close();
     final InMemoryTranscriptRepository repo = InMemoryTranscriptRepository();
@@ -128,7 +124,7 @@ void main() {
 final class _Recorded implements PcmTranscriber {
   @override
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
-    final int v = ByteData.sublistView(pcm).getInt16(0, Endian.little);
+    final int v = voicedValue(pcm);
     final int startMs = (v ~/ 4) * 100;
     final int endMs = startMs + pcm.length ~/ 32;
     return <({int offsetMs, String text})>[

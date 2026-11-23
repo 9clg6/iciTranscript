@@ -163,7 +163,11 @@ class RecordingHttpAdapter implements HttpClientAdapter {
         );
       case HangReply():
         return Completer<ResponseBody>().future;
-      case BodyReply(:final int status, body: final String text, :final bool keepOpen):
+      case BodyReply(
+        :final int status,
+        body: final String text,
+        :final bool keepOpen,
+      ):
         final StreamController<Uint8List> controller =
             StreamController<Uint8List>(onCancel: () => aborts++);
         () async {

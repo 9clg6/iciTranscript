@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
@@ -14,6 +13,7 @@ import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
 
 import '../../helpers/live_service_fakes.dart';
+import '../../helpers/voiced_pcm.dart';
 
 /// Un seul serveur de transcription, séquentiel (un 3e flux fait exploser
 /// les délais, mesuré) : un arbitre, priorité enregistrement > dictée >
@@ -96,11 +96,7 @@ void main() {
       final WavRecorder recorder = WavRecorder();
       await recorder.open('${dir.path}/${sessionId}_mic.wav');
       for (int id = 0; id < 660; id++) {
-        final Uint8List data = Uint8List(3200);
-        ByteData.sublistView(data)
-          ..setInt16(0, id & 0x7FFF, Endian.little)
-          ..setInt16(2, id >> 15, Endian.little);
-        await recorder.append(data);
+        await recorder.append(voicedChunk(<int>[id & 0x7FFF, id >> 15]));
       }
       await recorder.close();
     });

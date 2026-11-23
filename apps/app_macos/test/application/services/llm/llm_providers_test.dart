@@ -120,8 +120,13 @@ const String _ollamaStream =
 
 /// Un fournisseur sous test, construit sur un transport factice.
 class _Case {
-  const _Case(this.name, this.build, this.stream, this.contentType,
-      this.defaultModel);
+  const _Case(
+    this.name,
+    this.build,
+    this.stream,
+    this.contentType,
+    this.defaultModel,
+  );
 
   final String name;
   final LlmProvider Function(Dio dio) build;
@@ -163,9 +168,10 @@ final List<_Case> _cases = <_Case>[
 
 Dio _dioWith(FakeHttpAdapter adapter) => Dio()..httpClientAdapter = adapter;
 
-Future<List<String>> _collect(LlmProvider provider,
-        [LlmChatRequest request = _request]) =>
-    provider.streamChat(request).toList();
+Future<List<String>> _collect(
+  LlmProvider provider, [
+  LlmChatRequest request = _request,
+]) => provider.streamChat(request).toList();
 
 /// Execute [body] en capturant tout ce qui passe par `print` (dont le
 /// LogInterceptor de Dio par defaut).
@@ -188,16 +194,18 @@ List<String> _roles(Object? messages) => <String>[
 void main() {
   for (final _Case c in _cases) {
     group('${c.name} : flux de texte', () {
-      test('transforme le flux enregistré en morceaux de texte, dans l’ordre',
-          () async {
-        final FakeHttpAdapter adapter = FakeHttpAdapter.respond(
-          200,
-          whole(c.stream),
-          contentType: c.contentType,
-        );
+      test(
+        'transforme le flux enregistré en morceaux de texte, dans l’ordre',
+        () async {
+          final FakeHttpAdapter adapter = FakeHttpAdapter.respond(
+            200,
+            whole(c.stream),
+            contentType: c.contentType,
+          );
 
-        expect(await _collect(c.build(_dioWith(adapter))), _expectedDeltas);
-      });
+          expect(await _collect(c.build(_dioWith(adapter))), _expectedDeltas);
+        },
+      );
 
       test('recolle les morceaux coupés au milieu d’une ligne ou d’un '
           'caractère accentué', () async {
@@ -218,15 +226,21 @@ void main() {
             contentType: c.contentType,
           );
 
-          expect(await _collect(c.build(_dioWith(adapter))), _expectedDeltas,
-              reason: 'paquets de $size octets');
+          expect(
+            await _collect(c.build(_dioWith(adapter))),
+            _expectedDeltas,
+            reason: 'paquets de $size octets',
+          );
         }
       });
 
       test('donne le premier morceau avant la fin de la réponse', () async {
         // Tout jusqu'au premier evenement de texte inclus (ligne vide de fin
         // d'evenement SSE, ou fin de ligne NDJSON) ; le corps reste ouvert.
-        final int lineEnd = c.stream.indexOf('\n', c.stream.indexOf('Le budget'));
+        final int lineEnd = c.stream.indexOf(
+          '\n',
+          c.stream.indexOf('Le budget'),
+        );
         final bool ndjson = c.contentType == 'application/x-ndjson';
         final String head = c.stream.substring(0, lineEnd + (ndjson ? 1 : 2));
         final FakeHttpAdapter adapter = FakeHttpAdapter.respond(
@@ -295,29 +309,48 @@ void main() {
       return adapter;
     }
 
-    test('Anthropic : POST /v1/messages, x-api-key et anthropic-version',
-        () async {
-      final FakeHttpAdapter a = await send(_cases[0]);
+    test(
+      'Anthropic : POST /v1/messages, x-api-key et anthropic-version',
+      () async {
+        final FakeHttpAdapter a = await send(_cases[0]);
 
-      expect(a.request!.method, 'POST');
-      expect(a.request!.uri.toString(), 'https://api.anthropic.com/v1/messages');
-      expect(a.header('x-api-key'), _key);
-      expect(a.header('anthropic-version'), matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')));
-      expect(a.body!['model'], 'model-under-test');
-      expect(a.body!['max_tokens'], 300);
-      expect(a.body!['stream'], isTrue);
-      expect(jsonEncode(a.body!['system']), contains('Réponds en une phrase'));
-      expect(_roles(a.body!['messages']), <String>['user', 'assistant', 'user']);
-      expect(jsonEncode(a.body!['messages']),
-          contains('Quel est le budget marketing ?'));
-    });
+        expect(a.request!.method, 'POST');
+        expect(
+          a.request!.uri.toString(),
+          'https://api.anthropic.com/v1/messages',
+        );
+        expect(a.header('x-api-key'), _key);
+        expect(
+          a.header('anthropic-version'),
+          matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+        );
+        expect(a.body!['model'], 'model-under-test');
+        expect(a.body!['max_tokens'], 300);
+        expect(a.body!['stream'], isTrue);
+        expect(
+          jsonEncode(a.body!['system']),
+          contains('Réponds en une phrase'),
+        );
+        expect(_roles(a.body!['messages']), <String>[
+          'user',
+          'assistant',
+          'user',
+        ]);
+        expect(
+          jsonEncode(a.body!['messages']),
+          contains('Quel est le budget marketing ?'),
+        );
+      },
+    );
 
     test('OpenAI : POST /v1/chat/completions, Bearer', () async {
       final FakeHttpAdapter a = await send(_cases[1]);
 
       expect(a.request!.method, 'POST');
-      expect(a.request!.uri.toString(),
-          'https://api.openai.com/v1/chat/completions');
+      expect(
+        a.request!.uri.toString(),
+        'https://api.openai.com/v1/chat/completions',
+      );
       expect(a.header('authorization'), 'Bearer $_key');
       expect(a.body!['model'], 'model-under-test');
       expect(a.body!['max_completion_tokens'], 300);
@@ -325,8 +358,10 @@ void main() {
       final List<String> roles = _roles(a.body!['messages']);
       expect(roles.first, anyOf('system', 'developer'));
       expect(roles.sublist(1), <String>['user', 'assistant', 'user']);
-      expect(jsonEncode((a.body!['messages'] as List<dynamic>).first),
-          contains('Réponds en une phrase'));
+      expect(
+        jsonEncode((a.body!['messages'] as List<dynamic>).first),
+        contains('Réponds en une phrase'),
+      );
     });
 
     test('Gemini : POST models/{model}:streamGenerateContent?alt=sse, '
@@ -341,10 +376,15 @@ void main() {
       expect(uri.toString(), isNot(contains(_key)));
       expect(a.header('x-goog-api-key'), _key);
       expect(_roles(a.body!['contents']), <String>['user', 'model', 'user']);
-      expect(jsonEncode(a.body!['systemInstruction']),
-          contains('Réponds en une phrase'));
-      expect((a.body!['generationConfig']
-          as Map<String, dynamic>)['maxOutputTokens'], 300);
+      expect(
+        jsonEncode(a.body!['systemInstruction']),
+        contains('Réponds en une phrase'),
+      );
+      expect(
+        (a.body!['generationConfig']
+            as Map<String, dynamic>)['maxOutputTokens'],
+        300,
+      );
     });
 
     test('Ollama : POST localhost:11434/api/chat, en streaming', () async {
@@ -354,10 +394,16 @@ void main() {
       expect(a.request!.uri.toString(), 'http://localhost:11434/api/chat');
       expect(a.body!['model'], 'model-under-test');
       expect(a.body!['stream'], isNot(false));
-      expect(_roles(a.body!['messages']),
-          <String>['system', 'user', 'assistant', 'user']);
-      expect(jsonEncode((a.body!['messages'] as List<dynamic>).first),
-          contains('Réponds en une phrase'));
+      expect(_roles(a.body!['messages']), <String>[
+        'system',
+        'user',
+        'assistant',
+        'user',
+      ]);
+      expect(
+        jsonEncode((a.body!['messages'] as List<dynamic>).first),
+        contains('Réponds en une phrase'),
+      );
       expect((a.body!['options'] as Map<String, dynamic>)['num_predict'], 300);
     });
   });
@@ -373,8 +419,11 @@ void main() {
       },
     });
 
-    Future<Object> errorOf(_Case c, FakeHttpAdapter adapter,
-        List<String> printed) async {
+    Future<Object> errorOf(
+      _Case c,
+      FakeHttpAdapter adapter,
+      List<String> printed,
+    ) async {
       Object? error;
       await _capturingPrints(printed, () async {
         try {
@@ -392,8 +441,11 @@ void main() {
         final List<String> printed = <String>[];
         final Object error = await errorOf(
           c,
-          FakeHttpAdapter.respond(401, whole(errorBody),
-              contentType: 'application/json'),
+          FakeHttpAdapter.respond(
+            401,
+            whole(errorBody),
+            contentType: 'application/json',
+          ),
           printed,
         );
 
@@ -406,8 +458,11 @@ void main() {
         final List<String> printed = <String>[];
         final Object error = await errorOf(
           c,
-          FakeHttpAdapter.respond(429, whole(errorBody),
-              contentType: 'application/json'),
+          FakeHttpAdapter.respond(
+            429,
+            whole(errorBody),
+            contentType: 'application/json',
+          ),
           printed,
         );
 
@@ -418,8 +473,11 @@ void main() {
 
       test('${c.name} : réseau coupé -> injoignable', () async {
         final List<String> printed = <String>[];
-        final Object error =
-            await errorOf(c, FakeHttpAdapter.unreachable(), printed);
+        final Object error = await errorOf(
+          c,
+          FakeHttpAdapter.unreachable(),
+          printed,
+        );
 
         expect(error, isA<LlmUnreachableException>());
         expect(error.toString(), isNot(contains(_key)));
@@ -452,36 +510,41 @@ void main() {
           },
         });
 
-    test('Gemini : 400 INVALID_ARGUMENT / API_KEY_INVALID -> clé invalide',
-        () async {
-      final List<String> printed = <String>[];
-      final Object error = await errorOf(
-        _cases[2],
-        FakeHttpAdapter.respond(
-          400,
-          whole(geminiError('INVALID_ARGUMENT', reason: 'API_KEY_INVALID')),
-          contentType: 'application/json',
-        ),
-        printed,
-      );
+    test(
+      'Gemini : 400 INVALID_ARGUMENT / API_KEY_INVALID -> clé invalide',
+      () async {
+        final List<String> printed = <String>[];
+        final Object error = await errorOf(
+          _cases[2],
+          FakeHttpAdapter.respond(
+            400,
+            whole(geminiError('INVALID_ARGUMENT', reason: 'API_KEY_INVALID')),
+            contentType: 'application/json',
+          ),
+          printed,
+        );
 
-      expect(error, isA<LlmInvalidKeyException>());
-      expect(error.toString(), isNot(contains(_key)));
-      expect(printed.join('\n'), isNot(contains(_key)));
-    });
+        expect(error, isA<LlmInvalidKeyException>());
+        expect(error.toString(), isNot(contains(_key)));
+        expect(printed.join('\n'), isNot(contains(_key)));
+      },
+    );
 
     test('Gemini : 403 -> clé invalide', () async {
       final Object error = await errorOf(
         _cases[2],
         FakeHttpAdapter.respond(
           403,
-          whole(jsonEncode(<String, Object>{
-            'error': <String, Object>{
-              'code': 403,
-              'message': 'Your API key doesn\'t have the required permissions.',
-              'status': 'PERMISSION_DENIED',
-            },
-          })),
+          whole(
+            jsonEncode(<String, Object>{
+              'error': <String, Object>{
+                'code': 403,
+                'message':
+                    'Your API key doesn\'t have the required permissions.',
+                'status': 'PERMISSION_DENIED',
+              },
+            }),
+          ),
           contentType: 'application/json',
         ),
         <String>[],
@@ -508,8 +571,11 @@ void main() {
     });
 
     test('Ollama : serveur local arrêté -> injoignable', () async {
-      final Object error =
-          await errorOf(_cases[3], FakeHttpAdapter.unreachable(), <String>[]);
+      final Object error = await errorOf(
+        _cases[3],
+        FakeHttpAdapter.unreachable(),
+        <String>[],
+      );
 
       expect(error, isA<LlmUnreachableException>());
     });

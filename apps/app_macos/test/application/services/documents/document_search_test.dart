@@ -55,7 +55,7 @@ void main() {
     await add(
       'bavard.md',
       'Il est là, et le reste est à faire, de toute façon, que ce soit '
-      'pour nous ou pour vous, dans le calme et avec le sourire.',
+          'pour nous ou pour vous, dans le calme et avec le sourire.',
     );
 
     final List<DocumentExcerpt> hits = await library.search(
@@ -89,7 +89,10 @@ void main() {
       'L\'équipe "produit" a-t-elle validé le budget ? (2027) * OR: NEAR -x',
     );
 
-    expect(hits.map((DocumentExcerpt e) => e.documentTitle), contains('equipe'));
+    expect(
+      hits.map((DocumentExcerpt e) => e.documentTitle),
+      contains('equipe'),
+    );
   });
 
   test('accents et casse ignorés comme le tokenizer existant', () async {
@@ -124,32 +127,39 @@ void main() {
   test('un extrait court est rendu entier', () async {
     await add('court.md', 'Le budget est validé.');
 
-    expect((await library.search('budget')).single.text, 'Le budget est validé.');
-  });
-
-  test('un morceau long est coupé autour du passage trouvé, dans la borne',
-      () async {
-    final String filler = List<String>.filled(90, 'remplissage').join(' ');
-    await add(
-      'long.md',
-      '$filler. La décision finale revient à l\'équipe produit.',
+    expect(
+      (await library.search('budget')).single.text,
+      'Le budget est validé.',
     );
-
-    final DocumentExcerpt hit = (await library.search('equipe')).single;
-
-    expect(kMaxExcerptChars, 400);
-    expect(hit.text.length, lessThanOrEqualTo(kMaxExcerptChars));
-    expect(hit.text, contains('équipe'));
   });
 
-  test('passage trouvé au début d\'un morceau long : le début est gardé',
-      () async {
-    final String filler = List<String>.filled(90, 'remplissage').join(' ');
-    await add('debut.md', 'Ordre du jour : le budget. $filler.');
+  test(
+    'un morceau long est coupé autour du passage trouvé, dans la borne',
+    () async {
+      final String filler = List<String>.filled(90, 'remplissage').join(' ');
+      await add(
+        'long.md',
+        '$filler. La décision finale revient à l\'équipe produit.',
+      );
 
-    final DocumentExcerpt hit = (await library.search('budget')).single;
+      final DocumentExcerpt hit = (await library.search('equipe')).single;
 
-    expect(hit.text.length, lessThanOrEqualTo(kMaxExcerptChars));
-    expect(hit.text, startsWith('Ordre du jour : le budget.'));
-  });
+      expect(kMaxExcerptChars, 400);
+      expect(hit.text.length, lessThanOrEqualTo(kMaxExcerptChars));
+      expect(hit.text, contains('équipe'));
+    },
+  );
+
+  test(
+    'passage trouvé au début d\'un morceau long : le début est gardé',
+    () async {
+      final String filler = List<String>.filled(90, 'remplissage').join(' ');
+      await add('debut.md', 'Ordre du jour : le budget. $filler.');
+
+      final DocumentExcerpt hit = (await library.search('budget')).single;
+
+      expect(hit.text.length, lessThanOrEqualTo(kMaxExcerptChars));
+      expect(hit.text, startsWith('Ordre du jour : le budget.'));
+    },
+  );
 }

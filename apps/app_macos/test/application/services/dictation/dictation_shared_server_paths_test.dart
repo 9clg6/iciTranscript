@@ -197,8 +197,12 @@ void main() {
           done('Dicté juste avant.');
           async.elapse(const Duration(seconds: 1));
 
-          expect(d.state, isA<DictationDone>(), reason: '${d.state} ; note : ${note()}');
-        expect(d.output.copies, <String>['Dicté juste avant.']);
+          expect(
+            d.state,
+            isA<DictationDone>(),
+            reason: '${d.state} ; note : ${note()}',
+          );
+          expect(d.output.copies, <String>['Dicté juste avant.']);
           expect(note(), isNot(contains('Dicté juste avant.')));
         });
       },

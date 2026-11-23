@@ -31,7 +31,9 @@ Object? frValue(String key) {
 
 Object? _wrap(Object? node) {
   if (node is Map<String, dynamic>) {
-    return node.map((String k, dynamic v) => MapEntry<String, dynamic>(k, _wrap(v)));
+    return node.map(
+      (String k, dynamic v) => MapEntry<String, dynamic>(k, _wrap(v)),
+    );
   }
   if (node is String) return '$kOpen$node$kClose';
   return node;
