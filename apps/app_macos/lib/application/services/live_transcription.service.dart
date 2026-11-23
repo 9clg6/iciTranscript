@@ -409,6 +409,7 @@ final class LiveTranscriptionService {
       _log.info('Audio subscription active, en attente de chunks...');
       _running = true;
       _lossOfPhrase.clear();
+      _gapMarkers.clear();
       _lastSealed.clear();
       _provisionalTimer = Timer.periodic(
         const Duration(seconds: 1),
@@ -864,20 +865,85 @@ final class LiveTranscriptionService {
         when startMs < sealed.timestampMs) {
       _savePartial(sealed.copyWith(timestampMs: startMs));
     }
+    _writeGapMarker(
+      session,
+      gap.source,
+      startMs,
+      _offsetOf(session, gap.endMs),
+    );
+  }
+
+  // Repères de perte écrits dans cette session, par source, dans l'ordre :
+  // (id, début, fin) en heures de réunion.
+  final Map<AudioSource, List<({String id, int start, int end})>> _gapMarkers =
+      <AudioSource, List<({String id, int start, int end})>>{};
+
+  /// Seul endroit qui écrit un repère de perte. Les repères d'une source ne
+  /// se chevauchent jamais (sonde 7 : trois repères emboîtés) : une perte
+  /// qui touche ou recoupe des repères de la même source les fusionne en un
+  /// seul, l'union, sous l'id du premier ; les autres sont retirés.
+  void _writeGapMarker(
+    SessionEntity session,
+    AudioSource source,
+    int start,
+    int end,
+  ) {
+    final List<({String id, int start, int end})> markers = _gapMarkers
+        .putIfAbsent(source, () => <({String id, int start, int end})>[]);
+    final List<({String id, int start, int end})> touched = markers
+        .where(
+          (({String id, int start, int end}) m) =>
+              m.start <= end && start <= m.end,
+        )
+        .toList();
+    int from = start;
+    int to = end;
+    for (final ({String id, int start, int end}) m in touched) {
+      if (m.start < from) from = m.start;
+      if (m.end > to) to = m.end;
+    }
+    final String id = touched.isEmpty
+        ? _newSegmentId(session, source)
+        : touched.first.id;
+    for (final ({String id, int start, int end}) m in touched.skip(1)) {
+      _chainWrite(m.id, () async {
+        await _transcriptionService.discardProvisional(m.id);
+        _transcriptionService.segmentsStream.add(
+          List<TranscriptSegmentEntity>.from(
+            _transcriptionService.segmentsStream.value,
+          )..removeWhere((TranscriptSegmentEntity x) => x.id == m.id),
+        );
+      });
+    }
+    markers
+      ..removeWhere(touched.contains)
+      ..add((id: id, start: from, end: to));
     final TranscriptSegmentEntity marker = TranscriptSegmentEntity(
-      id: _newSegmentId(session, gap.source),
+      id: id,
       sessionId: session.id,
-      source: gap.source,
-      text: gapMarkerText(startMs, _offsetOf(session, gap.endMs)),
-      timestampMs: startMs,
+      source: source,
+      text: gapMarkerText(from, to),
+      timestampMs: from,
       createdAt: clock.now(),
     );
-    _log.warning('Audio non transcrit: ${marker.text} (${gap.source.name})');
+    _log.warning('Audio non transcrit: ${marker.text} (${source.name})');
+    _savePartial(marker);
+  }
+
+  // Écritures chaînées par id de segment : la dernière valeur voulue est
+  // toujours écrite en dernier (revue : un re-rangement non chaîné pouvait
+  // être écrasé par la première écriture, plus lente).
+  final Map<String, Future<void>> _segmentWrites = <String, Future<void>>{};
+
+  void _chainWrite(String id, Future<void> Function() write) {
     late final Future<void> task;
-    task = _transcriptionService
-        .saveSegment(marker)
-        .then((_) => _sortAndDedupeSegments())
-        .whenComplete(() => _pendingFinalizations.remove(task));
+    task = (_segmentWrites[id] ?? Future<void>.value())
+        .then((_) => write())
+        .whenComplete(() {
+          _pendingFinalizations.remove(task);
+          if (identical(_segmentWrites[id], task)) _segmentWrites.remove(id);
+        });
+    _segmentWrites[id] = task;
     _pendingFinalizations.add(task);
   }
 
@@ -1144,12 +1210,11 @@ final class LiveTranscriptionService {
       <AudioSource, TranscriptSegmentEntity>{};
 
   void _savePartial(TranscriptSegmentEntity segment, {Future<void>? after}) {
-    late final Future<void> task;
-    task = (after ?? Future<void>.value())
-        .then((_) => _transcriptionService.saveSegment(segment))
-        .then((_) => _sortAndDedupeSegments())
-        .whenComplete(() => _pendingFinalizations.remove(task));
-    _pendingFinalizations.add(task);
+    _chainWrite(segment.id, () async {
+      await after;
+      await _transcriptionService.saveSegment(segment);
+      _sortAndDedupeSegments();
+    });
   }
 
   static final RegExp _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);
