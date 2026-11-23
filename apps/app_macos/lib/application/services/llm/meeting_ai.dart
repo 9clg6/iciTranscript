@@ -417,3 +417,19 @@ List<String> _split(String text, int room, {String separator = '\n'}) {
   if (current.isNotEmpty) pieces.add(current);
   return pieces;
 }
+
+/// [kept] puis les corrections de [added] qui n'y sont pas déjà (même
+/// original et même correction, casse et blancs ignorés).
+List<EnglishCorrectionEntity> mergeCorrections(
+  List<EnglishCorrectionEntity> kept,
+  List<EnglishCorrectionEntity> added,
+) {
+  String key(EnglishCorrectionEntity c) =>
+      '${c.original.trim().toLowerCase()}→${c.corrected.trim().toLowerCase()}';
+  final Set<String> seen = kept.map(key).toSet();
+  return <EnglishCorrectionEntity>[
+    ...kept,
+    for (final EnglishCorrectionEntity c in added)
+      if (seen.add(key(c))) c,
+  ];
+}

@@ -151,4 +151,4 @@ final class LiveCoachAvailableProvider
 }
 
 String _$liveCoachAvailableHash() =>
-    r'637690db3da42c098861a8b35df30291f6fd5655';
+    r'9459e164b184a78c186f84225bb53d6720f7d615';
