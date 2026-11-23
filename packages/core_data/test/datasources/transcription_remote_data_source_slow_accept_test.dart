@@ -122,4 +122,65 @@ void main() {
       );
     });
   });
+
+  // Revue PR #21 (commit 1250d05) : une seule poignée de main à la fois.
+  test('une tentative à la fois ; à expiration le canal est fermé et jamais '
+      'réutilisé ; une nouvelle coupure repart à 10 s', () {
+    fakeAsync((FakeAsync async) {
+      final DataSourceBench b = DataSourceBench(async);
+      b.mic.acceptDelay = const Duration(seconds: 15);
+      async.elapse(const Duration(seconds: 1));
+      final Duration firstDrop = async.elapsed;
+      b.mic.drop();
+      for (int id = 0; id < 90; id++) {
+        b.tick(
+          id,
+          voiced: <AudioSource, bool>{AudioSource.input: id % 50 < 40},
+        );
+        final List<Duration> attempts = b.mic.connectAttempts
+            .where((Duration t) => t >= firstDrop)
+            .toList();
+        final Duration since = async.elapsed - firstDrop;
+        if (since < const Duration(seconds: 10)) {
+          expect(
+            attempts.length,
+            lessThanOrEqualTo(1),
+            reason: 'pas de 2e tentative pendant la borne ($since)',
+          );
+        }
+        if (since < const Duration(seconds: 24)) {
+          expect(
+            b.mic.connections,
+            hasLength(1),
+            reason: 'la tentative expirée ne se connecte jamais ($since)',
+          );
+        }
+      }
+      async.elapse(const Duration(seconds: 30));
+      expect(b.mic.connections, hasLength(2), reason: 'reconnecté');
+
+      // Nouvelle coupure : la borne repart à 10 s.
+      final Duration secondDrop = async.elapsed;
+      b.mic.drop();
+      for (int id = 1000; id < 1150; id++) {
+        b.tick(
+          id,
+          voiced: <AudioSource, bool>{AudioSource.input: id % 50 < 40},
+        );
+      }
+      final List<Duration> again = b.mic.connectAttempts
+          .where((Duration t) => t >= secondDrop)
+          .toList();
+      expect(again.length, greaterThanOrEqualTo(2));
+      expect(
+        again[1] - again[0],
+        lessThanOrEqualTo(const Duration(milliseconds: 11500)),
+        reason: 'première borne de la nouvelle coupure : 10 s',
+      );
+      expect(
+        again[1] - again[0],
+        greaterThanOrEqualTo(const Duration(seconds: 10)),
+      );
+    });
+  });
 }
