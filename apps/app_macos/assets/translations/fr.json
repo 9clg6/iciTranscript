@@ -301,7 +301,9 @@
       "model_missing": "Le modèle de transcription (plusieurs Go) n'est pas encore sur ce Mac. Rien n'est téléchargé sans votre accord.",
       "download_model": "Télécharger le modèle",
       "model_downloading": "Téléchargement du modèle… La dictée sera prête à la fin.",
-      "model_download_failed": "Le téléchargement a échoué. Vérifiez la connexion, puis réessayez."
+      "model_download_failed": "Le téléchargement a échoué. Vérifiez la connexion, puis réessayez.",
+      "shortcut_needs_two_modifiers": "Un seul modificateur ne suffit pas : tenez-en deux, par exemple ⌥ et ⌘, ou ajoutez une touche.",
+      "shortcut_needs_accessibility": "Ce raccourci sans touche demande l'Accessibilité pour être vu dans toutes les apps. Il ne marche pas tant qu'elle n'est pas accordée."
     }
   },
   "ollama": {

@@ -92,7 +92,10 @@ enum DictationDelivery {
 enum DictationErrorReason { timeout, microphone, serverUnavailable }
 
 /// État du raccourci global.
-enum ShortcutStatus { disabled, registered, unavailable }
+///
+/// [needsAccessibility] : raccourci « modificateurs seuls » refusé faute
+/// d'Accessibilité (la surveillance globale des modificateurs l'exige).
+enum ShortcutStatus { disabled, registered, unavailable, needsAccessibility }
 
 /// Dictée (T2) : raccourci global maintenu (ou appui bref = bascule), texte
 /// final produit une seule fois (presse-papiers ou collage).
@@ -218,19 +221,29 @@ final class DictationController {
       _shortcutStatus.add(ShortcutStatus.disabled);
       return;
     }
+    // Mêmes réglages déjà posés : rien à refaire. Un raccourci refusé (pris,
+    // Accessibilité absente) est retenté à chaque application.
     final bool sameShortcut =
         wasEnabled &&
+        shortcutStatus == ShortcutStatus.registered &&
         previous!.shortcut.keyCode == settings.shortcut.keyCode &&
         previous.shortcut.modifiers == settings.shortcut.modifiers;
     if (!sameShortcut) {
       if (wasEnabled) await _shortcuts.unregister();
-      final bool ok = await _shortcuts.register(
-        keyCode: settings.shortcut.keyCode,
-        modifiers: settings.shortcut.modifiers,
-      );
+      final int? keyCode = settings.shortcut.keyCode;
+      final int modifiers = settings.shortcut.modifiers;
+      // Modificateurs seuls : Carbon ne sait pas les poser, le plugin les
+      // surveille (Accessibilité requise).
+      final bool ok = keyCode == null
+          ? await _shortcuts.registerModifiers(modifiers: modifiers)
+          : await _shortcuts.register(keyCode: keyCode, modifiers: modifiers);
       if (ok) _shortcutEvents ??= _shortcuts.events.listen(_onShortcut);
       _shortcutStatus.add(
-        ok ? ShortcutStatus.registered : ShortcutStatus.unavailable,
+        ok
+            ? ShortcutStatus.registered
+            : keyCode == null
+            ? ShortcutStatus.needsAccessibility
+            : ShortcutStatus.unavailable,
       );
     }
     unawaited(_warmServer());
@@ -371,7 +384,27 @@ final class DictationController {
         _onReleased();
       case ShortcutEvent.cancel:
         if (_run case final _Run run when !run.finished) _cancel(run);
+      case ShortcutEvent.aborted:
+        _onAborted();
     }
+  }
+
+  bool get _modifiersOnly => _settings?.shortcut.keyCode == null;
+
+  /// Une autre touche (ou un clic) pendant que les modificateurs seuls sont
+  /// tenus : c'était le raccourci d'une autre app (⌘⌥Échap, ⌘⌥-glisser).
+  void _onAborted() {
+    final _Run? run = _run;
+    if (run == null || run.finished || run.captureEnded) return;
+    if (run.stopOnRelease) {
+      // Appui d'arrêt d'une bascule : la dictée continue, son relâchement
+      // égaré ne fait rien.
+      run.stopOnRelease = false;
+      run.ignoreRelease = true;
+      return;
+    }
+    // Appui qui a lancé la dictée : jetée sans bruit (ni texte, ni erreur).
+    if (!run.toggled) _cancel(run, abandon: true);
   }
 
   void _onPressed() {
@@ -382,7 +415,17 @@ final class DictationController {
     if (current != null && !current.finished) {
       current.ignoreRelease = true;
       // Second appui d'une bascule : il arrête. Sinon (transcription) : ignoré.
-      if (current.toggled && !current.captureEnded) _endCapture(current);
+      if (current.toggled && !current.captureEnded) {
+        if (_modifiersOnly) {
+          // Modificateurs seuls : arrêt au relâchement, un `aborted` d'ici
+          // là (raccourci d'une autre app) laisse la dictée continuer.
+          current
+            ..ignoreRelease = false
+            ..stopOnRelease = true;
+        } else {
+          _endCapture(current);
+        }
+      }
       return;
     }
     unawaited(_begin(current));
@@ -391,6 +434,11 @@ final class DictationController {
   void _onReleased() {
     final _Run? run = _run;
     if (run == null || run.finished || run.captureEnded) return;
+    if (run.stopOnRelease) {
+      run.stopOnRelease = false;
+      _endCapture(run);
+      return;
+    }
     if (run.ignoreRelease) {
       run.ignoreRelease = false;
       return;
@@ -654,8 +702,15 @@ final class DictationController {
     return DictationDelivery.pasted;
   }
 
-  void _cancel(_Run run) {
-    run.meeting?.cancel();
+  /// Échap : la dictée est annulée (ses mots exclus de la note aussi).
+  /// [abandon] : appui abandonné (raccourci d'une autre app) : pendant une
+  /// réunion, rien n'était dicté, le micro reste à la note.
+  void _cancel(_Run run, {bool abandon = false}) {
+    if (abandon) {
+      run.meeting?.abandon();
+    } else {
+      run.meeting?.cancel();
+    }
     run.late = false;
     _end(run, const DictationIdle());
     unawaited(_closeStream(run));
@@ -736,6 +791,9 @@ final class _Run {
   Timer? finalTimer;
   bool toggled = false;
   bool ignoreRelease = false;
+
+  /// Modificateurs seuls : second appui d'une bascule, arrêt au relâchement.
+  bool stopOnRelease = false;
   bool captureEnded = false;
   bool committed = false;
   bool streaming = false;

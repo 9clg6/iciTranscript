@@ -1,7 +1,11 @@
 import 'package:flutter/services.dart';
 
 /// Événement du raccourci global de la dictée.
-enum ShortcutEvent { pressed, released, cancel }
+///
+/// [aborted] : une autre touche ou un clic pendant que les modificateurs
+/// d'un raccourci « modificateurs seuls » sont tenus (raccourci d'une autre
+/// app) ; aucun [released] ne suit pour cet appui.
+enum ShortcutEvent { pressed, released, cancel, aborted }
 
 /// Dart wrapper autour du plugin Swift GlobalShortcutPlugin (raccourci
 /// global Carbon, appui maintenu pour dicter, Échap pour annuler).
@@ -23,6 +27,7 @@ class GlobalShortcutChannel {
           {'type': 'pressed'} => ShortcutEvent.pressed,
           {'type': 'released'} => ShortcutEvent.released,
           {'type': 'cancel'} => ShortcutEvent.cancel,
+          {'type': 'aborted'} => ShortcutEvent.aborted,
           _ => null,
         },
       )
@@ -35,6 +40,22 @@ class GlobalShortcutChannel {
     try {
       await _method.invokeMethod<void>('register', <String, int>{
         'keyCode': keyCode,
+        'modifiers': modifiers,
+      });
+      return true;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
+  /// Raccourci « modificateurs seuls » (masque Carbon, ⌘⌥ = 2304), à la
+  /// place du précédent. Faux si refusé (Accessibilité absente) ou plugin
+  /// absent.
+  Future<bool> registerModifiers({required int modifiers}) async {
+    try {
+      await _method.invokeMethod<void>('registerModifiers', <String, int>{
         'modifiers': modifiers,
       });
       return true;
@@ -63,8 +84,8 @@ class GlobalShortcutChannel {
   Future<void> unregister() => _method.invokeMethod<void>('unregister');
 
   /// Capture Échap seulement pendant une dictée.
-  Future<void> setCancelKeyEnabled(bool enabled) => _method
-      .invokeMethod<void>('setCancelKeyEnabled', <String, bool>{
-        'enabled': enabled,
-      });
+  Future<void> setCancelKeyEnabled(bool enabled) => _method.invokeMethod<void>(
+    'setCancelKeyEnabled',
+    <String, bool>{'enabled': enabled},
+  );
 }
