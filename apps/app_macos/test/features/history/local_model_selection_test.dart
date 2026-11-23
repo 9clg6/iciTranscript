@@ -118,7 +118,7 @@ void main() {
 
       await c
           .read(liveTranscriptionViewModelProvider.notifier)
-          .coachAfterCall('I am agree with you.', sessionId: 's1');
+          .coachAfterCall(kShortMeeting, sessionId: 's1');
 
       expect(adapter.requests, isEmpty);
       expect(ollama.ensureReadyCalls, 0);

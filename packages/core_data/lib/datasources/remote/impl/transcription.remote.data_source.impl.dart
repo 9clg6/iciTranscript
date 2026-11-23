@@ -249,8 +249,15 @@ final class TranscriptionRemoteDataSourceImpl
     // suivante. Écouter la fermeture du canal si le délai gêne.
     final bool live = _outages[source] == null && client.isConnected;
     if (!live && _outages[source] == null) _startOutage(source);
-    _unacked[source]!.add(_Outgoing(message, timestampMs, audioMs, window));
-    if (live) _pump(source);
+    final _Unacked unacked = _unacked[source]!
+      ..add(_Outgoing(message, timestampMs, audioMs, window));
+    if (live) {
+      // Audio jeté par la borne sur la socket vivante : signalé tout de
+      // suite (dès que la plage est close : une perte, pas une par chunk),
+      // pas à la prochaine coupure.
+      _emitGap(source, unacked, closedOnly: true);
+      _pump(source);
+    }
   }
 
   /// Envoie, dans l'ordre, ce que la borne de [_maxInFlightMs] autorise.
@@ -434,13 +441,21 @@ final class TranscriptionRemoteDataSourceImpl
     }
   }
 
-  void _emitGap(AudioSource source, _Unacked unacked) {
-    for (final _Range range in unacked.lost) {
+  void _emitGap(
+    AudioSource source,
+    _Unacked unacked, {
+    bool closedOnly = false,
+  }) {
+    final List<_Range> ready = <_Range>[
+      for (final _Range range in unacked.lost)
+        if (!closedOnly || range.closed) range,
+    ];
+    for (final _Range range in ready) {
       _gapSubject.add(
         AudioGap(source: source, startMs: range.startMs!, endMs: range.endMs!),
       );
     }
-    unacked.lost.clear();
+    unacked.lost.removeWhere(ready.contains);
   }
 
   /// Ferme les coupures et vide le tampon : tout ce qui n'a pas son `done`,
@@ -730,13 +745,38 @@ class _Unacked {
     queue.add(item);
     audioMs += item.audioMs;
     while (audioMs > maxBufferedMs) {
+      if (_headCommitAwaited) {
+        // Le serveur a reçu une partie de cette phrase : il en rendra le
+        // `done`. Son commit reste (sinon ce `done` prendrait la fenêtre de
+        // la phrase suivante, sonde 8) ; on jette l'audio derrière lui.
+        final _Outgoing commit = queue.removeFirst();
+        if (queue.isEmpty) {
+          queue.add(commit);
+          return;
+        }
+        _evictFirst();
+        queue.addFirst(commit);
+        continue;
+      }
       _evictFirst();
       // Un commit resté en tête ne finaliserait que de l'audio jeté.
-      while (queue.isNotEmpty && queue.first.timestampMs == null) {
+      while (queue.isNotEmpty &&
+          queue.first.timestampMs == null &&
+          !_headCommitAwaited) {
         _evictFirst();
       }
     }
   }
+
+  /// Le commit final en tête, non envoyé, clôt une phrase dont le début est
+  /// parti puis a été jeté : son `done` viendra.
+  bool get _headCommitAwaited =>
+      _sentCount == 0 &&
+      queue.isNotEmpty &&
+      queue.first.window != null &&
+      _sentEvicted.isNotEmpty &&
+      !_sentEvicted.last.closed &&
+      _sentEvicted.last.audioMs > 0;
 
   /// Prochain message à écrire, ou null s'il doit attendre un `done` : plus
   /// de [capMs] d'audio serait en vol. La phrase en vol seule (aucun commit
@@ -810,10 +850,23 @@ class _Unacked {
 
   /// La socket est tombée : l'audio jeté après envoi ne sera pas transcrit.
   void sentEvictionsLost() {
+    // Un commit gardé en tête pour une phrase dont tout l'audio est jeté
+    // repartirait seul sur la nouvelle socket : sans audio, pas de `done`,
+    // et chaque `done` suivant prendrait la fenêtre d'avant.
+    final bool headOrphan =
+        _sentEvicted.isNotEmpty &&
+        !_sentEvicted.last.closed &&
+        queue.isNotEmpty &&
+        queue.first.timestampMs == null &&
+        queue.first.window != null;
     for (final _Range range in _sentEvicted) {
       if (range.startMs != null) _markLost(range.startMs!, range.endMs!);
     }
     _sentEvicted.clear();
+    if (headOrphan) {
+      final _Outgoing commit = queue.removeFirst();
+      if (_sentCount > 0) _forgetSent(commit);
+    }
   }
 
   void loseAll() {

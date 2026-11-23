@@ -24,8 +24,8 @@ class SummaryDao extends DatabaseAccessor<AppDatabase> with _$SummaryDaoMixin {
 
   /// Supprime le resume d'une session.
   Future<void> deleteBySessionId(String sessionId) {
-    return (delete(summaries)
-          ..where(($SummariesTable t) => t.sessionId.equals(sessionId)))
-        .go();
+    return (delete(
+      summaries,
+    )..where(($SummariesTable t) => t.sessionId.equals(sessionId))).go();
   }
 }

@@ -13,6 +13,8 @@ import 'package:ici_transcript/features/live_transcription/presentation/screens/
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/server_status.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/finalising.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/live_answers_panel.widget.dart';
+import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/live_coach_block.widget.dart';
+import 'package:ici_transcript/core/providers/services/live_coach.service.provider.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/session_controls.widget.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/widgets/transcript_line.widget.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
@@ -120,6 +122,7 @@ class _LiveTranscriptionScreenState
         children: <Widget>[
           _buildToolbar(state),
           _buildOptionsBar(state),
+          ?_liveCoachReason(state),
           for (final Widget n in notices)
             Padding(
               padding: const EdgeInsets.fromLTRB(
@@ -193,19 +196,26 @@ class _LiveTranscriptionScreenState
   Widget _buildOptionsBar(LiveTranscriptionState state) {
     final Oats o = context.oats;
     final bool idle = !state.isRecording && !state.isPaused;
+    Widget group(List<Widget> children) =>
+        Row(mainAxisSize: MainAxisSize.min, children: children);
+    // Options groupées : à l'étroit, elles passent à la ligne au lieu de
+    // sortir de l'écran.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: OatsSpace.xl),
-      height: 40,
+      constraints: const BoxConstraints(minHeight: 40),
+      padding: const EdgeInsets.symmetric(
+        horizontal: OatsSpace.xl,
+        vertical: OatsSpace.xxs,
+      ),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: o.line)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        reverse: true,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (idle) ...<Widget>[
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: OatsSpace.lg,
+        children: <Widget>[
+          if (idle) ...<Widget>[
+            group(<Widget>[
               _optionLabel(
                 Icons.school_outlined,
                 LocaleKeys.transcription_live_coach_option.tr(),
@@ -214,7 +224,9 @@ class _LiveTranscriptionScreenState
                 value: state.isCoachEnabled,
                 onChanged: (_) => _vm.toggleCoach(),
               ),
-              const SizedBox(width: OatsSpace.lg),
+            ]),
+            _liveCoachOption(state),
+            group(<Widget>[
               Tooltip(
                 message: LocaleKeys.transcription_live_speakers_tooltip.tr(),
                 child: _optionLabel(
@@ -226,8 +238,9 @@ class _LiveTranscriptionScreenState
                 value: state.isLiveSpeakersEnabled,
                 onChanged: (_) => _vm.toggleLiveSpeakers(),
               ),
-              const SizedBox(width: OatsSpace.lg),
-            ],
+            ]),
+          ],
+          group(<Widget>[
             _optionLabel(
               Icons.translate,
               LocaleKeys.transcription_live_translation_option.tr(),
@@ -249,8 +262,51 @@ class _LiveTranscriptionScreenState
               value: state.isTranslationEnabled,
               onChanged: (_) => _vm.toggleTranslation(),
             ),
-          ],
-        ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  /// « Coach en direct » : disponible seulement avec un fournisseur en
+  /// ligne configuré et autorisé ; sinon désactivé, et la raison est dite
+  /// sous les options.
+  Widget _liveCoachOption(LiveTranscriptionState state) {
+    final bool available =
+        ref.watch(liveCoachAvailableProvider).value ?? false;
+    return MergeSemantics(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _optionLabel(Icons.bolt_outlined, LocaleKeys.coach_live_option.tr()),
+          OatsSwitch(
+            value: available && state.isLiveCoachEnabled,
+            onChanged: available ? (_) => _vm.toggleLiveCoach() : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Sous les options, avant de démarrer : pourquoi « Coach en direct » est
+  /// désactivé (une ligne discrète, alignée comme les options).
+  Widget? _liveCoachReason(LiveTranscriptionState state) {
+    final AsyncValue<bool> available = ref.watch(liveCoachAvailableProvider);
+    if (state.isRecording || state.isPaused || available.value != false) {
+      return null;
+    }
+    final Oats o = context.oats;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        OatsSpace.xl,
+        OatsSpace.xs + 2,
+        OatsSpace.xl,
+        0,
+      ),
+      child: Text(
+        LocaleKeys.coach_live_unavailable.tr(),
+        textAlign: TextAlign.right,
+        style: o.meta.copyWith(color: o.faint),
       ),
     );
   }
@@ -375,7 +431,18 @@ class _LiveTranscriptionScreenState
           VerticalDivider(width: 1, thickness: 1, color: o.line),
           SizedBox(
             width: (c.maxWidth * 0.4).clamp(280, 400),
-            child: const LiveAnswersPanel(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                const Expanded(child: LiveAnswersPanel()),
+                if (ref.watch(
+                  liveTranscriptionViewModelProvider.select(
+                    (LiveTranscriptionState s) => s.isLiveCoachEnabled,
+                  ),
+                ))
+                  const LiveCoachBlock(),
+              ],
+            ),
           ),
         ],
       ),

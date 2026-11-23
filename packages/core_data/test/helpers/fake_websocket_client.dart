@@ -78,6 +78,11 @@ final class FakeWebSocketClient extends WebSocketClient {
   final Set<int> transcribedIds = <int>{};
   final List<int> transcribedTwice = <int>[];
 
+  /// Pour chaque `done` émis, dans l'ordre : les numéros des chunks reçus
+  /// depuis le commit précédent sur la connexion (la phrase que ce `done`
+  /// transcrit vraiment), vide si aucune phrase n'attendait.
+  final List<List<int>> doneUtterances = <List<int>>[];
+
   // Fermetures vues par le client (canal fini ou en erreur), sans appel à
   // disconnect().
   final StreamController<void> _closes = StreamController<void>.broadcast();
@@ -174,6 +179,13 @@ final class FakeWebSocketClient extends WebSocketClient {
   /// Le serveur envoie un événement au client. Un `done` acquitte la plus
   /// ancienne phrase commitée de la connexion.
   void emit(Map<String, Object> event) {
+    if (event['type'] == 'response.audio_transcript.done') {
+      doneUtterances.add(
+        _pendingUtterances.isEmpty
+            ? <int>[]
+            : List<int>.of(_pendingUtterances.first),
+      );
+    }
     if (event['type'] == 'response.audio_transcript.done' &&
         _pendingUtterances.isNotEmpty) {
       for (final int id in _pendingUtterances.removeAt(0)) {

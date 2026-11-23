@@ -20,6 +20,11 @@ abstract class EnglishCorrectionEntity with _$EnglishCorrectionEntity {
 
     /// Explication courte de la correction (en francais).
     required String explanation,
+
+    /// Heure, dans la note, de la phrase qui contient [original] (ms depuis
+    /// le début, comme `TranscriptSegmentEntity.timestampMs`) ; null si
+    /// inconnue (retour d'avant, phrase introuvable).
+    int? timestampMs,
   }) = _EnglishCorrectionEntity;
 
   /// Construit l'entite depuis un JSON.
@@ -38,6 +43,14 @@ abstract class EnglishFeedbackEntity with _$EnglishFeedbackEntity {
 
     /// Appreciation globale du niveau (optionnelle).
     String? overall,
+
+    /// Phrases (ids de segments) dont la partie n'a pas pu être analysée
+    /// (lot en échec) : la note propose de réessayer.
+    @Default(<String>[]) List<String> unanalyzedSegmentIds,
+
+    /// Aucune phrase anglaise de l'utilisateur dans la note : rien n'a été
+    /// envoyé (la note le dit, ni « Aucune correction » ni erreur).
+    @Default(false) bool nothingToAnalyse,
   }) = _EnglishFeedbackEntity;
 
   /// Construit l'entite depuis un JSON.

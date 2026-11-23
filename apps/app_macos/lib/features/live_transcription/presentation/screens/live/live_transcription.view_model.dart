@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
-import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
-import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
@@ -27,6 +25,8 @@ import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart
 import 'package:ici_transcript/core/providers/services/diarization.service.provider.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
+import 'package:ici_transcript/application/services/live_coach/live_coach.service.dart';
+import 'package:ici_transcript/core/providers/services/live_coach.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -35,11 +35,11 @@ import 'package:ici_transcript/core/providers/services/ollama.service.provider.d
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/summary.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/translation.service.provider.dart';
+import 'package:ici_transcript/core/providers/services/transcription_server_arbiter.provider.dart';
 import 'package:ici_transcript/features/calendar/calendar_feed.provider.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.view_model.dart';
 import 'package:ici_transcript/features/settings/presentation/screens/settings/settings.view_model.dart';
 import 'package:ici_transcript/features/live_transcription/presentation/screens/live/live_transcription.state.dart';
-import 'package:ici_transcript/features/shared/presentation/llm_error_key.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'live_transcription.view_model.g.dart';
@@ -63,11 +63,14 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   // valeur choisie.
   bool _coachTouched = false;
   bool _speakersTouched = false;
+  bool _liveCoachTouched = false;
+  bool _startRequested = false;
 
   CalendarEvent? _nextEvent;
 
   static const String _coachKey = 'coach_enabled';
   static const String _speakersKey = 'live_speakers_enabled';
+  static const String _liveCoachKey = 'live_coach_enabled';
 
   @override
   LiveTranscriptionState build() {
@@ -159,6 +162,8 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
         segment,
         speaker: _liveService?.speakerLabels[segment.id],
       );
+      // Ignoré hors d'une note où le coach en direct est activé.
+      _coach.onSegmentFinalized(segment);
     });
 
     // Après Arrêter : rattrapage restant, pour l'état « Finalisation… ».
@@ -198,8 +203,29 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
 
   LiveAnswersService get _answers => ref.read(liveAnswersServiceProvider);
 
+  LiveCoachService get _coach => ref.read(liveCoachServiceProvider);
+
   /// Demarre une nouvelle session de transcription.
   Future<void> startSession() async {
+    // Dès la demande : la passe du coach d'après l'appel s'arrête entre
+    // deux lots (attendue ci-dessous, elle retarderait le démarrage).
+    _startRequested = true;
+    try {
+      await _startSession();
+    } finally {
+      _startRequested = false;
+    }
+  }
+
+  /// Un enregistrement est demandé ou en cours (ou une dictée) : même
+  /// règle que le rattrapage des pertes, plus la demande en attente et
+  /// l'état de l'écran du direct.
+  bool _recordingWanted() =>
+      _startRequested ||
+      state.isRecording ||
+      ref.read(transcriptionServerArbiterProvider).backfillMustYield;
+
+  Future<void> _startSession() async {
     _log.info('startSession() appele');
 
     // Les modèles Voxtral, Ollama et Parakeet partagent la mémoire unifiée.
@@ -246,7 +272,10 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       _log.info('startTranscription OK');
       final SessionEntity? session = _liveService?.currentSessionStream.value;
       state = state.copyWith(sessionTitle: session?.title);
-      if (session != null) _answers.start(session.id);
+      if (session != null) {
+        _answers.start(session.id);
+        if (state.isLiveCoachEnabled) _coach.start(session.id);
+      }
     } catch (e) {
       _log.error('ERREUR startTranscription: $e');
       if (e is PlatformException && e.code == 'MIC_PERMISSION_DENIED') {
@@ -260,6 +289,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       }
       _durationTimer?.cancel();
       await _answers.stop();
+      await _coach.stop();
       await _liveService?.stopTranscription();
     }
   }
@@ -320,6 +350,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     // Avant le rattrapage de l'arrêt : plus rien ne part pendant
     // « Finalisation… », la réponse en vol est abandonnée.
     await _answers.stop();
+    await _coach.stop();
     await _liveService?.stopTranscription();
 
     final List<TranscriptSegmentEntity> segments = state.segments;
@@ -342,6 +373,13 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     // (la passe post-session, si elle tourne, les remplacera par les siens).
     if (sessionId != null) {
       await _saveLiveSpeakers(sessionId, segments, speakerLabels);
+    }
+
+    // Ce que le coach en direct a trouvé est rangé dès Arrêter : il
+    // survit à un échec ou à l'arrêt de l'app pendant la passe d'après
+    // l'appel (qui, si elle tourne, le reprend et complète).
+    if (sessionId != null) {
+      await _saveLiveCoach(sessionId, segments);
     }
 
     // Rafraichir la liste des sessions dans la sidebar
@@ -397,13 +435,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     required bool coachEnabled,
   }) async {
     // Coach d'abord (mistral, rapide) → trigger immédiat si activé.
-    if (coachEnabled) {
-      final String transcript = segments
-          .where((TranscriptSegmentEntity s) => s.source == AudioSource.input)
-          .map((TranscriptSegmentEntity s) => s.text)
-          .join('\n');
-      await coachAfterCall(transcript, sessionId: sessionId);
-    }
+    if (coachEnabled) await coachAfterCall(segments, sessionId: sessionId);
 
     // Le modèle Mistral était conservé cinq minutes. Le décharger avant
     // Parakeet évite de cumuler plusieurs modèles Metal en mémoire unifiée.
@@ -466,6 +498,9 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       isLiveSpeakersEnabled: _speakersTouched
           ? state.isLiveSpeakersEnabled
           : prefValue<bool>(prefs, _speakersKey) ?? state.isLiveSpeakersEnabled,
+      isLiveCoachEnabled: _liveCoachTouched
+          ? state.isLiveCoachEnabled
+          : prefValue<bool>(prefs, _liveCoachKey) ?? state.isLiveCoachEnabled,
     );
   }
 
@@ -476,6 +511,18 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     unawaited(
       ref.read(prefsStoreProvider).update(<String, Object?>{
         _coachKey: state.isCoachEnabled,
+      }),
+    );
+  }
+
+  /// Active ou désactive le coach anglais en direct (pris en compte au
+  /// prochain enregistrement).
+  void toggleLiveCoach() {
+    _liveCoachTouched = true;
+    state = state.copyWith(isLiveCoachEnabled: !state.isLiveCoachEnabled);
+    unawaited(
+      ref.read(prefsStoreProvider).update(<String, Object?>{
+        _liveCoachKey: state.isLiveCoachEnabled,
       }),
     );
   }
@@ -759,56 +806,137 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     }
   }
 
-  /// Analyse l'anglais parlé par le fournisseur actif et sauvegarde le
-  /// retour.
+  /// Ce que le coach en direct a trouvé pour [sessionId] (rien s'il a
+  /// tourné pour une autre note).
+  ({List<EnglishCorrectionEntity> found, Set<String> coached}) _liveFor(
+    String? sessionId,
+  ) {
+    final LiveCoachService live = _coach;
+    if (sessionId == null || live.snapshot.sessionId != sessionId) {
+      return (found: const <EnglishCorrectionEntity>[], coached: <String>{});
+    }
+    return (found: live.snapshot.corrections, coached: live.coachedSegmentIds);
+  }
+
+  /// Range ce que le coach en direct a trouvé pour [sessionId] (s'il a
+  /// analysé au moins une phrase) ; les phrases de [segments] qu'il n'a pas
+  /// analysées sont dites non analysées (jamais un faux « impeccable »).
+  Future<void> _saveLiveCoach(
+    String sessionId,
+    List<TranscriptSegmentEntity> segments,
+  ) async {
+    final ({List<EnglishCorrectionEntity> found, Set<String> coached}) live =
+        _liveFor(sessionId);
+    if (live.coached.isEmpty) return;
+    try {
+      await _saveFeedback(
+        sessionId,
+        EnglishFeedbackEntity(
+          corrections: live.found,
+          unanalyzedSegmentIds: <String>[
+            for (final TranscriptSegmentEntity s in coachableLines(
+              segments,
+              skip: live.coached,
+            ))
+              s.id,
+          ],
+        ),
+      );
+    } on Object catch (e) {
+      _log.warning('Sauvegarde du coach en direct échouée : $e');
+    }
+  }
+
+  /// Range [feedback] dans l'enveloppe partagée (résumé + coach) ; le
+  /// modèle rangé reste celui du résumé.
+  Future<void> _saveFeedback(
+    String sessionId,
+    EnglishFeedbackEntity feedback,
+  ) async {
+    final SessionAnalysis existing = SessionAnalysis.fromStored(
+      await ref.read(summaryServiceProvider).getSummaryForSession(sessionId),
+    );
+    await ref
+        .read(summaryServiceProvider)
+        .saveSummary(
+          sessionId: sessionId,
+          content: existing.copyWith(feedback: feedback).toStored(),
+        );
+  }
+
+  /// Coach d'après l'appel, par le fournisseur actif : les phrases
+  /// anglaises de l'utilisateur dans [segments], sauf celles déjà corrigées
+  /// en direct pour cette note ; le retour (direct + après l'appel) est
+  /// rangé, quel qu'il soit. Tout en échec : rangé quand même, toutes les
+  /// phrases non analysées (la note propose de réessayer).
   ///
-  /// [transcript] = parole du micro (MOI) uniquement.
   /// Rien d'utilisable (envoi coupé ou sans clé, modèle local absent) : rien
-  /// n'est envoyé ni téléchargé, pas de retour ; la note reste enregistrée.
+  /// n'est envoyé ni téléchargé ; seul le direct est rangé.
   @visibleForTesting
-  Future<void> coachAfterCall(String transcript, {String? sessionId}) async {
-    if (transcript.trim().isEmpty) return;
+  Future<void> coachAfterCall(
+    List<TranscriptSegmentEntity> segments, {
+    String? sessionId,
+  }) async {
+    final ({List<EnglishCorrectionEntity> found, Set<String> coached}) live =
+        _liveFor(sessionId);
+    final List<TranscriptSegmentEntity> lines = coachableLines(
+      segments,
+      skip: live.coached,
+    );
+    if (lines.isEmpty) {
+      if (sessionId == null) return;
+      if (live.coached.isEmpty && coachableLines(segments).isEmpty) {
+        // Aucune phrase anglaise de l'utilisateur : la note le dit.
+        const EnglishFeedbackEntity nothing = EnglishFeedbackEntity(
+          nothingToAnalyse: true,
+        );
+        if (ref.mounted) state = state.copyWith(feedback: nothing);
+        await _saveFeedback(sessionId, nothing);
+      } else {
+        await _saveLiveCoach(sessionId, segments);
+      }
+      return;
+    }
     state = state.copyWith(isFeedbackLoading: true);
+    EnglishFeedbackEntity feedback;
     try {
       final ReadyLlm? ready = await readyLlm(ref);
       if (ready == null) {
         _log.info('Coach ignoré : aucun modèle utilisable');
-        state = state.copyWith(isFeedbackLoading: false);
+        if (ref.mounted) state = state.copyWith(isFeedbackLoading: false);
+        if (sessionId != null) await _saveLiveCoach(sessionId, segments);
         return;
       }
-      final EnglishFeedbackEntity feedback = await coachEnglish(
+      final EnglishFeedbackEntity after = await coachMeeting(
         ready.llm,
-        transcript,
+        segments,
+        skipSegmentIds: live.coached,
+        shouldStop: _recordingWanted,
       );
-      if (!ref.mounted) return;
-      state = state.copyWith(isFeedbackLoading: false, feedback: feedback);
+      feedback = after.copyWith(
+        corrections: mergeCorrections(live.found, after.corrections),
+      );
       _log.info(
         'Analyse anglais terminée (${feedback.corrections.length} corrections)',
       );
-
-      // Sauvegarder le retour dans l'enveloppe partagée (résumé + coach) ;
-      // le modèle rangé reste celui du résumé.
-      if (sessionId != null && feedback.corrections.isNotEmpty) {
-        final SessionAnalysis existing = SessionAnalysis.fromStored(
-          await ref
-              .read(summaryServiceProvider)
-              .getSummaryForSession(sessionId),
-        );
-        await ref
-            .read(summaryServiceProvider)
-            .saveSummary(
-              sessionId: sessionId,
-              content: existing.copyWith(feedback: feedback).toStored(),
-            );
-        _log.info('Retour coach sauvegardé pour session $sessionId');
-      }
     } on Object catch (e) {
       _log.error('Coach anglais échoué : $e');
-      if (!ref.mounted) return;
-      state = state.copyWith(
-        isFeedbackLoading: false,
-        feedback: EnglishFeedbackEntity(overall: llmErrorKey(e).tr()),
+      feedback = EnglishFeedbackEntity(
+        corrections: live.found,
+        unanalyzedSegmentIds: <String>[
+          for (final TranscriptSegmentEntity s in lines) s.id,
+        ],
       );
+    }
+    if (ref.mounted) {
+      state = state.copyWith(isFeedbackLoading: false, feedback: feedback);
+    }
+    if (sessionId == null) return;
+    try {
+      await _saveFeedback(sessionId, feedback);
+      _log.info('Retour coach sauvegardé pour session $sessionId');
+    } on Object catch (e) {
+      _log.error('Sauvegarde du retour coach échouée : $e');
     }
   }
 }

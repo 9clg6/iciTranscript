@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
@@ -99,23 +100,32 @@ final class GapBackfillService {
   static List<BackfillGap> plan(
     List<TranscriptSegmentEntity> segments, {
     List<DictatedInterval> dictated = const <DictatedInterval>[],
-  }) => <BackfillGap>[
-    for (final _MarkerUnion u in _unions(segments, dictated))
+  }) {
+    final List<BackfillGap> gaps = <BackfillGap>[];
+    // Fin planifiée de l'union précédente, par source : le recul du début
+    // s'y arrête (jamais deux fois le même audio).
+    final Map<AudioSource, int> planned = <AudioSource, int>{};
+    for (final _MarkerUnion u in _unions(segments, dictated)) {
       for (final BackfillGap g in _planMarker(
         u.first,
         u.end,
         segments,
         dictated,
         endLimit: u.nextStart,
-      ))
-        (
+        startLimit: planned[u.first.source],
+      )) {
+        gaps.add((
           markerId: g.markerId,
           source: g.source,
           startMs: g.startMs,
           endMs: g.endMs,
           replacedIds: <String>[...g.replacedIds, ...u.others],
-        ),
-  ];
+        ));
+        planned[g.source] = g.endMs;
+      }
+    }
+    return gaps;
+  }
 
   /// Unions des repères de perte d'une même source (début, fin), hors
   /// dictée, triées par début.
@@ -184,6 +194,7 @@ final class GapBackfillService {
     List<TranscriptSegmentEntity> segments,
     List<DictatedInterval> dictated, {
     int? endLimit,
+    int? startLimit,
   }) {
     final int tolerance = edgeTolerance.inMilliseconds;
     final List<TranscriptSegmentEntity> live =
@@ -208,6 +219,27 @@ final class GapBackfillService {
     if (replaced.isNotEmpty) {
       if (replaced.first.timestampMs < start) {
         start = replaced.first.timestampMs;
+      }
+      // Symétrique de la fin : un segment remplacé peut porter l'heure d'une
+      // phrase plus récente que son audio (sonde 8). On retranscrit depuis
+      // le dernier segment intact avant lui (au plus 30 s) ; trimOverlaps
+      // retire la fin de ce voisin : rien n'est supprimé sans être rendu.
+      // ponytail: départ [edgeTolerance] après le début du voisin (son texte
+      // arrive ~1 s après son audio) pour ne pas le retranscrire en entier ;
+      // un texte du voisin un peu différent resterait sinon en double.
+      final int first = replaced.first.timestampMs;
+      final int unextended = start;
+      final TranscriptSegmentEntity? previous = live
+          .where((TranscriptSegmentEntity x) => x.timestampMs < first)
+          .lastOrNull;
+      final int back =
+          previous != null &&
+              first - previous.timestampMs < _afterReplacedSpan.inMilliseconds
+          ? math.min(first, previous.timestampMs + tolerance)
+          : first - _afterReplacedSpan.inMilliseconds;
+      if (back < start) start = back;
+      if (startLimit != null && start < startLimit) {
+        start = math.min(startLimit, unextended);
       }
       final int last = replaced.last.timestampMs;
       final TranscriptSegmentEntity? next = live

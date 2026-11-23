@@ -114,15 +114,18 @@ final class TranscriptionService {
 
   /// Sauve en base la phrase en cours, sans la montrer : l'ecran garde son
   /// segment temporaire. La phrase finale la remplacera (meme id).
-  Future<void> saveProvisional(TranscriptSegmentEntity segment) async {
+  /// Rend vrai si le segment est rangé.
+  Future<bool> saveProvisional(TranscriptSegmentEntity segment) async {
     final ResultState<TranscriptSegmentEntity> result =
         await _saveTranscriptSegmentUseCase.execute(segment);
-    result.when(
-      success: (_) {},
-      failure: (Exception e) {
-        _log.error('Erreur sauvegarde segment provisoire', e);
-      },
-    );
+    return result.when<bool>(
+          success: (_) => true,
+          failure: (Exception e) {
+            _log.error('Erreur sauvegarde segment provisoire', e);
+            return false;
+          },
+        ) ??
+        false;
   }
 
   /// Retire de la base un segment provisoire dont la phrase a ete ecartee.
