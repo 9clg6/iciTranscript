@@ -1669,7 +1669,8 @@ final class LiveTranscriptionService {
       isFinal: true,
       sources: <AudioSource>{AudioSource.input},
     );
-    _clearMicPhrase();
+    // La phrase de réunion en cours garde son id : son `done` remplace le
+    // provisoire déjà sauvé (sinon deux lignes dans la note).
     return d;
   }
 
@@ -1713,6 +1714,14 @@ final class LiveTranscriptionService {
 
   // Bien au-delà du délai de garde de la dictée (texte tardif encore livré).
   static const Duration _dictationGiveUp = Duration(seconds: 60);
+
+  void _abandonDictation(MeetingDictation d) {
+    d
+      ..onText = null
+      ..onComplete = null;
+    _dictations.remove(d);
+    d._finish();
+  }
 
   /// Un `done` micro de la dictée : il ne va pas à la note.
   bool _routeToDictation(TranscriptEventRemoteModel event) {
@@ -1870,6 +1879,10 @@ final class MeetingDictation {
 
   /// Annulation : ses mots sont jetés, ni sortie ni note.
   void cancel() => _service._endDictation(this, cancelled: true);
+
+  /// Appui abandonné (raccourci d'une autre app) : ce n'était pas une
+  /// dictée. Aucun intervalle noté, le micro dit depuis l'appui va à la note.
+  void abandon() => _service._abandonDictation(this);
 
   void _finish() {
     if (_complete) return;

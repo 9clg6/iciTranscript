@@ -49,6 +49,28 @@ final class FakeGlobalShortcutChannel extends GlobalShortcutChannel {
     return registerResult;
   }
 
+  /// Raccourcis « modificateurs seuls » posés (masque Carbon), dans l'ordre
+  /// (`registerModifiers`, voir global_shortcut_modifier_only_test.dart).
+  final List<int> registeredModifiers = <int>[];
+
+  /// Résultat des prochains `registerModifiers` (faux : refusé, Accessibilité
+  /// absente).
+  bool registerModifiersResult = true;
+
+  /// Seuil d'appui transmis à chaque `registerModifiers` (null : non
+  /// transmis).
+  final List<Duration?> registeredHoldThresholds = <Duration?>[];
+
+  @override
+  Future<bool> registerModifiers({
+    required int modifiers,
+    Duration? holdThreshold,
+  }) async {
+    registeredModifiers.add(modifiers);
+    registeredHoldThresholds.add(holdThreshold);
+    return registerModifiersResult;
+  }
+
   @override
   Future<void> unregister() async => unregisterCalls++;
 
@@ -84,8 +106,14 @@ final class FakeTextOutputChannel extends TextOutputChannel {
       .map((String e) => e.substring('copy:'.length))
       .toList();
 
+  /// Ouvertures du volet Accessibilité des Réglages Système.
+  int openSettingsCalls = 0;
+
   @override
   Future<bool> isAccessibilityTrusted() async => trusted;
+
+  @override
+  Future<void> openAccessibilitySettings() async => openSettingsCalls++;
 
   @override
   Future<void> copy(String text) async {
