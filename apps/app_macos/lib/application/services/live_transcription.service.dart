@@ -905,16 +905,9 @@ final class LiveTranscriptionService {
     final String id = touched.isEmpty
         ? _newSegmentId(session, source)
         : touched.first.id;
-    for (final ({String id, int start, int end}) m in touched.skip(1)) {
-      _chainWrite(m.id, () async {
-        await _transcriptionService.discardProvisional(m.id);
-        _transcriptionService.segmentsStream.add(
-          List<TranscriptSegmentEntity>.from(
-            _transcriptionService.segmentsStream.value,
-          )..removeWhere((TranscriptSegmentEntity x) => x.id == m.id),
-        );
-      });
-    }
+    final List<String> absorbed = <String>[
+      for (final ({String id, int start, int end}) m in touched.skip(1)) m.id,
+    ];
     markers
       ..removeWhere(touched.contains)
       ..add((id: id, start: from, end: to));
@@ -927,7 +920,39 @@ final class LiveTranscriptionService {
       createdAt: clock.now(),
     );
     _log.warning('Audio non transcrit: ${marker.text} (${source.name})');
-    _savePartial(marker);
+    // Atomique pour l'utilisateur : l'union est rangée d'abord (réessayée si
+    // l'écriture échoue), les repères absorbés ne partent qu'ensuite ; aucun
+    // intervalle ne reste sans repère.
+    final List<Future<void>> absorbedWrites = <Future<void>>[
+      for (final String other in absorbed) ?_segmentWrites[other],
+    ];
+    _chainWrite(id, () async {
+      await Future.wait(absorbedWrites);
+      if (!await _saveWithRetry(marker)) return;
+      _sortAndDedupeSegments();
+      for (final String other in absorbed) {
+        await _transcriptionService.discardProvisional(other);
+        _transcriptionService.segmentsStream.add(
+          List<TranscriptSegmentEntity>.from(
+            _transcriptionService.segmentsStream.value,
+          )..removeWhere((TranscriptSegmentEntity x) => x.id == other),
+        );
+      }
+    });
+  }
+
+  // Un repère qui ne se range pas est réessayé : 1, 2, 4, 8 s.
+  static const int _markerWriteAttempts = 5;
+
+  Future<bool> _saveWithRetry(TranscriptSegmentEntity segment) async {
+    for (int attempt = 0; attempt < _markerWriteAttempts; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(Duration(seconds: 1 << (attempt - 1)));
+      }
+      if (await _transcriptionService.saveSegment(segment)) return true;
+    }
+    _log.error('Repère non rangé après $_markerWriteAttempts essais');
+    return false;
   }
 
   // Écritures chaînées par id de segment : la dernière valeur voulue est
@@ -937,8 +962,11 @@ final class LiveTranscriptionService {
 
   void _chainWrite(String id, Future<void> Function() write) {
     late final Future<void> task;
+    // Une écriture ratée plus tôt pour cet id n'empêche pas la suivante.
     task = (_segmentWrites[id] ?? Future<void>.value())
+        .catchError((Object e) => _log.error('Écriture de $id ratée', e))
         .then((_) => write())
+        .catchError((Object e) => _log.error('Écriture de $id ratée', e))
         .whenComplete(() {
           _pendingFinalizations.remove(task);
           if (identical(_segmentWrites[id], task)) _segmentWrites.remove(id);
