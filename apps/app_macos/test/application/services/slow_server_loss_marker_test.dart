@@ -379,6 +379,9 @@ void main() {
       }
       expect(bad, isEmpty, reason: bad.join('\n'));
     },
+    // Une vingtaine de rattrapages (WAV écrits) : plus que les 30 s par
+    // défaut sur une machine chargée.
+    timeout: const Timeout(Duration(minutes: 3)),
   );
 
   test('pendant la réunion, une ligne en direct affichée n est jamais retirée '

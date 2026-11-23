@@ -410,6 +410,8 @@ final class LiveTranscriptionService {
       _running = true;
       _lossOfPhrase.clear();
       _gapMarkers.clear();
+      _waitingMarkers.clear();
+      _finalWindows.clear();
       _lastSealed.clear();
       _provisionalTimer = Timer.periodic(
         const Duration(seconds: 1),
@@ -661,11 +663,15 @@ final class LiveTranscriptionService {
 
   Timer? _provisionalTimer;
   bool _draining = false;
-  final Map<AudioSource, String> _provisionalMarkers = <AudioSource, String>{};
-  Future<void> _markerWrites = Future<void>.value();
 
-  String _provisionalMarkerId(SessionEntity session, AudioSource source) =>
-      '${session.id}_${source.name}_pending';
+  /// Repère de l'audio en souffrance, par source : UN enregistrement (un id,
+  /// à l'écran et en base) tant que de l'audio de la source attend son
+  /// `done` ou a été jeté. Son début est le plus ancien audio sans texte,
+  /// jeté compris (sonde 10 : coupure plus longue que le tampon) ; les pertes
+  /// déclarées qui le touchent s'y fondent (même id). Quand plus rien
+  /// n'attend, il se réduit aux pertes déclarées, ou part.
+  final Map<AudioSource, ({String id, int start, int end})> _waitingMarkers =
+      <AudioSource, ({String id, int start, int end})>{};
 
   void _updateProvisionalMarkers() {
     final TranscriptionRemoteDataSource remote = _transcriptionRemoteDataSource;
@@ -674,48 +680,142 @@ final class LiveTranscriptionService {
     for (final AudioSource source in AudioSource.values) {
       final ({int startMs, int endMs})? range = remote.pendingRange(source);
       final bool waiting =
-          remote.bufferedAudio(source) >= const Duration(seconds: 1) ||
-          (_draining && remote.unacknowledgedAudio(source) > Duration.zero);
-      final String id = _provisionalMarkerId(session, source);
-      if (waiting && range != null) {
-        final int start = _offsetOf(session, range.startMs);
-        final String text = gapMarkerText(
-          start,
+          range != null &&
+          (remote.bufferedAudio(source) >= const Duration(seconds: 1) ||
+              remote.hasDroppedAudio(source) ||
+              (_draining &&
+                  remote.unacknowledgedAudio(source) > Duration.zero));
+      if (waiting) {
+        _showWaiting(
+          session,
+          source,
+          _offsetOf(session, range.startMs),
           _offsetOf(session, range.endMs),
         );
-        if (_provisionalMarkers[source] == text) continue;
-        _provisionalMarkers[source] = text;
-        final TranscriptSegmentEntity marker = TranscriptSegmentEntity(
-          id: id,
-          sessionId: session.id,
-          source: source,
-          text: text,
-          timestampMs: start,
-          createdAt: clock.now(),
-        );
-        _markerWrites = _markerWrites.then(
-          (_) => _transcriptionService.saveProvisional(marker),
-        );
-      } else if (_provisionalMarkers.remove(source) != null) {
-        _markerWrites = _markerWrites.then(
-          (_) => _transcriptionService.discardProvisional(id),
-        );
+      } else {
+        _endWaiting(session, source);
       }
     }
+  }
+
+  // Fenêtres (heures de réunion) des dernières phrases rendues, par source.
+  final Map<AudioSource, List<(int, int)>> _finalWindows =
+      <AudioSource, List<(int, int)>>{};
+
+  /// Une perte qui commence dans l'audio d'une phrase dont le texte est
+  /// rangé l'a coupée (sonde 10 : fin de la phrase 11 jetée, son début
+  /// rendu) : le repère part du début de cette phrase, pour que le
+  /// rattrapage la rende entière (et remplace la version coupée).
+  int _cutStart(AudioSource source, int start) {
+    int s = start;
+    for (final (int from, int to) in _finalWindows[source] ?? <(int, int)>[]) {
+      if (from < s && s < to) s = from;
+    }
+    return s;
+  }
+
+  void _noteFinalWindow(
+    SessionEntity session,
+    AudioSource source,
+    int from,
+    int to,
+  ) {
+    final List<(int, int)> windows = _finalWindows.putIfAbsent(
+      source,
+      () => <(int, int)>[],
+    )..add((from, to));
+    if (windows.length > 8) windows.removeAt(0);
+    // Le texte arrive après la perte : le repère déjà là recule.
+    for (final ({String id, int start, int end}) m
+        in List<({String id, int start, int end})>.of(
+          _gapMarkers[source] ?? const <({String id, int start, int end})>[],
+        )) {
+      if (from < m.start && m.start < to) {
+        _writeGapMarker(session, source, from, m.start);
+      }
+    }
+  }
+
+  void _showWaiting(SessionEntity session, AudioSource source, int s, int e) {
+    s = _cutStart(source, s);
+    final ({String id, int start, int end})? current = _waitingMarkers[source];
+    final List<({String id, int start, int end})> declared = _gapMarkers
+        .putIfAbsent(source, () => <({String id, int start, int end})>[]);
+    final List<({String id, int start, int end})> touched = declared
+        .where(
+          (({String id, int start, int end}) m) =>
+              m.id == current?.id || (m.start <= e && s <= m.end),
+        )
+        .toList();
+    final String id =
+        current?.id ??
+        (touched.isEmpty ? _newSegmentId(session, source) : touched.first.id);
+    // Les pertes déclarées touchées n'en font plus qu'une, sous cet id.
+    if (touched.isNotEmpty) {
+      int from = touched.first.start;
+      int to = touched.first.end;
+      for (final ({String id, int start, int end}) m in touched) {
+        from = math.min(from, m.start);
+        to = math.max(to, m.end);
+      }
+      declared
+        ..removeWhere(touched.contains)
+        ..add((id: id, start: from, end: to));
+      s = math.min(s, from);
+      e = math.max(e, to);
+    }
+    if (current != null && current.start == s && current.end == e) return;
+    _waitingMarkers[source] = (id: id, start: s, end: e);
+    _showMarker(session, source, id, s, e, <String>[
+      for (final ({String id, int start, int end}) m in touched)
+        if (m.id != id) m.id,
+    ]);
+  }
+
+  /// Plus rien n'attend pour [source] : le repère se réduit à ses pertes
+  /// déclarées (même id), ou part.
+  void _endWaiting(SessionEntity session, AudioSource source) {
+    final ({String id, int start, int end})? current = _waitingMarkers.remove(
+      source,
+    );
+    if (current == null) return;
+    final ({String id, int start, int end})? declared = _gapMarkers[source]
+        ?.where((({String id, int start, int end}) m) => m.id == current.id)
+        .firstOrNull;
+    if (declared != null) {
+      if (declared.start != current.start || declared.end != current.end) {
+        _showMarker(
+          session,
+          source,
+          declared.id,
+          declared.start,
+          declared.end,
+          const <String>[],
+        );
+      }
+      return;
+    }
+    _chainWrite(current.id, () async {
+      await _transcriptionService.discardProvisional(current.id);
+      _transcriptionService.segmentsStream.add(
+        List<TranscriptSegmentEntity>.from(
+          _transcriptionService.segmentsStream.value,
+        )..removeWhere((TranscriptSegmentEntity x) => x.id == current.id),
+      );
+    });
   }
 
   Future<void> _clearProvisionalMarkers() async {
     final SessionEntity? session = currentSessionStream.valueOrNull;
     if (session != null) {
-      for (final AudioSource source in _provisionalMarkers.keys.toList()) {
-        final String id = _provisionalMarkerId(session, source);
-        _markerWrites = _markerWrites.then(
-          (_) => _transcriptionService.discardProvisional(id),
-        );
+      for (final AudioSource source in _waitingMarkers.keys.toList()) {
+        _endWaiting(session, source);
       }
     }
-    _provisionalMarkers.clear();
-    await _markerWrites;
+    _waitingMarkers.clear();
+    if (_pendingFinalizations.isNotEmpty) {
+      await Future.wait<void>(List<Future<void>>.from(_pendingFinalizations));
+    }
   }
 
   /// Libere les ressources du service.
@@ -858,24 +958,18 @@ final class LiveTranscriptionService {
     final int startMs = _offsetOf(session, gap.startMs);
     // La phrase en cours de cette source est emportée par la perte : son
     // audio commence au début de la perte.
-    if (gap.endMs <= gap.startMs) {
-      // Signalement vide : la perte qui dure s'étend, rien n'est encore perdu.
-    } else if (_phraseId.containsKey(gap.source)) {
+    if (_phraseId.containsKey(gap.source)) {
       _lossOfPhrase[gap.source] = startMs;
     } else if (_lastSealed.remove(gap.source)
         case final TranscriptSegmentEntity sealed
         when startMs < sealed.timestampMs) {
       _savePartial(sealed.copyWith(timestampMs: startMs));
     }
-    // Perte qui dure (serveur lent, socket vivante) : un seul repère, du
-    // début de la perte à son dernier morceau, qui grandit sous le même id.
     _writeGapMarker(
       session,
       gap.source,
-      gap.episodeStartMs == null
-          ? startMs
-          : math.min(startMs, _offsetOf(session, gap.episodeStartMs!)),
-      _offsetOf(session, math.max(gap.endMs, gap.episodeEndMs ?? gap.endMs)),
+      startMs,
+      _offsetOf(session, gap.endMs),
     );
   }
 
@@ -894,6 +988,7 @@ final class LiveTranscriptionService {
     int start,
     int end,
   ) {
+    start = _cutStart(source, start);
     final List<({String id, int start, int end})> markers = _gapMarkers
         .putIfAbsent(source, () => <({String id, int start, int end})>[]);
     final List<({String id, int start, int end})> touched = markers
@@ -908,15 +1003,46 @@ final class LiveTranscriptionService {
       if (m.start < from) from = m.start;
       if (m.end > to) to = m.end;
     }
-    final String id = touched.isEmpty
+    // L'audio en souffrance qui recoupe la perte porte déjà un repère : la
+    // perte s'y fond, sous son id.
+    final ({String id, int start, int end})? waiting = _waitingMarkers[source];
+    final bool intoWaiting =
+        waiting != null && waiting.start <= to && from <= waiting.end;
+    final String id = intoWaiting
+        ? waiting.id
+        : touched.isEmpty
         ? _newSegmentId(session, source)
         : touched.first.id;
     final List<String> absorbed = <String>[
-      for (final ({String id, int start, int end}) m in touched.skip(1)) m.id,
+      for (final ({String id, int start, int end}) m in touched)
+        if (m.id != id) m.id,
     ];
     markers
       ..removeWhere(touched.contains)
       ..add((id: id, start: from, end: to));
+    int shownFrom = from;
+    int shownTo = to;
+    if (intoWaiting) {
+      shownFrom = math.min(from, waiting.start);
+      shownTo = math.max(to, waiting.end);
+      _waitingMarkers[source] = (id: id, start: shownFrom, end: shownTo);
+    }
+    _log.warning(
+      'Audio non transcrit: ${gapMarkerText(from, to)} (${source.name})',
+    );
+    _showMarker(session, source, id, shownFrom, shownTo, absorbed);
+  }
+
+  /// Seule écriture d'un repère de perte : rangé (réessayé), puis à l'écran
+  /// en une émission qui remplace les repères absorbés, retirés ensuite.
+  void _showMarker(
+    SessionEntity session,
+    AudioSource source,
+    String id,
+    int from,
+    int to,
+    List<String> absorbed,
+  ) {
     final TranscriptSegmentEntity marker = TranscriptSegmentEntity(
       id: id,
       sessionId: session.id,
@@ -925,7 +1051,6 @@ final class LiveTranscriptionService {
       timestampMs: from,
       createdAt: clock.now(),
     );
-    _log.warning('Audio non transcrit: ${marker.text} (${source.name})');
     // Atomique pour l'utilisateur : l'union est rangée d'abord (réessayée si
     // l'écriture échoue), les repères absorbés ne partent qu'ensuite ; aucun
     // intervalle ne reste sans repère.
@@ -1469,6 +1594,14 @@ final class LiveTranscriptionService {
     String rawText, {
     UtteranceWindow? window,
   }) {
+    if (window != null) {
+      _noteFinalWindow(
+        session,
+        source,
+        _offsetOf(session, window.startMs),
+        _offsetOf(session, window.endMs),
+      );
+    }
     late final Future<void> task;
     task = _finalizeSegment(session, source, rawText, window: window)
         .whenComplete(() {

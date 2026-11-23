@@ -509,6 +509,9 @@ final class FakeVoxSocket extends WebSocketClient {
   /// Refus de connexion propre à cette socket (coupure réseau ciblée).
   bool refusing = false;
 
+  /// La poignée de main reste sans réponse.
+  bool hanging = false;
+
   /// Répond seul aux commits finaux.
   bool autoReply = true;
 
@@ -549,6 +552,9 @@ final class FakeVoxSocket extends WebSocketClient {
   @override
   Future<void> connect(String url) async {
     connectCalls++;
+    // Poignée de main qui n'aboutit jamais (proxy ralenti, sonde 10) : seule
+    // la borne du client y met fin.
+    if (hanging) return Completer<void>().future;
     if (!server.up || refusing) {
       throw const SocketException('Connection refused');
     }
