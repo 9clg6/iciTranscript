@@ -59,8 +59,44 @@ final class GapBackfillRetry {
   /// Au lancement : réessaie les sessions restées en attente.
   Future<void> retryPending() => _serialized(_retryAllNow);
 
+  /// Reprises d'une tentative qui n'a pas atteint le serveur, tant que l'app
+  /// tourne (sonde 13 : serveur occupé par l'arriéré de la réunion, repères
+  /// restés 8 min) : 15 s, 30 s, 60 s, puis toutes les 2 min. Elles ne
+  /// comptent pas ; un enregistrement les suspend.
+  static const List<Duration> unreachedBackoff = <Duration>[
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(seconds: 60),
+    Duration(minutes: 2),
+  ];
+  Timer? _unreachedRetry;
+  int _unreached = 0;
+
+  void _scheduleUnreached() {
+    if (_disposed || _unreachedRetry != null) return;
+    final Duration wait =
+        unreachedBackoff[_unreached < unreachedBackoff.length
+            ? _unreached
+            : unreachedBackoff.length - 1];
+    _unreached++;
+    _unreachedRetry = Timer(wait, () {
+      _unreachedRetry = null;
+      if (_isRecording()) {
+        // Après l'enregistrement : la prochaine reprise.
+        _scheduleUnreached();
+        return;
+      }
+      unawaited(_retryAll());
+    });
+  }
+
+  bool _disposed = false;
+
   /// Arrête d'écouter l'état du serveur.
   Future<void> dispose() async {
+    _disposed = true;
+    _unreachedRetry?.cancel();
+    _unreachedRetry = null;
     await _states.cancel();
     await _resumes?.cancel();
     await _tail;
@@ -121,6 +157,7 @@ final class GapBackfillRetry {
       // Le serveur est à l'enregistrement : plus tard, sans compter.
       pending.putIfAbsent(sessionId, () => 0);
       await _write(pending);
+      _scheduleUnreached();
       return false;
     }
     // Noté en attente AVANT la tentative, sans la compter : si l'app se
@@ -154,6 +191,11 @@ final class GapBackfillRetry {
       pending[sessionId] = attempts;
     }
     await _write(pending);
+    if (outcome.markersLeft > 0 && !outcome.reachedServer) {
+      _scheduleUnreached();
+    } else if (outcome.reachedServer) {
+      _unreached = 0;
+    }
     return outcome.markersLeft == 0 || outcome.reachedServer;
   }
 
