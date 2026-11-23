@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:flutter/widgets.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
@@ -99,7 +100,18 @@ DictationController dictationController(Ref ref) {
     controller.stateStream,
     ref.read(dictationActiveProvider.notifier).set,
   );
+  // Retour au premier plan : un raccourci refusé faute d'Accessibilité est
+  // retenté, même Réglages fermés. Sans binding (tests sans widgets) : rien.
+  AppLifecycleListener? lifecycle;
+  try {
+    lifecycle = AppLifecycleListener(
+      onResume: () => unawaited(controller.retryShortcut()),
+    );
+  } catch (_) {
+    lifecycle = null;
+  }
   ref.onDispose(() async {
+    lifecycle?.dispose();
     await dictating.cancel();
     await controller.dispose();
     await remote.dispose();

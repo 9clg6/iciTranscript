@@ -5,7 +5,11 @@ import 'package:flutter/services.dart';
 /// [aborted] : une autre touche ou un clic pendant que les modificateurs
 /// d'un raccourci « modificateurs seuls » sont tenus (raccourci d'une autre
 /// app) ; aucun [released] ne suit pour cet appui.
-enum ShortcutEvent { pressed, released, cancel, aborted }
+///
+/// [tapped] : appui bref propre d'un raccourci « modificateurs seuls »
+/// (relâché avant le seuil, rien d'autre) ; pour ces raccourcis [pressed]
+/// n'arrive qu'au seuil, l'appui maintenu étant alors confirmé.
+enum ShortcutEvent { pressed, released, cancel, aborted, tapped }
 
 /// Dart wrapper autour du plugin Swift GlobalShortcutPlugin (raccourci
 /// global Carbon, appui maintenu pour dicter, Échap pour annuler).
@@ -28,6 +32,7 @@ class GlobalShortcutChannel {
           {'type': 'released'} => ShortcutEvent.released,
           {'type': 'cancel'} => ShortcutEvent.cancel,
           {'type': 'aborted'} => ShortcutEvent.aborted,
+          {'type': 'tapped'} => ShortcutEvent.tapped,
           _ => null,
         },
       )
@@ -53,10 +58,16 @@ class GlobalShortcutChannel {
   /// Raccourci « modificateurs seuls » (masque Carbon, ⌘⌥ = 2304), à la
   /// place du précédent. Faux si refusé (Accessibilité absente) ou plugin
   /// absent.
-  Future<bool> registerModifiers({required int modifiers}) async {
+  /// Le plugin ne dit rien pendant [holdThreshold] : un accord suivi d'une
+  /// autre touche ou d'un clic n'est jamais le nôtre.
+  Future<bool> registerModifiers({
+    required int modifiers,
+    Duration? holdThreshold,
+  }) async {
     try {
       await _method.invokeMethod<void>('registerModifiers', <String, int>{
         'modifiers': modifiers,
+        if (holdThreshold != null) 'holdMs': holdThreshold.inMilliseconds,
       });
       return true;
     } on PlatformException {
