@@ -48,6 +48,12 @@ final class FakeWebSocketClient extends WebSocketClient {
   /// Faux : la poignée de main ne se termine jamais (connect sans fin).
   bool hangConnect = false;
 
+  /// Serveur chargé : la poignée de main aboutit après ce délai. Une
+  /// tentative remplacée entre-temps (nouvel appel à [connect] ou
+  /// [disconnect]) n'aboutit pas, comme un canal abandonné.
+  Duration acceptDelay = Duration.zero;
+  int _attempt = 0;
+
   /// Appelé à chaque commit final reçu : numéros des chunks de la phrase et
   /// génération de la connexion (voir [emitIfAlive]). Pour un serveur
   /// factice piloté par le test (file séquentielle, blocages).
@@ -100,6 +106,11 @@ final class FakeWebSocketClient extends WebSocketClient {
     final Duration? at = now?.call();
     if (at != null) connectAttempts.add(at);
     if (hangConnect) return Completer<void>().future;
+    final int attempt = ++_attempt;
+    if (acceptDelay > Duration.zero) {
+      await Future<void>.delayed(acceptDelay);
+      if (attempt != _attempt) return; // remplacée : jamais connectée
+    }
     if (!accepting) {
       throw const SocketException('Connection refused');
     }
@@ -177,6 +188,7 @@ final class FakeWebSocketClient extends WebSocketClient {
   Future<void> disconnect() async {
     _connected = false;
     _generation++;
+    _attempt++;
   }
 
   @override

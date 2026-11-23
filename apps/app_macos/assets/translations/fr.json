@@ -135,6 +135,9 @@
       "ollama_server": "Démarrage du moteur IA…",
       "ollama_model": "Téléchargement du modèle Mistral ({} %, ~4 Go, une seule fois)…"
     },
+    "gap": {
+      "untranscribed": "Passage non transcrit ({} – {})"
+    },
     "status_bar": {
       "level": "Niveau",
       "mic": "Micro : {}",

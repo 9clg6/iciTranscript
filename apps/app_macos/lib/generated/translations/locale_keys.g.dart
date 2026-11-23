@@ -116,6 +116,8 @@ abstract class  LocaleKeys {
   static const transcription_live_ollama_server = 'transcription.live.ollama_server';
   static const transcription_live_ollama_model = 'transcription.live.ollama_model';
   static const transcription_live = 'transcription.live';
+  static const transcription_gap_untranscribed = 'transcription.gap.untranscribed';
+  static const transcription_gap = 'transcription.gap';
   static const transcription_status_bar_level = 'transcription.status_bar.level';
   static const transcription_status_bar_mic = 'transcription.status_bar.mic';
   static const transcription_status_bar_system = 'transcription.status_bar.system';
