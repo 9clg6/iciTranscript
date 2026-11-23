@@ -823,9 +823,45 @@ void main() {
           .map(double.parse)
           .toList();
       final double? f = double.tryParse(env['THROTTLE'] ?? '');
+      // Server memory (physical footprint) every 5 minutes.
+      Future<void> footprint() async {
+        final String pgid = File(
+          '${env['PROBE_DIR']}/server.pid',
+        ).readAsStringSync().trim();
+        final String ps =
+            (await Process.run('ps', <String>[
+                  '-o',
+                  'pid=,comm=',
+                  '-g',
+                  pgid,
+                ])).stdout
+                as String;
+        final String? spid = ps
+            .split('\n')
+            .where((String l) => l.contains('Python'))
+            .map((String l) => l.trim().split(' ').first)
+            .firstOrNull;
+        if (spid == null) return;
+        final String out =
+            (await Process.run('footprint', <String>[spid])).stdout as String;
+        final RegExpMatch? m = RegExp(
+          r'Footprint: ([\d.]+) (MB|GB)',
+        ).firstMatch(out);
+        log('footprint', <String, Object?>{
+          'mb': m == null
+              ? null
+              : double.parse(m.group(1)!) * (m.group(2) == 'GB' ? 1024 : 1),
+        });
+      }
+
+      await footprint();
+      final Timer fp = Timer.periodic(
+        const Duration(minutes: 5),
+        (_) => unawaited(footprint()),
+      );
       await start(mode);
       await feed(
-        '$audio/paused',
+        '$audio/${env['PAUSED_SET'] ?? 'paused'}',
         secs,
         label: mode,
         faults: <double, Future<void> Function()>{
@@ -844,6 +880,8 @@ void main() {
             },
         },
       );
+      await footprint();
+      fp.cancel();
       await stop(mode);
       await waitNoMarkers(
         'after_stop',

@@ -527,7 +527,7 @@ def cmd_paused(a):
     three long silences per source (20 s, 40 s, 2 min) at different places
     (the mic's 2 min while the system source talks), and room noise at
     about -55 dBFS (well under the speech gate) in every other silence."""
-    src_dir, out = AUDIO / "live60", AUDIO / "paused"
+    src_dir, out = AUDIO / "live60", AUDIO / a.name
     out.mkdir(parents=True, exist_ok=True)
     sched60 = json.loads((src_dir / "schedule.json").read_text())
     rnd = random.Random(31)
@@ -540,7 +540,9 @@ def cmd_paused(a):
         with wave.open(str(src_dir / f"{src}.wav")) as w:
             full = w.readframes(w.getnframes())
         pcm, items, sil, n_sil, k = bytearray(), [], [], 0, 0
-        planned = list(long_sil[src])
+        # The 10-minute silence plan, repeated for longer benches.
+        planned = [(at + 600 * j, sec, noisy) for j in range(max(1, a.seconds // 600))
+                   for at, sec, noisy in long_sil[src]]
 
         def add_silence(sec, noisy=None):
             nonlocal n_sil
@@ -859,7 +861,9 @@ def main():
     ss.add_argument("--audio", default="live")
     ss.add_argument("--session")
     ss.add_argument("--window", type=int, default=0)
-    sub.add_parser("paused").add_argument("--seconds", type=int, default=600)
+    pz = sub.add_parser("paused")
+    pz.add_argument("--seconds", type=int, default=600)
+    pz.add_argument("--name", default="paused")
     nc = sub.add_parser("notecheck")
     nc.add_argument("run")
     nc.add_argument("--audio", default="live")
