@@ -93,8 +93,9 @@ class _LiveCorrection extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        SizedBox(
+        Container(
           width: 44,
+          padding: const EdgeInsets.only(top: 2),
           child: Text(
             correction.timestampMs == null
                 ? ''
