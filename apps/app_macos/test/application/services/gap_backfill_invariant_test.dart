@@ -4,11 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../fixtures/probe5_sequences.dart';
 import '../../fixtures/probe8_sequences.dart';
+import '../../fixtures/probe9_sequences.dart';
 import '../../helpers/live_service_fakes.dart';
 import '../../helpers/recorded_backfill.dart';
 
 // Tour 10, point 3 — invariant sur toutes les séquences enregistrées
-// (sondes 5, 7, 8). Après le direct et le rattrapage, chaque phrase de
+// (sondes 5, 7, 8, 9). Après le direct et le rattrapage, chaque phrase de
 // référence finie avant la fin de la session apparaît au moins une fois
 // dans la note OU son intervalle est couvert par un repère — jamais ni
 // l'un ni l'autre.
@@ -33,12 +34,21 @@ final List<RecordedSession> _sessions = <RecordedSession>[
   RecordedSession.fromScenario(probeBackToBack),
   RecordedSession.probe7(),
   RecordedSession.fromScenario(probe8Dlag),
+  RecordedSession.fromScenario(probe9A2),
+  RecordedSession.fromScenario(probe9D),
+  RecordedSession.fromScenario(probe9S06, reference: probe9Live60Reference),
 ];
 
 void main() {
   test('le critère ne voit pas une phrase dans ses voisines', () {
-    for (final String source in <String>['input', 'output']) {
-      final List<ProbeSentence> refs = probeReference
+    for (final (String source, List<ProbeSentence> all)
+        in <(String, List<ProbeSentence>)>[
+          ('input', probeReference),
+          ('output', probeReference),
+          ('input', probe9Live60Reference),
+          ('output', probe9Live60Reference),
+        ]) {
+      final List<ProbeSentence> refs = all
           .where((ProbeSentence r) => r.source == source)
           .toList();
       for (int i = 1; i + 1 < refs.length; i++) {
@@ -61,7 +71,7 @@ void main() {
       for (final AudioSource src in session.sources) {
         final List<TranscriptSegmentEntity> lines = repo.of(src)
           ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
-        for (final ProbeSentence r in probeReference.where(
+        for (final ProbeSentence r in session.reference.where(
           (ProbeSentence r) =>
               sourceOf(r.source) == src && r.endMs <= session.endMs,
         )) {
