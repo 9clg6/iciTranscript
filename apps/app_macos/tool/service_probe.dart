@@ -813,6 +813,43 @@ void main() {
           },
         },
       );
+    } else if (mode == 'pbench') {
+      // The paused bench (audio/paused): CUT=a:b refuses both sources
+      // between a and b seconds; KILL_AT hard-kills the app; THROTTLE slows
+      // the server's transcription messages for the whole run.
+      final double secs = double.parse(env['SECONDS'] ?? '600');
+      final List<double>? cut = env['CUT']
+          ?.split(':')
+          .map(double.parse)
+          .toList();
+      final double? f = double.tryParse(env['THROTTLE'] ?? '');
+      await start(mode);
+      await feed(
+        '$audio/paused',
+        secs,
+        label: mode,
+        faults: <double, Future<void> Function()>{
+          if (f != null)
+            1: () async => both((Proxy p) async => p.setThrottle(f)),
+          if (cut != null) ...<double, Future<void> Function()>{
+            cut[0]: () => both((Proxy p) => p.refuse()),
+            cut[1]: () => both((Proxy p) => p.reopen()),
+          },
+          if (env['KILL_AT'] != null)
+            double.parse(env['KILL_AT']!): () async {
+              snap('before_kill');
+              dumpSegments();
+              log('kill_self');
+              Process.killPid(pid, ProcessSignal.sigkill);
+            },
+        },
+      );
+      await stop(mode);
+      await waitNoMarkers(
+        'after_stop',
+        seconds: int.parse(env['WAIT_MARKERS'] ?? '60'),
+      );
+      dumpSegments();
     } else if (mode == 'R') {
       // Regression: plain run (R_SECONDS, live60 beyond 300 s) plus one
       // 3 s mic cut at 101 s.

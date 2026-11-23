@@ -522,6 +522,60 @@ def cmd_timeline(a):
     (out / "schedule.json").write_text(json.dumps(sched, ensure_ascii=False, indent=1))
 
 
+def cmd_paused(a):
+    """A paused meeting: the live60 sentences re-laid with 2-8 s pauses,
+    three long silences per source (20 s, 40 s, 2 min) at different places
+    (the mic's 2 min while the system source talks), and room noise at
+    about -55 dBFS (well under the speech gate) in every other silence."""
+    src_dir, out = AUDIO / "live60", AUDIO / "paused"
+    out.mkdir(parents=True, exist_ok=True)
+    sched60 = json.loads((src_dir / "schedule.json").read_text())
+    rnd = random.Random(31)
+    # (at, seconds, room noise?): the mic's 2 min of room noise, the system
+    # source's 2 min of digital silence.
+    long_sil = {"mic": [(60, 20, False), (180, 120, True), (450, 40, False)],
+                "sys": [(100, 40, True), (330, 20, False), (420, 120, False)]}
+    sched, silences = {}, {}
+    for src in ("mic", "sys"):
+        with wave.open(str(src_dir / f"{src}.wav")) as w:
+            full = w.readframes(w.getnframes())
+        pcm, items, sil, n_sil, k = bytearray(), [], [], 0, 0
+        planned = list(long_sil[src])
+
+        def add_silence(sec, noisy=None):
+            nonlocal n_sil
+            start = len(pcm) / 2 / RATE
+            ms = int(sec * 1000)
+            noisy = (n_sil % 2 == 1) if noisy is None else noisy
+            pcm.extend(noise(ms, -55.0) if noisy else silence(ms))
+            sil.append({"start": round(start, 2), "end": round(start + sec, 2), "noise": noisy})
+            n_sil += 1
+
+        while len(pcm) < a.seconds * RATE * 2:
+            t = len(pcm) / 2 / RATE
+            if planned and t >= planned[0][0]:
+                _, sec, noisy = planned.pop(0)
+                add_silence(sec, noisy)
+                continue
+            s = sched60[src][k]
+            k += 1
+            clip = full[int(s["start"] * RATE) * 2:int(s["end"] * RATE) * 2]
+            start = len(pcm) / 2 / RATE
+            pcm.extend(clip)
+            items.append({"i": len(items), "text": s["text"], "start": round(start, 2),
+                          "end": round(len(pcm) / 2 / RATE, 2)})
+            add_silence(rnd.uniform(2, 8))
+        pcm = pcm[: a.seconds * RATE * 2]
+        items = [x for x in items if x["end"] <= a.seconds]
+        with wave.open(str(out / f"{src}.wav"), "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(RATE)
+            w.writeframes(bytes(pcm))
+        sched[src], silences[src] = items, sil
+        print(src, len(items), "sentences;", "long silences", [x for x in sil if x["end"] - x["start"] >= 20])
+    (out / "schedule.json").write_text(json.dumps(sched, ensure_ascii=False, indent=1))
+    (out / "silences.json").write_text(json.dumps(silences, indent=1))
+
+
 def cmd_score(a):
     """Score live-harness JSONL runs against the schedule (sentence match by text)."""
     sched = json.loads((AUDIO / a.audio / "schedule.json").read_text())
@@ -755,6 +809,12 @@ def check_note(sched_src, segs, end_s):
                 if diff <= 1 and k >= len(wb) - 3:
                     res["dup_end"].append((round(a["t"], 1), round(b["t"], 1), " ".join(wb)))
                     break
+    # Text over a silence (no reference sentence near its time): a likely
+    # hallucination. Markers left that cover no reference sentence.
+    res["over_silence"] = [(round(g["t"], 1), g["text"][:60]) for g in live
+                           if not any(s["start"] - 2 <= g["t"] <= s["end"] + 1 for s in sched_src)]
+    res["markers_on_silence"] = [(a, b) for a, b in markers
+                                 if not any(a - 1 <= s["end"] and s["start"] <= b + 1 for s in ref)]
     res["markers"] = len(markers)
     return res
 
@@ -799,13 +859,14 @@ def main():
     ss.add_argument("--audio", default="live")
     ss.add_argument("--session")
     ss.add_argument("--window", type=int, default=0)
+    sub.add_parser("paused").add_argument("--seconds", type=int, default=600)
     nc = sub.add_parser("notecheck")
     nc.add_argument("run")
     nc.add_argument("--audio", default="live")
     nc.add_argument("--session")
     nc.add_argument("--end")
     a = p.parse_args()
-    if a.cmd in ("gen", "timeline", "score", "svcscore", "notecheck"):
+    if a.cmd in ("gen", "timeline", "score", "svcscore", "notecheck", "paused"):
         return globals()[f"cmd_{a.cmd}"](a)
     asyncio.run(globals()[a.cmd](a))
 
