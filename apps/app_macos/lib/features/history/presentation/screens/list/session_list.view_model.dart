@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/services/session_history.service.dart';
 import 'package:ici_transcript/core/providers/services/session_history.service.provider.dart';
@@ -23,11 +25,15 @@ class SessionListViewModel extends _$SessionListViewModel {
 
   Future<void> _init() async {
     await _sessionHistoryService.loadSessions();
-    _sessionHistoryService.sessionsStream.listen((
-      List<SessionEntity> sessions,
-    ) {
-      state = state.copyWith(sessions: sessions);
-    });
+    // Chargement fini après la libération du provider : plus rien à écrire.
+    if (!ref.mounted) return;
+    final StreamSubscription<List<SessionEntity>> sub = _sessionHistoryService
+        .sessionsStream
+        .listen((List<SessionEntity> sessions) {
+          if (!ref.mounted) return;
+          state = state.copyWith(sessions: sessions, loaded: true);
+        });
+    ref.onDispose(sub.cancel);
   }
 
   /// Selectionne une session par son identifiant.

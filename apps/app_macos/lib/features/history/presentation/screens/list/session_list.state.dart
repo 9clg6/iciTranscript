@@ -16,9 +16,12 @@ abstract class SessionListState with _$SessionListState {
 
     /// Requete de recherche en cours.
     @Default('') String searchQuery,
+
+    /// La liste a été lue au moins une fois (avant : inconnue, pas vide).
+    @Default(true) bool loaded,
   }) = _SessionListState;
 
   /// Etat initial par defaut.
   factory SessionListState.initial() =>
-      const SessionListState(sessions: <SessionEntity>[]);
+      const SessionListState(sessions: <SessionEntity>[], loaded: false);
 }
