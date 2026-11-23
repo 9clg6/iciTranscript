@@ -9,6 +9,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ici_transcript/application/services/documents/document_library.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 import 'package:ici_transcript/application/services/live_answers/question_store.dart';
@@ -48,7 +49,13 @@ void main() {
 
   /// La réunion : la question arrive, le modèle répond par une sortie
   /// enregistrée de [rawKey] ; la réponse est sauvée comme en direct.
-  Future<bool?> meeting(WidgetTester tester, String rawKey) async {
+  Future<bool?> meeting(
+    WidgetTester tester,
+    String rawKey, {
+    String? raw,
+    List<DocumentExcerpt> excerpts = const <DocumentExcerpt>[],
+    void Function(LiveQuestion q)? check,
+  }) async {
     return tester.runAsync(() async {
       final ProviderContainer c = ProviderContainer(overrides: overrides());
       final DateTime start = DateTime(2026, 11, 23, 9);
@@ -69,7 +76,7 @@ void main() {
       final LiveAnswersService service = LiveAnswersService(
         resolveModel: () async =>
             LiveAnswerModel(provider: llm, modelId: 'claude-haiku-5-5'),
-        searchDocuments: FakeDocumentSearch().call,
+        searchDocuments: (FakeDocumentSearch()..results = excerpts).call,
         store: store,
       )..start('s1');
       service.onSegmentFinalized(
@@ -84,7 +91,7 @@ void main() {
         speaker: 0,
       );
       await eventually(() => expect(llm.requests, hasLength(1)));
-      llm.last.reply(probe(rawKey).raw);
+      llm.last.reply(raw ?? probe(rawKey).raw);
       await eventually(
         () async => expect(
           (await store.forSession('s1')).single.status,
@@ -92,6 +99,7 @@ void main() {
         ),
       );
       final bool shortened = service.questions.single.shortened;
+      check?.call(service.questions.single);
       await service.stop();
       // Note fermée : plus rien en mémoire, seule la base reste.
       c.dispose();
@@ -144,5 +152,50 @@ void main() {
 
     expect(find.text(question), findsOneWidget);
     expect(find.text('live_answers.shortened'.tr()), findsNothing);
+  });
+
+  testWidgets('réponse à la fois coupée par la génération et raccourcie : à '
+      'la réouverture, la tête reste et au moins un signe d\'incomplétude', (
+    WidgetTester tester,
+  ) async {
+    // Deux blocs : le bloc gardé est celui qui cite l'extrait fourni (donc
+    // raccourcie), et sa dernière puce est coupée sur un mot outil
+    // (génération arrêtée au milieu d'une phrase).
+    const String raw =
+        'Planning général\n'
+        '- Le pilote démarre en mars.\n'
+        '\n'
+        'La recette avec le prestataire est prévue après le pilote [S1].\n'
+        '- La date reste à confirmer avec le prestataire.\n'
+        '- Le bilan sera présenté pour le';
+    await meeting(
+      tester,
+      'contract/fr1-c#0',
+      raw: raw,
+      excerpts: const <DocumentExcerpt>[
+        DocumentExcerpt(
+          documentId: 'doc-planning',
+          documentTitle: 'Planning du projet',
+          text: 'La recette aura lieu après la phase pilote, date à confirmer.',
+        ),
+      ],
+      check: (LiveQuestion q) {
+        expect(q.shortened, isTrue, reason: 'raccourcie pendant la réunion');
+        expect(q.truncated, isTrue, reason: 'coupée pendant la réunion');
+      },
+    );
+
+    await reopenNote(tester);
+
+    expect(
+      find.textContaining(
+        'La recette avec le prestataire est prévue après le pilote',
+      ),
+      findsOneWidget,
+    );
+    final int signs =
+        find.text('live_answers.shortened'.tr()).evaluate().length +
+        find.text('live_answers.truncated'.tr()).evaluate().length;
+    expect(signs, greaterThanOrEqualTo(1));
   });
 }
