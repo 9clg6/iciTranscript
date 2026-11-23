@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
-import 'package:ici_transcript/application/services/live_answers/answer_prompt.dart'
-    show questionLanguage;
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/transcript_grouping.dart'
     show isTranscriptMarker;
@@ -167,20 +165,27 @@ EnglishFeedbackEntity parseFeedback(String answer) {
   throw const LlmMalformedAnswerException();
 }
 
-/// Premier JSON de [answer] (objet ou liste, selon ce qui s'ouvre d'abord) ;
-/// null si aucun ou illisible.
+/// JSON de [answer] : la liste si elle s'ouvre avant l'objet et se lit
+/// (« [] », liste de corrections), sinon l'objet ; null si aucun. Un objet
+/// illisible (coupé) rend un objet vide, donc une réponse illisible.
 Object? _firstJson(String answer) {
   final int brace = answer.indexOf('{');
   final int bracket = answer.indexOf('[');
-  final bool list = bracket >= 0 && (brace < 0 || bracket < brace);
-  final int start = list ? bracket : brace;
-  final int end = answer.lastIndexOf(list ? ']' : '}');
-  if (start < 0 || end <= start) return null;
+  if (bracket >= 0 && (brace < 0 || bracket < brace)) {
+    final Object? list = _decode(answer, bracket, answer.lastIndexOf(']'));
+    if (list is List) return list;
+  }
+  final int end = answer.lastIndexOf('}');
+  if (brace < 0 || end <= brace) return null;
+  return _decode(answer, brace, end) ?? const <String, dynamic>{};
+}
+
+Object? _decode(String text, int start, int end) {
+  if (end <= start) return null;
   try {
-    return jsonDecode(answer.substring(start, end + 1));
+    return jsonDecode(text.substring(start, end + 1));
   } on FormatException {
-    // Un objet coupé reste illisible ; une liste coupée aussi.
-    return list ? null : const <String, dynamic>{};
+    return null;
   }
 }
 
@@ -204,8 +209,9 @@ bool isCoachable(TranscriptSegmentEntity s) =>
 
 /// Anglais : au moins un mot-outil anglais et aucun mot-outil français
 /// (« on », « a » sont des deux langues : ils ne comptent pas comme
-/// français) ; une phrase jugée française par [questionLanguage] non plus.
-/// « OK », « yes », « exactly » sont des interjections, pas des mots-outils.
+/// français). Pas de veto par `questionLanguage` : un accent (« Hélène »)
+/// le fait pencher vers le français. « OK », « yes », « exactly » sont des
+/// interjections, pas des mots-outils.
 // ponytail: listes de mots fréquents ; un vrai détecteur si une 3e langue
 // arrive.
 bool isSpokenEnglish(String text) {
@@ -216,8 +222,7 @@ bool isSpokenEnglish(String text) {
       .where((String w) => w.isNotEmpty)
       .toList();
   return words.any(_englishFunctionWords.contains) &&
-      !words.any(_frenchFunctionWords.contains) &&
-      questionLanguage(text) != 'French';
+      !words.any(_frenchFunctionWords.contains);
 }
 
 const Set<String> _englishFunctionWords = <String>{

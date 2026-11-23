@@ -763,6 +763,10 @@ final Map<String, EnglishFeedbackEntity> _coachFeedback =
           ),
         ],
       ),
+      // Coach d'après l'appel tombé en échec : tout reste à analyser.
+      's5': const EnglishFeedbackEntity(
+        unanalyzedSegmentIds: <String>['seg-0', 'seg-1'],
+      ),
       's6': EnglishFeedbackEntity(
         corrections: <EnglishCorrectionEntity>[
           _fix(

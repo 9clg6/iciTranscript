@@ -133,7 +133,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ? LocaleKeys.coach_live_unavailable.tr()
                           : LocaleKeys.coach_live_description.tr(),
                       trailing: OatsSwitch(
-                        value: live.isLiveCoachEnabled,
+                        value:
+                            live.isLiveCoachEnabled &&
+                            state.llmActive != LlmProviderId.ollama,
                         onChanged:
                             live.isRecording ||
                                 state.llmActive == LlmProviderId.ollama

@@ -357,7 +357,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     // Ce que le coach en direct a trouvé reste avec la note, même coach
     // d'après l'appel coupé (s'il tourne, il le reprend et complète).
     if (sessionId != null && !coachEnabled) {
-      await _saveLiveCoach(sessionId);
+      await _saveLiveCoach(sessionId, segments);
     }
 
     // Rafraichir la liste des sessions dans la sidebar
@@ -797,15 +797,28 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   }
 
   /// Range ce que le coach en direct a trouvé pour [sessionId] (s'il a
-  /// analysé au moins une phrase).
-  Future<void> _saveLiveCoach(String sessionId) async {
+  /// analysé au moins une phrase) ; les phrases de [segments] qu'il n'a pas
+  /// analysées sont dites non analysées (jamais un faux « impeccable »).
+  Future<void> _saveLiveCoach(
+    String sessionId,
+    List<TranscriptSegmentEntity> segments,
+  ) async {
     final ({List<EnglishCorrectionEntity> found, Set<String> coached}) live =
         _liveFor(sessionId);
     if (live.coached.isEmpty) return;
     try {
       await _saveFeedback(
         sessionId,
-        EnglishFeedbackEntity(corrections: live.found),
+        EnglishFeedbackEntity(
+          corrections: live.found,
+          unanalyzedSegmentIds: <String>[
+            for (final TranscriptSegmentEntity s in coachableLines(
+              segments,
+              skip: live.coached,
+            ))
+              s.id,
+          ],
+        ),
       );
     } on Object catch (e) {
       _log.warning('Sauvegarde du coach en direct échouée : $e');
@@ -849,7 +862,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       skip: live.coached,
     );
     if (lines.isEmpty) {
-      if (sessionId != null) await _saveLiveCoach(sessionId);
+      if (sessionId != null) await _saveLiveCoach(sessionId, segments);
       return;
     }
     state = state.copyWith(isFeedbackLoading: true);
@@ -859,7 +872,7 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       if (ready == null) {
         _log.info('Coach ignoré : aucun modèle utilisable');
         if (ref.mounted) state = state.copyWith(isFeedbackLoading: false);
-        if (sessionId != null) await _saveLiveCoach(sessionId);
+        if (sessionId != null) await _saveLiveCoach(sessionId, segments);
         return;
       }
       final EnglishFeedbackEntity after = await coachMeeting(

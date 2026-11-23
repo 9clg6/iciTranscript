@@ -67,11 +67,12 @@ class LiveCoachBlock extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: OatsSpace.sm),
-          if (shown.isEmpty)
-            Text(LocaleKeys.coach_live_waiting.tr(), style: o.meta)
-          else
-            for (final EnglishCorrectionEntity c in shown)
+          if (shown.isEmpty && !snap.unavailable) ...<Widget>[
+            const SizedBox(height: OatsSpace.sm),
+            Text(LocaleKeys.coach_live_waiting.tr(), style: o.meta),
+          ],
+          if (shown.isNotEmpty) const SizedBox(height: OatsSpace.sm),
+          for (final EnglishCorrectionEntity c in shown)
               Padding(
                 padding: const EdgeInsets.only(bottom: OatsSpace.sm),
                 child: _LiveCorrection(c),
