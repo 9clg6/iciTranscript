@@ -263,9 +263,18 @@ final class FakeTranscriptionRemoteDataSource
   UtteranceWindow? windowOf(TranscriptEventRemoteModel event) =>
       _windows[event];
 
+  /// Pertes rendues à la déconnexion (comme la vraie source : ce qui n'a
+  /// pas eu son `done` à l'arrêt devient une perte signalée).
+  List<AudioGap> gapsOnDisconnect = <AudioGap>[];
+
   @override
-  Future<void> disconnect() async =>
-      _states.add(domain.ConnectionState.disconnected);
+  Future<void> disconnect() async {
+    for (final AudioGap gap in gapsOnDisconnect) {
+      _gaps.add(gap);
+    }
+    gapsOnDisconnect = <AudioGap>[];
+    _states.add(domain.ConnectionState.disconnected);
+  }
 
   /// Sources visées par chaque commit final (null : toutes).
   final List<Set<AudioSource>?> finalCommitSources = <Set<AudioSource>?>[];
