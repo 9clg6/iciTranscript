@@ -767,6 +767,8 @@ final Map<String, EnglishFeedbackEntity> _coachFeedback =
       's5': const EnglishFeedbackEntity(
         unanalyzedSegmentIds: <String>['seg-0', 'seg-1'],
       ),
+      // Note sans phrase anglaise de l'utilisateur : rien d'envoyé.
+      's7': const EnglishFeedbackEntity(nothingToAnalyse: true),
       's6': EnglishFeedbackEntity(
         corrections: <EnglishCorrectionEntity>[
           _fix(
@@ -1345,6 +1347,7 @@ void main() {
           'corrections': 'Point produit hebdo',
           'none': 'Revue de sprint 14',
           'unanalyzed': 'Entretien candidat backend',
+          'nothing': 'Appel rapide fournisseur',
         }.entries) {
           await tester.tap(find.text(n.value).first);
           await io();
