@@ -942,6 +942,8 @@ final class LiveTranscriptionService {
   }
 
   // Un repère qui ne se range pas est réessayé : 1, 2, 4, 8 s.
+  // ponytail: 5 essais (15 s, Stop attend au pire autant) puis abandon
+  // journalisé ; file durable si un disque plein doit tenir plus longtemps.
   static const int _markerWriteAttempts = 5;
 
   Future<bool> _saveWithRetry(TranscriptSegmentEntity segment) async {
