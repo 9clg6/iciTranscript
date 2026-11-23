@@ -25,6 +25,15 @@ abstract class SessionLocalModel with _$SessionLocalModel {
 
     /// Statut de la session (active, completed, error).
     required String status,
+
+    /// Identifiant de l'evenement d'agenda lie.
+    String? calendarEventId,
+
+    /// Titre de l'evenement d'agenda lie.
+    String? calendarEventTitle,
+
+    /// Noms des participants, tableau JSON (null = aucun).
+    String? attendees,
   }) = _SessionLocalModel;
 
   /// Cree une instance depuis un JSON.
