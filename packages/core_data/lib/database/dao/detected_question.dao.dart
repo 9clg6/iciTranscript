@@ -16,7 +16,7 @@ typedef StoredAnswerSource = ({
 /// DAO des questions détectées en direct : sauvées à la détection,
 /// complétées à la fin du flux, supprimées avec leur session (trigger).
 ///
-/// `status` : unanswered, answered, declined, truncated, failed.
+/// `status` : unanswered, answered, shortened, declined, truncated, failed.
 @DriftAccessor(tables: <Type>[DetectedQuestions])
 class DetectedQuestionDao extends DatabaseAccessor<AppDatabase>
     with _$DetectedQuestionDaoMixin {
@@ -50,20 +50,29 @@ class DetectedQuestionDao extends DatabaseAccessor<AppDatabase>
   }
 
   /// Complète la question [id] : réponse, modèle et sources (statut
-  /// `answered`, ou `truncated` si [truncated]).
+  /// `answered`, `truncated` si [truncated], sinon `shortened` si
+  /// [shortened]).
   Future<void> saveAnswer(
     String id, {
     required String answer,
     required String model,
     required List<StoredAnswerSource> sources,
     bool truncated = false,
+    bool shortened = false,
   }) {
     return _write(
       id,
       DetectedQuestionsCompanion(
         answer: Value<String?>(answer),
         answerModel: Value<String?>(model),
-        status: Value<String>(truncated ? 'truncated' : 'answered'),
+        // Coupée prime sur raccourcie : un seul état par ligne.
+        status: Value<String>(
+          truncated
+              ? 'truncated'
+              : shortened
+              ? 'shortened'
+              : 'answered',
+        ),
         sources: Value<String?>(
           jsonEncode(<Map<String, String>>[
             for (final StoredAnswerSource s in sources)

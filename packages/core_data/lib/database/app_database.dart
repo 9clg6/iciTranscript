@@ -109,7 +109,8 @@ class DetectedQuestions extends Table {
   /// Sources de la reponse, liste JSON {documentId, title, excerpt}.
   TextColumn get sources => text().nullable()();
 
-  /// Etat : unanswered, answered, declined, truncated, failed (schema v3).
+  /// Etat : unanswered, answered, shortened, declined, truncated, failed
+  /// (schema v3 ; shortened = repondue, texte montre raccourci).
   TextColumn get status =>
       text().withDefault(const Constant<String>('unanswered'))();
 

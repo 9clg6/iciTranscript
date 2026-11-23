@@ -50,6 +50,7 @@ class DriftQuestionStore implements QuestionStore {
           answer: question.answer,
           model: question.model ?? '',
           truncated: question.truncated,
+          shortened: question.shortened,
           sources: <StoredAnswerSource>[
             for (final AnswerSource s in question.sources)
               (documentId: s.documentId, title: s.title, excerpt: s.excerpt),
@@ -75,9 +76,7 @@ class DriftQuestionStore implements QuestionStore {
       ];
 
   static LiveQuestion _read(DetectedQuestion row) {
-    final ({LiveQuestionStatus status, bool truncated}) s = storedStatus(
-      row.status,
-    );
+    final StoredStatus s = storedStatus(row.status);
     return LiveQuestion(
       id: row.id,
       sessionId: row.sessionId,
@@ -88,6 +87,7 @@ class DriftQuestionStore implements QuestionStore {
       timestampMs: row.timestampMs,
       status: s.status,
       truncated: s.truncated,
+      shortened: s.shortened,
       answer: row.answer ?? '',
       model: row.answerModel,
       sources: _sources(row.sources),
@@ -112,13 +112,46 @@ class DriftQuestionStore implements QuestionStore {
   }
 }
 
-/// Statut rangé en base (`unanswered`, `answered`, `truncated`, `declined`,
-/// `failed`) → état relu. Inconnu = sans réponse.
-({LiveQuestionStatus status, bool truncated}) storedStatus(String stored) =>
-    switch (stored) {
-      'answered' => (status: LiveQuestionStatus.answered, truncated: false),
-      'truncated' => (status: LiveQuestionStatus.answered, truncated: true),
-      'declined' => (status: LiveQuestionStatus.declined, truncated: false),
-      'failed' => (status: LiveQuestionStatus.failed, truncated: false),
-      _ => (status: LiveQuestionStatus.detected, truncated: false),
-    };
+/// Statut rangé en base → état relu ; seul endroit qui le lit.
+/// `shortened` = répondue, texte montré raccourci. Valeur inconnue (rangée
+/// par une version plus récente) = répondue : la réponse reste montrée.
+typedef StoredStatus = ({
+  LiveQuestionStatus status,
+  bool truncated,
+  bool shortened,
+});
+
+StoredStatus storedStatus(String stored) => switch (stored) {
+  'unanswered' => (
+    status: LiveQuestionStatus.detected,
+    truncated: false,
+    shortened: false,
+  ),
+  'truncated' => (
+    status: LiveQuestionStatus.answered,
+    truncated: true,
+    shortened: false,
+  ),
+  'shortened' => (
+    status: LiveQuestionStatus.answered,
+    truncated: false,
+    shortened: true,
+  ),
+  'declined' => (
+    status: LiveQuestionStatus.declined,
+    truncated: false,
+    shortened: false,
+  ),
+  'failed' => (
+    status: LiveQuestionStatus.failed,
+    truncated: false,
+    shortened: false,
+  ),
+  // 'answered', et toute valeur qu'une version plus récente aurait rangée :
+  // la réponse reste montrée.
+  _ => (
+    status: LiveQuestionStatus.answered,
+    truncated: false,
+    shortened: false,
+  ),
+};
