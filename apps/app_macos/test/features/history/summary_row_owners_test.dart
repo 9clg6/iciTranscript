@@ -151,7 +151,7 @@ void main() {
 
     await c
         .read(liveTranscriptionViewModelProvider.notifier)
-        .coachAfterCall('I am agree with you.', sessionId: 's1');
+        .coachAfterCall(kShortMeeting, sessionId: 's1');
 
     final SessionAnalysis saved = await storedAnalysis(db);
     expect(saved.feedback?.overall, 'Bon niveau général.');

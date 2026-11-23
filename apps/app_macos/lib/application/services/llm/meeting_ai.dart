@@ -1,7 +1,11 @@
 import 'dart:convert';
 
 import 'package:core_domain/domain/entities/english_feedback.entity.dart';
+import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
+import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/application/services/transcript_grouping.dart'
+    show isTranscriptMarker;
 
 /// Borne d'une requête : consignes + messages, en caractères (le modèle
 /// local tourne avec un contexte borné).
@@ -125,25 +129,254 @@ Future<EnglishFeedbackEntity> coachEnglish(
   return parseFeedback(answer);
 }
 
-/// Lit le retour du coach dans [answer].
+/// Lit le retour du coach dans [answer] : seul lecteur, pour tous les
+/// fournisseurs.
+///
+/// Objet JSON (entouré de texte ou d'un bloc ```json) ou liste de
+/// corrections : lu. Pas de JSON mais une phrase « rien à corriger » (un
+/// petit modèle respecte rarement le contrat) : retour vide. Sinon (vide,
+/// texte sans rapport, JSON coupé, objet d'une autre forme) :
+/// [LlmMalformedAnswerException].
 EnglishFeedbackEntity parseFeedback(String answer) {
-  final int start = answer.indexOf('{');
-  final int end = answer.lastIndexOf('}');
-  if (start < 0 || end <= start) throw const LlmMalformedAnswerException();
+  final Object? json = _firstJson(answer);
   try {
-    final Object? json = jsonDecode(answer.substring(start, end + 1));
-    // Un objet sans les champs attendus (`{}`, autre forme) n'est pas un
-    // retour vide valable.
-    if (json is! Map<String, dynamic> ||
-        (json['overall'] is! String && json['corrections'] is! List) ||
-        (json['overall'] != null && json['overall'] is! String) ||
-        (json['corrections'] != null && json['corrections'] is! List)) {
-      throw const LlmMalformedAnswerException();
+    if (json is List) {
+      return EnglishFeedbackEntity(
+        corrections: <EnglishCorrectionEntity>[
+          for (final Object? c in json)
+            EnglishCorrectionEntity.fromJson(c! as Map<String, dynamic>),
+        ],
+      );
     }
-    return EnglishFeedbackEntity.fromJson(json);
+    if (json is Map<String, dynamic>) {
+      // Un objet sans les champs attendus (`{}`, autre forme) n'est pas un
+      // retour vide valable.
+      if ((json['overall'] is! String && json['corrections'] is! List) ||
+          (json['overall'] != null && json['overall'] is! String) ||
+          (json['corrections'] != null && json['corrections'] is! List)) {
+        throw const LlmMalformedAnswerException();
+      }
+      return EnglishFeedbackEntity.fromJson(json);
+    }
   } on Object {
     throw const LlmMalformedAnswerException();
   }
+  if (_nothingToCorrect.hasMatch(answer)) return const EnglishFeedbackEntity();
+  throw const LlmMalformedAnswerException();
+}
+
+/// JSON de [answer] : la liste si elle s'ouvre avant l'objet et se lit
+/// (« [] », liste de corrections), sinon l'objet ; null si aucun. Un objet
+/// illisible (coupé) rend un objet vide, donc une réponse illisible.
+Object? _firstJson(String answer) {
+  final int brace = answer.indexOf('{');
+  final int bracket = answer.indexOf('[');
+  if (bracket >= 0 && (brace < 0 || bracket < brace)) {
+    final Object? list = _decode(answer, bracket, answer.lastIndexOf(']'));
+    if (list is List) return list;
+  }
+  final int end = answer.lastIndexOf('}');
+  if (brace < 0 || end <= brace) return null;
+  return _decode(answer, brace, end) ?? const <String, dynamic>{};
+}
+
+Object? _decode(String text, int start, int end) {
+  if (end <= start) return null;
+  try {
+    return jsonDecode(text.substring(start, end + 1));
+  } on FormatException {
+    return null;
+  }
+}
+
+final RegExp _nothingToCorrect = RegExp(
+  r"rien à corriger|aucune (correction|erreur|faute)|pas d'erreur|"
+  r'no (corrections?|mistakes?|errors?)\b|nothing to correct|'
+  r'\bis (perfectly |already |entirely )?correct\b',
+  caseSensitive: false,
+);
+
+/// Une phrase à corriger : segment (ou morceau d'un segment trop long),
+/// texte, heure dans la note.
+typedef CoachLine = ({String id, String text, int atMs});
+
+/// Phrase que le coach peut corriger : dite au micro par l'utilisateur, pas
+/// un repère, en anglais (règle de [isSpokenEnglish]).
+bool isCoachable(TranscriptSegmentEntity s) =>
+    s.source == AudioSource.input &&
+    !isTranscriptMarker(s.text) &&
+    isSpokenEnglish(s.text);
+
+/// Anglais : au moins un mot-outil anglais et au plus UN mot-outil
+/// français. Un seul ne suffit pas à écarter une phrase : sigles (« EST »,
+/// « LE »), noms et marques (« La Poste », « du Pont », « Le Monde »),
+/// homographes (« pour me a coffee », « Des will… ») ; le franglais en a
+/// deux (« On fait le call… »). « on », « a » ne comptent pas comme
+/// français. Pas de veto par `questionLanguage` : un accent (« Hélène »)
+/// le fait pencher vers le français. « OK », « yes », « exactly » sont des
+/// interjections, pas des mots-outils.
+// ponytail: listes de mots fréquents ; un vrai détecteur si une 3e langue
+// arrive.
+bool isSpokenEnglish(String text) {
+  final List<String> words = text
+      .toLowerCase()
+      .split(RegExp(r"[^\p{L}']+", unicode: true))
+      .expand((String w) => w.split("'"))
+      .where((String w) => w.isNotEmpty)
+      .toList();
+  return words.any(_englishFunctionWords.contains) &&
+      words.where(_frenchFunctionWords.contains).length < 2;
+}
+
+const Set<String> _englishFunctionWords = <String>{
+  'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', //
+  'them', 'my', 'your', 'his', 'its', 'our', 'their', 'this', 'that', //
+  'these', 'those', 'the', 'a', 'an', 'am', 'is', 'are', 'was', 'were', //
+  'be', 'been', 'do', 'does', 'did', 'have', 'has', 'had', 'will', //
+  'would', 'can', 'could', 'should', 'shall', 'may', 'might', 'must', //
+  'of', 'to', 'in', 'on', 'at', 'for', 'with', 'from', 'by', 'about', //
+  'so', 'but', 'and', 'or', 'if', 'not', 'there', 'what', 'how', 'why', //
+  'when', 'where', 'who', 'which', //
+};
+
+// Sans les homographes anglais (« on », « a », « as », « son », « car »,
+// « ai »…).
+const Set<String> _frenchFunctionWords = <String>{
+  'le', 'la', 'les', 'de', 'des', 'du', 'un', 'une', 'est', 'et', 'que', //
+  'qui', 'quel', 'quelle', 'quels', 'quelles', 'combien', 'comment', //
+  'pourquoi', 'quand', 'je', 'tu', 'il', 'elle', 'ils', 'elles', 'nous', //
+  'vous', 'ce', 'ça', 'pour', 'sur', 'avec', 'dans', 'en', 'pas', 'ne', //
+  'mais', 'ou', 'donc', 'au', 'aux', 'se', 'sa', 'ses', 'mon', 'ma', //
+  'mes', 'ton', 'ta', 'notre', 'votre', 'leur', 'qu', 'fait', 'faire', //
+  'suis', 'sont', 'va', 'vais', 'très', 'oui', 'voilà', //
+};
+
+/// Phrases corrigeables de [segments], hors [skip] (déjà corrigées en
+/// direct).
+List<TranscriptSegmentEntity> coachableLines(
+  List<TranscriptSegmentEntity> segments, {
+  Set<String> skip = const <String>{},
+}) => <TranscriptSegmentEntity>[
+  for (final TranscriptSegmentEntity s in segments)
+    if (!skip.contains(s.id) && isCoachable(s)) s,
+];
+
+/// Lots de [lines] : chaque requête tient dans [kLlmMaxRequestChars]
+/// (consignes comprises), chaque phrase dans exactement un lot ; une phrase
+/// plus longue que la place est coupée en morceaux.
+List<List<CoachLine>> coachBatches(List<TranscriptSegmentEntity> lines) {
+  final int room = _room(_coachSystem, _coachPrefix);
+  final List<List<CoachLine>> batches = <List<CoachLine>>[];
+  List<CoachLine> current = <CoachLine>[];
+  int used = 0;
+  for (final TranscriptSegmentEntity s in lines) {
+    final String text = s.text.trim();
+    for (int i = 0; i < text.length; i += room) {
+      final String part = text.substring(i, (i + room).clamp(0, text.length));
+      final int cost = part.length + (current.isEmpty ? 0 : 1);
+      if (used + cost > room) {
+        batches.add(current);
+        current = <CoachLine>[];
+        used = 0;
+      }
+      used += part.length + (current.isEmpty ? 0 : 1);
+      current.add((id: s.id, text: part, atMs: s.timestampMs));
+    }
+  }
+  if (current.isNotEmpty) batches.add(current);
+  return batches;
+}
+
+/// Requête du coach pour [batch] ; [preferLowLatency] seulement en direct.
+LlmChatRequest coachRequest(
+  List<CoachLine> batch, {
+  bool preferLowLatency = false,
+}) => LlmChatRequest(
+  systemPrompt: _coachSystem,
+  messages: <LlmMessage>[
+    LlmMessage(
+      role: LlmRole.user,
+      content: '$_coachPrefix${batch.map((CoachLine l) => l.text).join('\n')}',
+    ),
+  ],
+  maxTokens: kLlmAnswerMaxTokens,
+  preferLowLatency: preferLowLatency,
+);
+
+/// Corrections de [feedback], chacune à l'heure de la phrase de [batch] qui
+/// contient son `original` (sinon sans heure).
+List<EnglishCorrectionEntity> timedCorrections(
+  EnglishFeedbackEntity feedback,
+  List<CoachLine> batch,
+) => <EnglishCorrectionEntity>[
+  for (final EnglishCorrectionEntity c in feedback.corrections)
+    c.copyWith(timestampMs: _timeOf(c.original, batch)),
+];
+
+int? _timeOf(String original, List<CoachLine> batch) {
+  final String needle = original.trim().toLowerCase();
+  if (needle.isEmpty) return null;
+  for (final CoachLine l in batch) {
+    if (l.text.toLowerCase().contains(needle)) return l.atMs;
+  }
+  return null;
+}
+
+/// Coach anglais d'une note : phrases corrigeables de [segments] (hors
+/// [skipSegmentIds]), par lots bornés, l'un après l'autre (le modèle local
+/// ne sert qu'une requête à la fois).
+///
+/// Un lot en échec ne fait pas tout échouer : ses phrases vont dans
+/// `unanalyzedSegmentIds`. Tous en échec : l'erreur du dernier remonte.
+/// Rien à corriger : retour vide, aucune requête.
+///
+/// [shouldStop] est lu avant chaque lot : vrai (un enregistrement démarre,
+/// une génération locale retarderait sa transcription), le lot en cours a
+/// fini et compte, le reste est noté non analysé, sans erreur.
+Future<EnglishFeedbackEntity> coachMeeting(
+  LlmProvider llm,
+  List<TranscriptSegmentEntity> segments, {
+  Set<String> skipSegmentIds = const <String>{},
+  bool Function()? shouldStop,
+}) async {
+  if (coachableLines(segments).isEmpty) {
+    return const EnglishFeedbackEntity(nothingToAnalyse: true);
+  }
+  final List<List<CoachLine>> batches = coachBatches(
+    coachableLines(segments, skip: skipSegmentIds),
+  );
+  final List<EnglishCorrectionEntity> corrections = <EnglishCorrectionEntity>[];
+  final Set<String> unanalyzed = <String>{};
+  String? overall;
+  Object? lastError;
+  int failed = 0;
+  int sent = 0;
+  for (final List<CoachLine> batch in batches) {
+    if (shouldStop?.call() ?? false) {
+      unanalyzed.addAll(batch.map((CoachLine l) => l.id));
+      continue;
+    }
+    sent++;
+    try {
+      final EnglishFeedbackEntity part = parseFeedback(
+        await llm.streamChat(coachRequest(batch)).join(),
+      );
+      corrections.addAll(timedCorrections(part, batch));
+      if (overall == null && (part.overall ?? '').isNotEmpty) {
+        overall = part.overall;
+      }
+    } on Object catch (e) {
+      lastError = e;
+      failed++;
+      unanalyzed.addAll(batch.map((CoachLine l) => l.id));
+    }
+  }
+  if (sent > 0 && failed == sent) throw lastError!;
+  return EnglishFeedbackEntity(
+    corrections: corrections,
+    overall: overall,
+    unanalyzedSegmentIds: unanalyzed.toList(),
+  );
 }
 
 /// Réponse probablement coupée (limite de jetons, refus) : vide, ou
@@ -205,4 +438,20 @@ List<String> _split(String text, int room, {String separator = '\n'}) {
   }
   if (current.isNotEmpty) pieces.add(current);
   return pieces;
+}
+
+/// [kept] puis les corrections de [added] qui n'y sont pas déjà (même
+/// original et même correction, casse et blancs ignorés).
+List<EnglishCorrectionEntity> mergeCorrections(
+  List<EnglishCorrectionEntity> kept,
+  List<EnglishCorrectionEntity> added,
+) {
+  String key(EnglishCorrectionEntity c) =>
+      '${c.original.trim().toLowerCase()}→${c.corrected.trim().toLowerCase()}';
+  final Set<String> seen = kept.map(key).toSet();
+  return <EnglishCorrectionEntity>[
+    ...kept,
+    for (final EnglishCorrectionEntity c in added)
+      if (seen.add(key(c))) c,
+  ];
 }

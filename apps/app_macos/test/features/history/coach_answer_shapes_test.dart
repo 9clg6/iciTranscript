@@ -26,9 +26,15 @@ import '../../helpers/settings_fakes.dart';
 /// Attendu, pour le modèle local ET pour un fournisseur en ligne (vrai
 /// `activeLlmProvider`, transport factice) :
 /// - JSON nu, dans un bloc ```json, précédé ou suivi de texte : lu ;
-/// - pas de JSON, JSON coupé, objet vide ou d'une autre forme : état
-///   `llm.error.malformed`, jamais un plantage, jamais un retour vide
-///   affiché ou rangé comme s'il était valable.
+/// - le modèle dit en prose (français ou anglais) qu'il n'y a rien à
+///   corriger, ou rend une liste JSON vide : « Aucune correction »
+///   (`history.detail.coach_perfect`), retour vide rangé, JAMAIS une erreur
+///   (décision du 2026-11-23, même principe que le lecteur de réponses de
+///   la PR #23 : un petit modèle local respecte rarement le contrat) ;
+/// - réponse vide (après retrait des blancs), texte sans rapport, JSON
+///   coupé, objet vide ou d'une autre forme : état `llm.error.malformed`
+///   (relancer = le bouton « Coach anglais »), jamais un plantage, rien
+///   rangé.
 void main() {
   late AppDatabase db;
   late RecordingHttpAdapter adapter;
@@ -43,12 +49,23 @@ void main() {
     'texte autour et bloc':
         'Bien sûr ! Voici le retour :\n\n```json\n$json\n```\n\nBon courage.',
   };
+  final Map<String, String> nothingToCorrect = <String, String>{
+    'prose française « rien à corriger »': 'Très bon niveau, rien à corriger !',
+    'prose française courte': 'Rien à corriger.',
+    'prose anglaise « no corrections »': 'No corrections needed.',
+    'prose anglaise « correct »': 'Your English is correct.',
+    'prose anglaise « no mistakes »':
+        'There are no mistakes in this transcript.',
+    'liste JSON vide': '[]',
+    'liste vide dans un bloc': '```json\n[]\n```',
+  };
   final Map<String, String> unreadable = <String, String>{
-    'du texte seul': 'Très bon niveau, rien à corriger !',
+    'du texte sans rapport': 'Bonjour, je suis un assistant.',
     'un JSON coupé': '{"overall": "Bon niv',
     'un objet vide': '{}',
     'un objet d\'une autre forme': 'Résultat : {"note": 3, "niveau": "B2"}',
     'une réponse vide': '',
+    'des blancs seulement': '  \n\t ',
   };
 
   Future<void> idle(WidgetTester tester) async {
@@ -109,8 +126,8 @@ void main() {
 
   for (final bool cloud in <bool>[false, true]) {
     final String who = cloud ? 'Claude' : 'modèle local';
-    final String host = kProviderHost[
-        cloud ? LlmProviderId.anthropic : LlmProviderId.ollama]!;
+    final String host =
+        kProviderHost[cloud ? LlmProviderId.anthropic : LlmProviderId.ollama]!;
 
     group(who, () {
       readable.forEach((String name, String answer) {
@@ -122,14 +139,31 @@ void main() {
           expect(adapter.lastHost, host);
           expect(tester.takeException(), isNull);
           expect(find.textContaining('I agree'), findsWidgets);
-          expect(
-            find.textContaining('llm.error.malformed'.tr()),
-            findsNothing,
-          );
+          expect(find.textContaining('llm.error.malformed'.tr()), findsNothing);
           final EnglishFeedbackEntity? saved = (await tester.runAsync(
             () => storedAnalysis(db),
           ))!.feedback;
           expect(saved?.corrections.single.corrected, 'I agree');
+        });
+      });
+
+      nothingToCorrect.forEach((String name, String answer) {
+        testWidgets('$name : « Aucune correction », pas d\'erreur, retour '
+            'vide rangé', (WidgetTester tester) async {
+          await pumpCoach(tester, cloud: cloud, answer: answer);
+
+          expect(adapter.lastHost, host);
+          expect(tester.takeException(), isNull);
+          expect(
+            find.text('history.detail.coach_perfect'.tr()),
+            findsOneWidget,
+          );
+          expect(find.textContaining('llm.error.malformed'.tr()), findsNothing);
+          final EnglishFeedbackEntity? saved = (await tester.runAsync(
+            () => storedAnalysis(db),
+          ))!.feedback;
+          expect(saved, isNotNull);
+          expect(saved!.corrections, isEmpty);
         });
       });
 

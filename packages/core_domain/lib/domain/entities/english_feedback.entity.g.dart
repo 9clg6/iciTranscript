@@ -13,6 +13,7 @@ _EnglishCorrectionEntity _$EnglishCorrectionEntityFromJson(
   corrected: json['corrected'] as String,
   category: json['category'] as String,
   explanation: json['explanation'] as String,
+  timestampMs: (json['timestampMs'] as num?)?.toInt(),
 );
 
 Map<String, dynamic> _$EnglishCorrectionEntityToJson(
@@ -22,6 +23,7 @@ Map<String, dynamic> _$EnglishCorrectionEntityToJson(
   'corrected': instance.corrected,
   'category': instance.category,
   'explanation': instance.explanation,
+  'timestampMs': instance.timestampMs,
 };
 
 _EnglishFeedbackEntity _$EnglishFeedbackEntityFromJson(
@@ -35,6 +37,12 @@ _EnglishFeedbackEntity _$EnglishFeedbackEntityFromJson(
           .toList() ??
       const <EnglishCorrectionEntity>[],
   overall: json['overall'] as String?,
+  unanalyzedSegmentIds:
+      (json['unanalyzedSegmentIds'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const <String>[],
+  nothingToAnalyse: json['nothingToAnalyse'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$EnglishFeedbackEntityToJson(
@@ -42,4 +50,6 @@ Map<String, dynamic> _$EnglishFeedbackEntityToJson(
 ) => <String, dynamic>{
   'corrections': instance.corrections,
   'overall': instance.overall,
+  'unanalyzedSegmentIds': instance.unanalyzedSegmentIds,
+  'nothingToAnalyse': instance.nothingToAnalyse,
 };

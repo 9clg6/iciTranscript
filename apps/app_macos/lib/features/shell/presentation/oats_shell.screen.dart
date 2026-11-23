@@ -4,6 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ici_transcript/core/providers/platform/dev_data_directory.provider.dart';
+import 'package:ici_transcript/features/coach/presentation/coach_overview.screen.dart';
 import 'package:ici_transcript/features/documents/presentation/documents.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/detail/session_detail.screen.dart';
 import 'package:ici_transcript/features/history/presentation/screens/list/session_list.state.dart';
@@ -45,16 +46,13 @@ class OatsShellScreen extends ConsumerWidget {
             key: ValueKey<String>(openNote),
             sessionId: openNote,
             onClose: notes.clearSelection,
+            // Ouverte depuis la page « Coach anglais » : sur sa section coach.
+            focusCoach: view == ShellView.coach,
           )
         : switch (view) {
             ShellView.home => const HomeScreen(),
             ShellView.documents => const DocumentsScreen(),
-            ShellView.coach => _EmptyPage(
-              title: LocaleKeys.nav_coach.tr(),
-              icon: Icons.school_outlined,
-              emptyTitle: null,
-              message: LocaleKeys.coach_empty.tr(),
-            ),
+            ShellView.coach => CoachOverviewScreen(onOpen: notes.selectSession),
             ShellView.settings => const SettingsScreen(),
             ShellView.live => const LiveTranscriptionScreen(),
           };
@@ -201,47 +199,4 @@ class _Sidebar extends ConsumerWidget {
       ),
     );
   }
-}
-
-/// Page sans contenu encore : titre serif et état vide honnête.
-class _EmptyPage extends StatelessWidget {
-  const _EmptyPage({
-    required this.title,
-    required this.icon,
-    required this.emptyTitle,
-    required this.message,
-  });
-
-  final String title;
-  final IconData icon;
-  final String? emptyTitle;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(
-      OatsSpace.xxxl,
-      OatsSpace.xl,
-      OatsSpace.xxxl,
-      OatsSpace.xl,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: kContentMaxWidth),
-            child: OatsPageHeader(title: title),
-          ),
-        ),
-        Expanded(
-          child: OatsEmptyState(
-            icon: icon,
-            title: emptyTitle,
-            message: message,
-          ),
-        ),
-      ],
-    ),
-  );
 }
