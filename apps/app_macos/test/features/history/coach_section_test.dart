@@ -56,7 +56,8 @@ class _ByIndexHttp extends RecordingHttpAdapter {
 /// installé, transport factice (aucun réseau).
 ///
 /// Hors besoin ici : cliquer l'heure pour aller à la ligne (l'écran de note
-/// n'a aucun défilement vers une ligne aujourd'hui : non spécifié).
+/// n'a aucun défilement vers une ligne aujourd'hui : non spécifié) ; l'heure
+/// est un texte simple, pas un bouton.
 ///
 /// API supposée : `EnglishCorrectionEntity.timestampMs`,
 /// `EnglishFeedbackEntity.unanalyzedSegmentIds` ; heure affichée « mm:ss »
@@ -88,6 +89,17 @@ void main() {
       expect(find.textContaining('I agree'), findsWidgets);
       expect(find.textContaining('« agree » est un verbe'), findsOneWidget);
       expect(find.textContaining('01:05'), findsOneWidget);
+      // Texte simple : l'écran de note ne sait pas aller à une ligne.
+      for (final Type tappable in <Type>[InkWell, ButtonStyleButton]) {
+        expect(
+          find.ancestor(
+            of: find.textContaining('01:05'),
+            matching: find.byType(tappable),
+          ),
+          findsNothing,
+          reason: 'heure cliquable ($tappable)',
+        );
+      }
     });
 
     testWidgets('correction d\'avant (sans heure) : affichée, sans heure '

@@ -181,6 +181,23 @@ void main() {
     },
   );
 
+  test('langue indécise (même règle qu\'après l\'appel) : « I think so. » '
+      'part, « Yes exactly. » et le franglais non', () {
+    fakeAsync((FakeAsync async) {
+      setUpCoach();
+      say('Yes exactly.', atMs: 1000);
+      say('On fait le call with the team.', atMs: 2000);
+      async.elapse(interval * 2);
+      expect(llm.streams, isEmpty);
+
+      say('I think so.', atMs: 3000);
+      async.flushMicrotasks();
+      expect(llm.streams, hasLength(1));
+      expect(requestText(llm.last.request), contains('I think so.'));
+      expect(requestText(llm.last.request), isNot(contains('Yes exactly')));
+    });
+  });
+
   for (final (String name, bool isLocal, bool ready) in <(String, bool, bool)>[
     ('modèle local (envoi coupé ou pas de clé)', true, true),
     ('aucun modèle prêt', false, false),

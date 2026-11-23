@@ -55,7 +55,10 @@ class _Summaries extends QueryInterceptor {
 /// la même catégorie, comme dans l'affichage d'une correction). Sans
 /// rien : l'état vide en français d'aujourd'hui (`coach.empty`). Chargement
 /// et erreur avec une issue (Réessayer) ; une enveloppe abîmée n'empêche
-/// pas la liste.
+/// pas la liste. Une note dont le coach n'a rien trouvé y figure aussi,
+/// avec « Aucune correction » (`coach.no_correction`) pour montrer que la
+/// passe a tourné : jours du plus récent au plus ancien ; dans un même
+/// jour, sous les notes qui ont des corrections.
 ///
 /// Pas de migration : tout se lit dans `summaries.content` (catégorie déjà
 /// présente dans `EnglishCorrectionEntity.category`).
@@ -223,6 +226,53 @@ void main() {
     );
     expect(find.text('coach.corrections'.plural(3)), findsOneWidget);
     expect(find.text('coach.corrections'.plural(1)), findsOneWidget);
+    expect(find.text('coach.empty'.tr()), findsNothing);
+  });
+
+  testWidgets('une note sans correction figure avec « Aucune correction » : '
+      'jours du plus récent au plus ancien, sous les notes corrigées du même '
+      'jour', (WidgetTester tester) async {
+    SessionEntity at(String id, String title, int d, int hour) => SessionEntity(
+      id: id,
+      title: title,
+      createdAt: DateTime(2026, 11, d, hour),
+      updatedAt: DateTime(2026, 11, d, hour),
+      durationSeconds: 1800,
+      status: SessionStatus.completed,
+    );
+    final SessionEntity comiteVide = at('comite', 'Comité projet', 20, 9);
+    final SessionEntity designVide = at('design', 'Atelier design', 18, 15);
+    final SessionEntity produitCorr = at('produit', 'Revue produit', 18, 9);
+    final SessionEntity budgetCorr = at('budget', 'Point budget', 10, 9);
+    const EnglishFeedbackEntity none = EnglishFeedbackEntity();
+    stored = <String, String?>{
+      comiteVide.id: envelope(none),
+      designVide.id: envelope(none),
+      produitCorr.id: envelope(
+        EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[fix('grammar')],
+        ),
+      ),
+      budgetCorr.id: envelope(
+        EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[fix('vocabulary')],
+        ),
+      ),
+    };
+    await pumpApp(tester, <SessionEntity>[
+      budgetCorr,
+      produitCorr,
+      designVide,
+      comiteVide,
+    ]);
+
+    await openCoachPage(tester);
+
+    double top(String title) => tester.getTopLeft(find.text(title)).dy;
+    expect(find.text('coach.no_correction'.tr()), findsNWidgets(2));
+    expect(top('Comité projet'), lessThan(top('Revue produit')));
+    expect(top('Revue produit'), lessThan(top('Atelier design')));
+    expect(top('Atelier design'), lessThan(top('Point budget')));
     expect(find.text('coach.empty'.tr()), findsNothing);
   });
 

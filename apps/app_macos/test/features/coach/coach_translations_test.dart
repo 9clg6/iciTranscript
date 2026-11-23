@@ -14,7 +14,8 @@ void main() {
     'coach.live.description',
     'coach.live.unavailable',
     'coach.live.state_unavailable',
-    // Page « Coach anglais » : erreurs récurrentes.
+    // Page « Coach anglais » : note sans correction, erreurs récurrentes.
+    'coach.no_correction',
     'coach.recurring.title',
     // Déjà là, réutilisés.
     'coach.empty',
@@ -42,6 +43,10 @@ void main() {
       expect(forms['other'], contains('{}'));
     });
   }
+
+  test('une note sans correction se dit « Aucune correction »', () {
+    expect(frValue('coach.no_correction'), 'Aucune correction');
+  });
 
   test('l\'état d\'échec du coach en direct dit « indisponible »', () {
     expect(

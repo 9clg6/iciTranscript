@@ -19,6 +19,13 @@ import '../../../helpers/llm_fakes.dart' show ScriptedLlmProvider, requestText;
 ///   de perte (« Transcription interrompue… ») ni un « Passage non
 ///   transcrit » ; une phrase en français de l'utilisateur n'est pas envoyée
 ///   (langue jugée par `questionLanguage`, déjà là pour les réponses) ;
+///   langue indécise (`questionLanguage` rend null) : anglaise seulement si
+///   la phrase a au moins un mot-outil anglais (pronom, article,
+///   auxiliaire, préposition : « I », « so », « the »…) et aucun mot-outil
+///   français ; sinon ignorée. Décision : « OK », « yes », « exactly » sont
+///   des interjections, pas des mots-outils ;
+/// - un modèle qui dit en prose qu'il n'y a rien à corriger = aucune
+///   correction pour cette partie, pas un échec ;
 /// - une longue réunion part en plusieurs requêtes d'au plus
 ///   [kLlmMaxRequestChars] caractères (consignes comprises), chaque phrase
 ///   dans exactement une requête : rien de coupé ni de jeté en silence
@@ -157,6 +164,32 @@ void main() {
       },
     );
 
+    test('langue indécise : anglaise seulement avec un mot-outil anglais et '
+        'aucun français', () async {
+      final ScriptedLlmProvider llm = replying(answer(<Map<String, String>>[]));
+      const Map<String, bool> sent = <String, bool>{
+        'I think so.': true,
+        'OK.': false,
+        'Yes exactly.': false,
+        'Voilà.': false,
+        'On fait le call with the team.': false,
+      };
+      int i = 0;
+
+      await coachMeeting(llm, <TranscriptSegmentEntity>[
+        for (final String text in sent.keys)
+          seg('u-${i++}', text, atMs: i * 5000),
+      ]);
+
+      sent.forEach((String text, bool expected) {
+        expect(
+          allSent(llm).contains(text),
+          expected,
+          reason: '« $text » ${expected ? 'doit' : 'ne doit pas'} partir',
+        );
+      });
+    });
+
     test('rien que du français ou rien du micro : aucune requête, retour '
         'vide', () async {
       final ScriptedLlmProvider llm = replying(answer(<Map<String, String>>[]));
@@ -265,6 +298,28 @@ void main() {
         expect(feedback.corrections.single.timestampMs, isNull);
       },
     );
+
+    test('le modèle dit en prose qu\'il n\'y a rien à corriger : aucune '
+        'correction, rien de non analysé, pas d\'erreur', () async {
+      for (final String prose in <String>[
+        'No corrections needed.',
+        'Your English is correct.',
+        'Rien à corriger.',
+        '[]',
+      ]) {
+        final ScriptedLlmProvider llm = replying(prose);
+
+        final EnglishFeedbackEntity feedback = await coachMeeting(
+          llm,
+          <TranscriptSegmentEntity>[
+            seg('a', 'I agree with you on this point.', atMs: 0),
+          ],
+        );
+
+        expect(feedback.corrections, isEmpty, reason: prose);
+        expect(feedback.unanalyzedSegmentIds, isEmpty, reason: prose);
+      }
+    });
 
     test('« aucune correction » : retour vide, rien de non analysé', () async {
       final ScriptedLlmProvider llm = replying(answer(<Map<String, String>>[]));
