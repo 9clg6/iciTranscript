@@ -19,6 +19,8 @@ import Foundation
 // - https://developer.apple.com/documentation/appkit/nsapplicationdelegate/applicationshouldterminate(_:)
 // - https://developer.apple.com/documentation/appkit/nsapplication/reply(toapplicationshouldterminate:)
 //   (after terminateLater, the app must reply)
+// - https://developer.apple.com/documentation/appkit/nsworkspace/willpoweroffnotification
+// - https://developer.apple.com/documentation/foundation/processinfo/beginactivity(options:reason:)
 // - https://developer.apple.com/documentation/appkit/nswindowdelegate/windowshouldclose(_:)
 //   ("not called when a user quits an application")
 // SF Symbols need macOS 11: below, plain drawn shapes.
@@ -87,6 +89,9 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             button.imagePosition = .imageLeading
         }
         refreshStatusItem()
+        powerOffObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willPowerOffNotification, object: nil, queue: nil
+        ) { [weak self] _ in self?.poweringOff = true }
     }
 
     static func register(with registrar: FlutterPluginRegistrar) {
@@ -106,7 +111,11 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         case "update":
             snapshot = call.arguments as? [String: Any] ?? [:]
             refreshStatusItem()
+            holdActivityWhileRecording()
             if panel.isVisible { rebuildPanel() }
+            result(nil)
+        case "suggest":
+            showSuggestion(call.arguments as? [String: Any] ?? [:])
             result(nil)
         case "showWindow":
             closePanel()
@@ -114,13 +123,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             result(nil)
         case "terminate":
             result(nil)
-            dartQuitDone = true
-            if quitPending {
-                quitPending = false
-                NSApp.reply(toApplicationShouldTerminate: true)
-            } else {
-                NSApp.terminate(nil)
-            }
+            finishQuit()
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -131,36 +134,88 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
     private(set) static weak var shared: StatusPanelPlugin?
 
     /// Native safety bound, a little above Dart's 30 s: the app can never
-    /// refuse to quit (logout and restart go through here too).
+    /// refuse to quit.
     private static let quitTimeout: TimeInterval = 35
     private var quitPending = false
+    private var awaitingReply = false
     private var dartQuitDone = false
+    private var poweringOff = false
+    private var powerOffObserver: NSObjectProtocol?
 
     /// Every way of quitting (Cmd+Q, app menu, Dock, logout) goes through
     /// Dart `quit` (note saved, owned servers stopped), which answers with
-    /// `terminate`. Returns false when there is nothing to wait for.
-    func requestQuit() -> Bool {
-        if dartQuitDone { return false }
-        if quitPending { return true }
-        quitPending = true
-        closePanel()
-        channel.invokeMethod("quit", arguments: nil) { [weak self] reply in
-            // No Dart handler or a Dart error: do not wait for `terminate`.
-            if reply is FlutterError || (reply as? NSObject) === FlutterMethodNotImplemented {
+    /// `terminate`; then the app quits for real.
+    ///
+    /// Cmd+Q: `.terminateCancel`, then `NSApp.terminate` again once Dart is
+    /// done (as FlutterAppDelegate does). `.terminateLater` would run the
+    /// loop in NSModalPanelRunLoopMode, where Flutter messages still flow
+    /// (FlutterRunLoop schedules in common modes) but blocks sent with
+    /// `DispatchQueue.main.async` do not (checked 2026-11-23 with a swiftc
+    /// script) — and AudioCapturePlugin answers through the main queue, so
+    /// stopping the note could stall. Logout/restart/shutdown: cancelling
+    /// would abort them, so `.terminateLater` there, bounded by the same
+    /// timer, which is added in common modes so it fires in modal mode.
+    func shouldTerminate() -> NSApplication.TerminateReply {
+        if dartQuitDone { return .terminateNow }
+        if !quitPending {
+            quitPending = true
+            closePanel()
+            channel.invokeMethod("quit", arguments: nil) { [weak self] reply in
+                // No Dart handler or a Dart error: do not wait for `terminate`.
+                if reply is FlutterError || (reply as? NSObject) === FlutterMethodNotImplemented {
+                    self?.finishQuit()
+                }
+            }
+            let timer = Timer(timeInterval: StatusPanelPlugin.quitTimeout, repeats: false) { [weak self] _ in
                 self?.finishQuit()
             }
+            RunLoop.main.add(timer, forMode: .common)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + StatusPanelPlugin.quitTimeout) { [weak self] in
-            self?.finishQuit()
+        if poweringOff || systemQuit() {
+            awaitingReply = true
+            return .terminateLater
         }
-        return true
+        return .terminateCancel
     }
 
+    /// Logout, restart or shutdown: the quit Apple event carries a reason
+    /// (keyAEQuitReason); Cmd+Q sends no Apple event, Dock › Quit no reason.
+    /// willPowerOffNotification covers the same case if it arrives first.
+    private func systemQuit() -> Bool {
+        let quitReason = AEKeyword(0x7768_793F)  // keyAEQuitReason, 'why?'
+        return NSAppleEventManager.shared().currentAppleEvent?
+            .attributeDescriptor(forKeyword: quitReason) != nil
+    }
+
+    /// Dart is done (or the bound passed): quit for real.
     private func finishQuit() {
-        guard quitPending else { return }
+        if dartQuitDone && !quitPending { return }
         quitPending = false
         dartQuitDone = true
-        NSApp.reply(toApplicationShouldTerminate: true)
+        if awaitingReply {
+            awaitingReply = false
+            NSApp.reply(toApplicationShouldTerminate: true)
+        } else {
+            NSApp.terminate(nil)
+        }
+    }
+
+    // MARK: - App Nap
+
+    private var activity: NSObjectProtocol?
+
+    /// A note in progress must not be throttled when the window is hidden.
+    private func holdActivityWhileRecording() {
+        let busy = status != "idle"
+        if busy && activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleSystemSleepDisabled],
+                reason: "Oats records a note"
+            )
+        } else if !busy, let current = activity {
+            ProcessInfo.processInfo.endActivity(current)
+            activity = nil
+        }
     }
 
     /// Brings the main window back (closed windows are only hidden) and
@@ -271,7 +326,43 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         channel.invokeMethod("ready", arguments: nil)
     }
 
+    /// Seconds a panel opened by `suggest` stays up (pointer outside).
+    private static let suggestionVisible: TimeInterval = 12
+    private var autoClose: Timer?
+
+    /// A new meeting suggestion during a call in another app: show the panel
+    /// without activating the app nor taking key focus; it closes by itself
+    /// unless the pointer is inside. Never over a panel already open.
+    private func showSuggestion(_ args: [String: Any]) {
+        if panel.isVisible { return }
+        // The matching `update` may still be throttled on the Dart side.
+        var suggestion = args
+        suggestion.removeValue(forKey: "key")
+        snapshot["suggestion"] = suggestion
+        snapshot["showStart"] = false
+        rebuildPanel()
+        panel.orderFrontRegardless()
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in self?.closePanel() }
+        scheduleAutoClose(after: StatusPanelPlugin.suggestionVisible)
+    }
+
+    private func scheduleAutoClose(after seconds: TimeInterval) {
+        autoClose?.invalidate()
+        autoClose = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            guard let self = self, self.panel.isVisible else { return }
+            if self.panel.frame.contains(NSEvent.mouseLocation) {
+                self.scheduleAutoClose(after: 3)
+            } else {
+                self.closePanel()
+            }
+        }
+    }
+
     private func closePanel() {
+        autoClose?.invalidate()
+        autoClose = nil
         if let monitor = clickMonitor { NSEvent.removeMonitor(monitor) }
         clickMonitor = nil
         guard panel.isVisible else { return }
@@ -365,7 +456,10 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             ]))
         default:
             views.append(label(L.idle, secondary: true))
-            views.append(row([button(L.start, "start", primary: true)]))
+            // One "Démarrer la note" only: a suggestion carries its own.
+            if snapshot["showStart"] as? Bool ?? true {
+                views.append(row([button(L.start, "start", primary: true)]))
+            }
         }
         if snapshot["dictating"] as? Bool == true {
             views.append(label(L.dictating, secondary: true))
@@ -418,7 +512,10 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         if let detail = s["detail"] as? String, !detail.isEmpty {
             views.append(label(detail, secondary: true))
         }
-        views.append(row([button(L.start, "acceptSuggestion"), button(L.ignore, "dismissSuggestion")]))
+        views.append(row([
+            button(L.start, "acceptSuggestion", primary: true),
+            button(L.ignore, "dismissSuggestion"),
+        ]))
         return views
     }
 

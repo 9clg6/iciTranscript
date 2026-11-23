@@ -21,7 +21,7 @@ class AppDelegate: FlutterAppDelegate {
   // panel (note saved, owned servers stopped), bounded (StatusPanelPlugin).
   // Without the plugin (engine not up), quit at once.
   override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    return StatusPanelPlugin.shared?.requestQuit() == true ? .terminateLater : .terminateNow
+    return StatusPanelPlugin.shared?.shouldTerminate() ?? .terminateNow
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
