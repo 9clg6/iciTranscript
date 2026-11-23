@@ -5,6 +5,7 @@ import 'package:core_foundation/logging/logger.dart';
 import 'package:flutter/services.dart';
 import 'package:ici_transcript/application/services/live_answers/live_answers.service.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
+import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:ici_transcript/core/providers/services/dictation.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
 import 'package:ici_transcript/features/calendar/meeting_suggestion.provider.dart';
@@ -24,6 +25,12 @@ const MethodChannel kStatusPanelChannel = MethodChannel(
 /// Écart minimal entre deux envois : ~4 par seconde pendant un flux, le
 /// dernier état toujours envoyé à la fin.
 const Duration kStatusPanelThrottle = Duration(milliseconds: 250);
+
+/// Quitter : attente maximale de l'arrêt de la note…
+const Duration kQuitNoteBound = Duration(seconds: 10);
+
+/// … puis de l'arrêt des serveurs (SIGTERM, SIGKILL après 5 s, port).
+const Duration kQuitServersBound = Duration(seconds: 18);
 
 /// Tient le panneau de barre de menus à jour et exécute ses clics. Monté par
 /// l'app (RootAppWidget) pour toute sa vie.
@@ -53,6 +60,7 @@ class StatusPanelSync {
   String? _lastSent;
   Future<void>? _starting;
   Future<void>? _stopping;
+  Future<void>? _quitting;
   final List<Completer<void>> _idleWaiters = <Completer<void>>[];
 
   LiveAnswersService get _answers => _ref.read(liveAnswersServiceProvider);
@@ -74,6 +82,7 @@ class StatusPanelSync {
       _live.finalisingRemaining == null;
 
   void _changed() {
+    if (_quitting != null) _skipIfFinalising();
     if (_idle) {
       for (final Completer<void> c in _idleWaiters) {
         c.complete();
@@ -156,16 +165,40 @@ class StatusPanelSync {
       case 'openWindow':
         await _invoke('showWindow');
       case 'quit':
-        await _stop();
-        // Arrêt lancé depuis la fenêtre et encore en finalisation : on
-        // attend aussi, la note se sauve avant la fin de l'app.
-        if (!_idle) {
-          final Completer<void> idle = Completer<void>();
-          _idleWaiters.add(idle);
-          await idle.future;
-        }
-        await _invoke('terminate');
+        // Panneau, ⌘Q, Dock › Quitter : une seule fin.
+        await (_quitting ??= _quit());
     }
+  }
+
+  /// Quitter : note arrêtée et sauvée (finalisation passée : l'audio est
+  /// sur disque, le rattrapage reprend au lancement suivant), puis tous les
+  /// serveurs lancés par Oats, puis `terminate`. Chaque étape est bornée :
+  /// `terminate` part au plus [kQuitNoteBound] + [kQuitServersBound] après
+  /// la demande, quoi qu'il reste bloqué.
+  Future<void> _quit() async {
+    _skipIfFinalising();
+    try {
+      await _noteStopped().timeout(kQuitNoteBound);
+    } on Object catch (e) {
+      _log.warning('Note non arrêtée en quittant (${e.runtimeType})');
+    }
+    await _ref
+        .read(ownedProcessRegistryProvider)
+        .stopAll()
+        .timeout(kQuitServersBound, onTimeout: () {});
+    await _invoke('terminate');
+  }
+
+  Future<void> _noteStopped() async {
+    await _stop();
+    if (_idle) return;
+    final Completer<void> idle = Completer<void>();
+    _idleWaiters.add(idle);
+    await idle.future;
+  }
+
+  void _skipIfFinalising() {
+    if (_live.finalisingRemaining != null) _liveVm.skipFinalising();
   }
 
   /// Un seul démarrage à la fois (double clic, Démarrer + suggestion).
