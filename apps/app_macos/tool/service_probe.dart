@@ -663,6 +663,15 @@ void main() {
     } else if (mode == 'Dlag') {
       // D with a lagging server around the cut (partials arrive late, the
       // sealed-partial path), and again during the catch-up before Stop.
+      // KILL_AT: hard kill at that second (e.g. just after the drain limit).
+      if (env['KILL_AT'] != null) {
+        Timer(Duration(seconds: int.parse(env['KILL_AT']!)), () {
+          snap('before_kill');
+          dumpSegments();
+          log('kill_self');
+          Process.killPid(pid, ProcessSignal.sigkill);
+        });
+      }
       await start(mode);
       await feed(
         live,
