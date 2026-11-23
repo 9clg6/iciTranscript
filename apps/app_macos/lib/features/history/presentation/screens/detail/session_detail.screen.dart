@@ -733,6 +733,8 @@ class _SavedQuestion extends StatelessWidget {
             ),
       status: status,
       truncatedLabel: LocaleKeys.live_answers_truncated.tr(),
+      shortenedLabel: LocaleKeys.live_answers_shortened.tr(),
+      unsourcedLabel: LocaleKeys.live_answers_unsourced.tr(),
     );
   }
 }

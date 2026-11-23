@@ -167,6 +167,8 @@ class _QuestionCard extends StatelessWidget {
       status: status.$1,
       statusTone: status.$2,
       truncatedLabel: LocaleKeys.live_answers_truncated.tr(),
+      shortenedLabel: LocaleKeys.live_answers_shortened.tr(),
+      unsourcedLabel: LocaleKeys.live_answers_unsourced.tr(),
       actions: <Widget>[
         if (q.status == LiveQuestionStatus.answered)
           icon(

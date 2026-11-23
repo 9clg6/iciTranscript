@@ -178,16 +178,16 @@ void main() {
     'réponse tronquée (fin du flux sans erreur, au milieu d\'une phrase)',
     () {
       test(
-        'coupée au milieu d\'un mot : montrée telle quelle, marquée tronquée',
+        'coupée sur un mot outil : montrée telle quelle, marquée tronquée',
         () {
           final ParsedAnswer a = parseAnswer(
-            'La livraison est prévue pour le lot 1 au début du mo',
+            'La livraison est prévue pour le lot 1 au début du',
             const <DocumentExcerpt>[],
           );
           expect(a.truncated, isTrue);
           expect(
             a.text,
-            'La livraison est prévue pour le lot 1 au début du mo',
+            'La livraison est prévue pour le lot 1 au début du',
           );
         },
       );

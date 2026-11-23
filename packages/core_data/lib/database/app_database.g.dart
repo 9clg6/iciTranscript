@@ -1803,7 +1803,8 @@ class DetectedQuestion extends DataClass
   /// Sources de la reponse, liste JSON {documentId, title, excerpt}.
   final String? sources;
 
-  /// Etat : unanswered, answered, declined, truncated, failed (schema v3).
+  /// Etat : unanswered, answered, shortened, declined, truncated, failed
+  /// (schema v3 ; shortened = repondue, texte montre raccourci).
   final String status;
 
   /// Interlocuteur (0, 1, ...) range en texte, null si inconnu (schema v3).

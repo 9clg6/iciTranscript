@@ -32,9 +32,19 @@ class ParsedAnswer {
     required this.bullets,
     required this.sources,
     required this.truncated,
+    this.shortened = false,
   });
 
-  /// Le modèle a refusé (`NO_ANSWER`).
+  static const ParsedAnswer _declined = ParsedAnswer(
+    declined: true,
+    headline: '',
+    bullets: <String>[],
+    sources: <AnswerSource>[],
+    truncated: false,
+  );
+
+  /// Le modèle a refusé : `NO_ANSWER`, ou une phrase qui dit que
+  /// l'information manque ou que ce n'est pas une question.
   final bool declined;
 
   /// Phrase de tête.
@@ -48,6 +58,10 @@ class ParsedAnswer {
 
   /// Le texte s'arrête au milieu d'une phrase.
   final bool truncated;
+
+  /// Des lignes reçues ne sont pas montrées (au-delà de la tête et de
+  /// [kMaxBullets] puces, ou un autre bloc).
+  final bool shortened;
 
   /// Réponse affichée et sauvegardée : la tête puis une puce par ligne.
   String get text => <String>[
@@ -63,35 +77,41 @@ final RegExp _bulletMarker = RegExp(r'^([-*•]|\d+[.)])\s+');
 final RegExp _finalStop = RegExp(r'[.!?…»")]$');
 final RegExp _trailingCitations = RegExp(r'(\s*\[S\d+\])+\s*$');
 
-/// Lit [raw], la réponse complète, contre les [excerpts] fournis au modèle
-/// (l'extrait n° i, à partir de 1, se cite `[S<i>]`).
+/// Lit [raw], la réponse complète d'un modèle, contre les [excerpts] qu'il
+/// a reçus (l'extrait n° i, à partir de 1, se cite `[S<i>]`). Une seule
+/// lecture pour tous les fournisseurs, faite pour les sorties réelles d'un
+/// petit modèle local : refus en prose, jeton au milieu, citations mal
+/// formées, préambules, réponses trop longues.
 ///
-/// Citations vers un extrait non fourni : retirées du texte et des sources.
-/// Les autres sont renumérotées dans l'ordre de première citation.
+/// Étapes : refus en tête ; lignes portant le jeton retirées ; citations
+/// et préambules nettoyés ; bloc gardé (le premier qui cite un extrait
+/// fourni) ; tête + [kMaxBullets] puces ; refus en prose ; citations
+/// renumérotées dans l'ordre de première citation (inconnues retirées).
 ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts) {
   final String trimmed = raw.trim();
-  if (isDeclined(trimmed)) {
-    return const ParsedAnswer(
-      declined: true,
-      headline: '',
-      bullets: <String>[],
-      sources: <AnswerSource>[],
-      truncated: false,
-    );
-  }
-  final List<String> lines = <String>[
+  if (isDeclined(trimmed)) return ParsedAnswer._declined;
+
+  final List<String> cleaned = <String>[
     for (final String l in trimmed.split('\n'))
-      if (l.trim().replaceFirst(_bulletMarker, '').trim() case final String t
-          when t.isNotEmpty)
-        t,
-  ].take(kMaxBullets + 1).toList();
+      if (!l.contains(kNoAnswerToken)) _clean(l, excerpts.length),
+  ];
+  final List<List<String>> blocks = _blocks(cleaned);
+  if (blocks.isEmpty) return ParsedAnswer._declined;
+  final List<String> block = blocks.firstWhere(
+    (List<String> b) => b.any(kCitation.hasMatch),
+    orElse: () => blocks.first,
+  );
+  final List<String> lines = <String>[
+    for (final String l in block) l.replaceFirst(_bulletMarker, '').trim(),
+  ].where((String l) => l.isNotEmpty).toList();
+  if (lines.isEmpty || _isRefusal(lines)) return ParsedAnswer._declined;
+  final List<String> kept = lines.take(kMaxBullets + 1).toList();
 
   final List<AnswerSource> sources = <AnswerSource>[];
   final Map<int, int> renumber = <int, int>{};
   String cite(String line) =>
       line.replaceAllMapped(RegExp(r'\s*\[S(\d+)\]'), (Match m) {
         final int n = int.parse(m[1]!);
-        if (n < 1 || n > excerpts.length) return '';
         final int to = renumber.putIfAbsent(n, () {
           final DocumentExcerpt e = excerpts[n - 1];
           sources.add(
@@ -105,43 +125,163 @@ ParsedAnswer parseAnswer(String raw, List<DocumentExcerpt> excerpts) {
         });
         return '${m[0]!.substring(0, m[0]!.indexOf('['))}[S$to]';
       }).trim();
-  final List<String> cited = lines.map(cite).toList();
-  final String last = cited.isEmpty
-      ? ''
-      : cited.last.replaceFirst(_trailingCitations, '');
+  final List<String> cited = kept.map(cite).toList();
   final bool emptyLastBullet = RegExp(
     r'(^|\n)\s*([-*•]|\d+[.)])\s*$',
   ).hasMatch(trimmed);
   return ParsedAnswer(
     declined: false,
-    headline: cited.isEmpty ? '' : cited.first,
+    headline: cited.first,
     bullets: cited.skip(1).toList(),
     sources: sources,
     truncated:
         emptyLastBullet ||
-        (cited.length > 1
-            ? _bulletLooksCut(last)
-            : last.isNotEmpty && !_finalStop.hasMatch(last)),
+        _looksCut(cited.last.replaceFirst(_trailingCitations, '')),
+    shortened:
+        lines.length > kept.length ||
+        blocks.length > 1 && blocks.any((List<String> b) => b != block),
   );
 }
 
-/// Mots outils après lesquels une puce ne peut pas finir.
+/// Groupe entre crochets fait de tags `S<n>`, d'heures, « User » ou
+/// « Speaker n » : remplacé par les citations canoniques fournies, le reste
+/// retiré.
+final RegExp _citationGroup = RegExp(r'(\s*)\[([^\[\]]*)\]');
+
+/// Parenthèses nettoyées, et seulement elles : `([S1])` (citations
+/// canoniques) et `(User, 00:00:01)`. « (14:30) » ou « (S2) » restent du
+/// texte.
+final RegExp _citationInParens = RegExp(r'\(\s*((?:\[S\d+\][\s,;]*)+)\)');
+final RegExp _speakerTimeInParens = RegExp(
+  r'\s*\((?:User|Speaker \d+)[\s,]+\d{1,2}:\d{2}(?::\d{2})?'
+  r'(?:[\s,]+\d{1,2}:\d{2}(?::\d{2})?)*\s*\)',
+);
+final RegExp _tag = RegExp(r'\bS(\d+)\b');
+final RegExp _time = RegExp(r'\b\d{1,2}:\d{2}(?::\d{2})?\b');
+final RegExp _documentTag = RegExp(r'\b(?:the )?documents? S(\d+)\b');
+final RegExp _preamble = RegExp(
+  r"^\s*(User's response|User|Answer|Response|Réponse)\s*:\s*",
+  caseSensitive: false,
+);
+
+/// Une ligne nettoyée : citations canoniques vers [count] extraits
+/// fournis, heures et préambule retirés.
+String _clean(String line, int count) {
+  String canonical(Iterable<RegExpMatch> tags) => <String>[
+    for (final RegExpMatch t in tags)
+      if (int.parse(t[1]!) case final int n when n >= 1 && n <= count) '[S$n]',
+  ].join(' ');
+
+  String out = line.replaceAllMapped(_documentTag, (Match m) => '[S${m[1]}]');
+  out = out
+      .replaceAllMapped(_citationInParens, (Match m) => m[1]!.trim())
+      .replaceAll(_speakerTimeInParens, '')
+      .replaceAllMapped(_citationGroup, (Match m) {
+        final String inner = m[2]!;
+        final String rest = inner
+            .replaceAll(_tag, '')
+            .replaceAll(_time, '')
+            .replaceAll(RegExp(r'\b(User|Speaker \d+)\b'), '')
+            .replaceAll(RegExp(r'[\s,;:]'), '');
+        if (rest.isNotEmpty) return m[0]!;
+        final String tags = canonical(_tag.allMatches(inner));
+        return tags.isEmpty ? '' : '${m[1]}$tags';
+      });
+  final bool bullet = _bulletMarker.hasMatch(out.trimLeft());
+  final String body = out.trimLeft().replaceFirst(_bulletMarker, '');
+  final String withoutPreamble = body.replaceFirst(_preamble, '').trim();
+  if (withoutPreamble.isEmpty) return '';
+  return bullet ? '- $withoutPreamble' : withoutPreamble;
+}
+
+/// Blocs séparés par une ligne vide, chacun commençant par une ligne qui
+/// n'est pas une puce (une puce après une ligne vide continue le bloc).
+List<List<String>> _blocks(List<String> lines) {
+  final List<List<String>> blocks = <List<String>>[];
+  bool afterBlank = false;
+  for (final String l in lines) {
+    if (l.trim().isEmpty) {
+      afterBlank = true;
+      continue;
+    }
+    if (blocks.isEmpty ||
+        (afterBlank && !_bulletMarker.hasMatch(l.trimLeft()))) {
+      blocks.add(<String>[]);
+    }
+    blocks.last.add(l);
+    afterBlank = false;
+  }
+  return blocks;
+}
+
+/// Phrases qui disent que l'information manque, ou que ce n'est pas une
+/// question pour l'utilisateur. Un état du monde (« not yet approved »)
+/// n'en est pas une.
+final RegExp _refusal = RegExp(
+  r"not (explicitly )?(given|provided|stated|indicated|mentioned|specified)"
+  r"|(documents?|excerpts?) do(es)? not (mention|contain)"
+  r"|did not specify"
+  r"|no specific\b[^.]*\b(given|available)"
+  r"|n'est pas (donné|indiqué|précisé|mentionné)"
+  r"|n'ont pas été mentionné"
+  r"|non (spécifié|indiqué|précisé)"
+  r"|ne connaît pas"
+  r"|aucune information"
+  r"|not a question|is a comment",
+  caseSensitive: false,
+);
+
+/// Phrase qui renvoie aux sources au lieu de répondre (« … n'est pas donné
+/// ici », « not stated in the provided information »).
+final RegExp _pointsBack = RegExp(
+  r"\bici\b|\bin the (provided|given)\b",
+  caseSensitive: false,
+);
+
+/// Première phrase, citations qui la suivent comprises.
+final RegExp _firstSentence = RegExp(r'^.*?[.!?](\s*\[S\d+\])*(?=\s|$)');
+
+/// Refus en prose (lignes déjà nettoyées : seules les citations vers un
+/// extrait fourni restent).
+/// - Tête-phrase : la première phrase refuse sans citer d'extrait, ou
+///   renvoie aux sources.
+/// - Tête-titre (sans ponctuation finale ou finie par « : », suivie de
+///   puces) : la première puce refuse, ou une ligne refuse et aucune puce ne
+///   cite d'extrait.
+/// Une négation appuyée sur un extrait cité (« Breakfast is not provided.
+/// [S1] ») reste une réponse.
+bool _isRefusal(List<String> lines) {
+  final String head = lines.first.replaceFirst(_trailingCitations, '');
+  final bool title =
+      lines.length > 1 && (!_finalStop.hasMatch(head) || head.endsWith(':'));
+  if (title) {
+    return _refusal.hasMatch(lines[1]) ||
+        (lines.any(_refusal.hasMatch) &&
+            !lines.skip(1).any(kCitation.hasMatch));
+  }
+  final String sentence =
+      _firstSentence.firstMatch(lines.first)?[0] ?? lines.first;
+  return _pointsBack.hasMatch(sentence) ||
+      (_refusal.hasMatch(sentence) && !kCitation.hasMatch(sentence));
+}
+
+/// Mots outils après lesquels une ligne ne peut pas finir.
 const Set<String> _functionWords = <String>{
   'de', 'du', 'des', 'le', 'la', 'les', 'un', 'une', 'et', 'ou', 'à', 'au', //
   'aux', 'pour', 'par', 'avec', 'en', 'sur', 'the', 'a', 'an', 'of', 'to', //
   'and', 'or', 'for', 'with', 'in', 'on', 'at', //
 };
 
-/// Dernière puce coupée ? Sans signal de fin de longueur du fournisseur :
+/// Dernière ligne coupée ? Sans signal de fin de longueur du fournisseur :
 /// seulement si elle finit sur un signe de suite (, ; : - – ou parenthèse
-/// ouverte) ou sur un mot outil. Une puce finie par un mot plein est
+/// ouverte) ou sur un mot outil. Une ligne finie par un mot plein est
 /// complète, même sans point.
-bool _bulletLooksCut(String bullet) {
-  if (_finalStop.hasMatch(bullet)) return false;
-  if (RegExp(r'[,;:\-–(]$').hasMatch(bullet)) return true;
-  if ('('.allMatches(bullet).length > ')'.allMatches(bullet).length) {
+bool _looksCut(String line) {
+  if (_finalStop.hasMatch(line)) return false;
+  if (RegExp(r'[,;:\-–(]$').hasMatch(line)) return true;
+  if ('('.allMatches(line).length > ')'.allMatches(line).length) {
     return true;
   }
-  final String lastWord = bullet.split(RegExp(r'\s+')).last.toLowerCase();
+  final String lastWord = line.split(RegExp(r'\s+')).last.toLowerCase();
   return _functionWords.contains(lastWord);
 }

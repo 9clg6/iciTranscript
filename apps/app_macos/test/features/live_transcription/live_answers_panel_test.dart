@@ -15,6 +15,7 @@ import 'package:ici_transcript/features/live_transcription/presentation/screens/
 import '../../helpers/fake_view_models.dart' show settle;
 import '../../helpers/live_answers_fakes.dart';
 import '../../helpers/localized_app.dart';
+import '../../helpers/probe_outputs.dart';
 import '../../helpers/text_weight.dart';
 
 /// Zone « Questions » de l'écran en direct (T4, besoin 11) : comportement,
@@ -283,10 +284,10 @@ void main() {
   ) async {
     await pumpLive(tester);
     await ask(tester);
-    h.llm.last.reply('La livraison est prévue pour le lot 1 au début du mo');
+    h.llm.last.reply('La livraison est prévue pour le lot 1 au début du');
     await settle(tester);
 
-    expect(find.textContaining('au début du mo'), findsOneWidget);
+    expect(find.textContaining('au début du'), findsOneWidget);
     expect(find.text('live_answers.truncated'.tr()), findsOneWidget);
   });
 
@@ -379,4 +380,65 @@ void main() {
       lessThan(FontWeight.values.indexOf(FontWeight.w600)),
     );
   });
+
+  testWidgets('réponse raccourcie (plus de trois puces, sortie réelle) : la '
+      'tête reste, l\'écran signale le raccourci', (WidgetTester tester) async {
+    await pumpLive(tester);
+    await ask(tester);
+    h.llm.last.reply(probe('contract/fr1-c#0').raw);
+    await settle(tester);
+
+    expect(find.textContaining('Meeting Recap'), findsOneWidget);
+    expect(find.text('live_answers.shortened'.tr()), findsOneWidget);
+  });
+
+  testWidgets('réponse courte : pas de signe de raccourci', (
+    WidgetTester tester,
+  ) async {
+    await pumpLive(tester);
+    await ask(tester);
+    h.llm.last.reply('Le lot 1 arrive le 12 mars.');
+    await settle(tester);
+
+    expect(find.text('live_answers.shortened'.tr()), findsNothing);
+  });
+
+  testWidgets('réponse qui ne cite aucune source : marquée « sans source »', (
+    WidgetTester tester,
+  ) async {
+    await pumpLive(tester);
+    await ask(tester);
+    h.llm.last.reply('Le lot 1 arrive le 12 mars.');
+    await settle(tester);
+
+    expect(find.text('live_answers.unsourced'.tr()), findsOneWidget);
+  });
+
+  testWidgets('réponse qui cite un extrait fourni : pas « sans source »', (
+    WidgetTester tester,
+  ) async {
+    await pumpLive(tester);
+    h.search.results = <DocumentExcerpt>[contract];
+    await ask(tester);
+    h.llm.last.reply('Le lot 1 arrive le 12 mars [S1].');
+    await settle(tester);
+
+    expect(find.text('live_answers.unsourced'.tr()), findsNothing);
+  });
+
+  testWidgets(
+    'refus en prose du modèle (sortie réelle) : rien d\'affiché comme '
+    'réponse, la question reste avec la mention de refus',
+    (WidgetTester tester) async {
+      await pumpLive(tester);
+      await ask(tester);
+      h.llm.last.reply(probe('contract/en3-c#2').raw);
+      await settle(tester);
+
+      expect(find.text(q), findsOneWidget);
+      expect(find.text('live_answers.declined'.tr()), findsOneWidget);
+      expect(find.textContaining('rate card'), findsNothing);
+      expect(h.only.status, LiveQuestionStatus.declined);
+    },
+  );
 }
