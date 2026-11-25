@@ -1,3 +1,4 @@
+import 'package:ici_transcript/application/services/llm/mistral_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/anthropic_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/gemini_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
@@ -58,6 +59,7 @@ class LlmSettings {
     LlmProviderId.anthropic => AnthropicLlmProvider.defaultModel,
     LlmProviderId.openai => OpenAiLlmProvider.defaultModel,
     LlmProviderId.gemini => GeminiLlmProvider.defaultModel,
+    LlmProviderId.mistral => MistralLlmProvider.defaultModel,
     LlmProviderId.ollama => OllamaLlmProvider.defaultModel,
   };
 }

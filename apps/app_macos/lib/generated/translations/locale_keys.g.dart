@@ -213,6 +213,7 @@ abstract class  LocaleKeys {
   static const settings_ai_provider_anthropic = 'settings.ai.provider.anthropic';
   static const settings_ai_provider_openai = 'settings.ai.provider.openai';
   static const settings_ai_provider_gemini = 'settings.ai.provider.gemini';
+  static const settings_ai_provider_mistral = 'settings.ai.provider.mistral';
   static const settings_ai_provider_ollama = 'settings.ai.provider.ollama';
   static const settings_ai_provider = 'settings.ai.provider';
   static const settings_ai_api_key_label = 'settings.ai.api_key_label';

@@ -9,6 +9,9 @@ enum LlmProviderId {
   /// Gemini (API Google AI), cle API.
   gemini,
 
+  /// Mistral, cle API ; la meme cle sert a la transcription en ligne.
+  mistral,
+
   /// Ollama local, sans cle.
   ollama,
 }

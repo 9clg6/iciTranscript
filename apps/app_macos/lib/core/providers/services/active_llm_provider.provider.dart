@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:ici_transcript/application/services/llm/mistral_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/anthropic_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/api_key_store.dart';
 import 'package:ici_transcript/application/services/llm/gemini_llm_provider.dart';
@@ -67,6 +68,11 @@ LlmProvider buildLlmProvider(
     model: model,
   ),
   LlmProviderId.gemini => GeminiLlmProvider(
+    dio: dio,
+    apiKey: apiKey,
+    model: model,
+  ),
+  LlmProviderId.mistral => MistralLlmProvider(
     dio: dio,
     apiKey: apiKey,
     model: model,

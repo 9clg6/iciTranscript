@@ -254,6 +254,7 @@
         "anthropic": "Claude",
         "openai": "OpenAI",
         "gemini": "Gemini",
+        "mistral": "Mistral",
         "ollama": "Local (Ollama)"
       },
       "api_key_label": "Clé API",
