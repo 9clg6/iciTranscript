@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
@@ -92,7 +94,10 @@ enum DictationDelivery {
 enum DictationErrorReason { timeout, microphone, serverUnavailable }
 
 /// État du raccourci global.
-enum ShortcutStatus { disabled, registered, unavailable }
+///
+/// [needsAccessibility] : raccourci « modificateurs seuls » refusé faute
+/// d'Accessibilité (la surveillance globale des modificateurs l'exige).
+enum ShortcutStatus { disabled, registered, unavailable, needsAccessibility }
 
 /// Dictée (T2) : raccourci global maintenu (ou appui bref = bascule), texte
 /// final produit une seule fois (presse-papiers ou collage).
@@ -141,6 +146,13 @@ final class DictationController {
   /// En deçà, un appui est bref : la dictée continue après le relâchement
   /// (bascule), un second appui l'arrête.
   static const Duration holdThreshold = Duration(milliseconds: 300);
+
+  /// Personne n'a parlé depuis l'appui : la dictée finit sans bruit. Ne
+  /// vaut qu'avant la première parole.
+  static const Duration noSpeechTimeout = Duration(seconds: 8);
+
+  /// Au-delà, la capture s'arrête et le texte dit jusque-là est produit.
+  static const Duration maxDictationDuration = Duration(minutes: 3);
 
   /// Texte final attendu au plus tard ce délai après la fin de la capture.
   static const Duration finalTextTimeout = Duration(seconds: 15);
@@ -218,22 +230,45 @@ final class DictationController {
       _shortcutStatus.add(ShortcutStatus.disabled);
       return;
     }
+    // Mêmes réglages déjà posés : rien à refaire. Un raccourci refusé (pris,
+    // Accessibilité absente) est retenté à chaque application.
     final bool sameShortcut =
         wasEnabled &&
+        shortcutStatus == ShortcutStatus.registered &&
         previous!.shortcut.keyCode == settings.shortcut.keyCode &&
         previous.shortcut.modifiers == settings.shortcut.modifiers;
     if (!sameShortcut) {
       if (wasEnabled) await _shortcuts.unregister();
-      final bool ok = await _shortcuts.register(
-        keyCode: settings.shortcut.keyCode,
-        modifiers: settings.shortcut.modifiers,
-      );
+      final int? keyCode = settings.shortcut.keyCode;
+      final int modifiers = settings.shortcut.modifiers;
+      // Modificateurs seuls : Carbon ne sait pas les poser, le plugin les
+      // surveille (Accessibilité requise).
+      final bool ok = keyCode == null
+          ? await _shortcuts.registerModifiers(
+              modifiers: modifiers,
+              holdThreshold: holdThreshold,
+            )
+          : await _shortcuts.register(keyCode: keyCode, modifiers: modifiers);
       if (ok) _shortcutEvents ??= _shortcuts.events.listen(_onShortcut);
       _shortcutStatus.add(
-        ok ? ShortcutStatus.registered : ShortcutStatus.unavailable,
+        ok
+            ? ShortcutStatus.registered
+            : keyCode == null
+            ? ShortcutStatus.needsAccessibility
+            : ShortcutStatus.unavailable,
       );
     }
     unawaited(_warmServer());
+  }
+
+  /// L'app revient au premier plan : un raccourci refusé faute
+  /// d'Accessibilité est retenté (accordée entre-temps dans les Réglages
+  /// Système), sans relancer l'app.
+  Future<void> retryShortcut() async {
+    final DictationSettings? settings = _settings;
+    if (settings == null || !settings.enabled) return;
+    if (shortcutStatus != ShortcutStatus.needsAccessibility) return;
+    await apply(settings);
   }
 
   /// Prête le serveur à [work] (coach, diarization : un seul modèle à la
@@ -371,7 +406,62 @@ final class DictationController {
         _onReleased();
       case ShortcutEvent.cancel:
         if (_run case final _Run run when !run.finished) _cancel(run);
+      case ShortcutEvent.aborted:
+        _onAborted();
+      case ShortcutEvent.tapped:
+        _onTapped();
     }
+  }
+
+  /// Appui bref propre d'un raccourci modificateurs seuls : bascule. Il
+  /// démarre une dictée, ou arrête celle en cours.
+  void _onTapped() {
+    if (_live.isStarting) return;
+    final _Run? current = _run;
+    if (current != null && !current.finished) {
+      if (current.toggled && !current.captureEnded) _endCapture(current);
+      return;
+    }
+    unawaited(_begin(current, toggled: true));
+  }
+
+  /// Après une parole, une pause ne termine jamais : relâchement, second
+  /// appui, Échap ou durée maximale seulement.
+  void _heardSpeech(_Run run) {
+    if (run.heardSpeech) return;
+    run.heardSpeech = true;
+    run.noSpeechTimer?.cancel();
+  }
+
+  // Seuil de parole d'un chunk (PCM16) : au moins 2 % d'échantillons forts,
+  // comme la source distante (un clic isolé n'est pas de la parole).
+  static bool _isSpeech(AudioChunk chunk) {
+    final ByteData samples = ByteData.sublistView(chunk.data);
+    final int count = chunk.data.length ~/ 2;
+    if (count == 0) return false;
+    int loud = 0;
+    for (int i = 0; i < count; i++) {
+      if (samples.getInt16(i * 2, Endian.little).abs() > 500) loud++;
+    }
+    return loud >= math.max(3, count ~/ 50);
+  }
+
+  bool get _modifiersOnly => _settings?.shortcut.keyCode == null;
+
+  /// Une autre touche (ou un clic) pendant que les modificateurs seuls sont
+  /// tenus : c'était le raccourci d'une autre app (⌘⌥Échap, ⌘⌥-glisser).
+  void _onAborted() {
+    final _Run? run = _run;
+    if (run == null || run.finished || run.captureEnded) return;
+    if (run.stopOnRelease) {
+      // Appui d'arrêt d'une bascule : la dictée continue, son relâchement
+      // égaré ne fait rien.
+      run.stopOnRelease = false;
+      run.ignoreRelease = true;
+      return;
+    }
+    // Appui qui a lancé la dictée : jetée sans bruit (ni texte, ni erreur).
+    if (!run.toggled) _cancel(run, abandon: true);
   }
 
   void _onPressed() {
@@ -382,7 +472,17 @@ final class DictationController {
     if (current != null && !current.finished) {
       current.ignoreRelease = true;
       // Second appui d'une bascule : il arrête. Sinon (transcription) : ignoré.
-      if (current.toggled && !current.captureEnded) _endCapture(current);
+      if (current.toggled && !current.captureEnded) {
+        if (_modifiersOnly) {
+          // Modificateurs seuls : arrêt au relâchement, un `aborted` d'ici
+          // là (raccourci d'une autre app) laisse la dictée continuer.
+          current
+            ..ignoreRelease = false
+            ..stopOnRelease = true;
+        } else {
+          _endCapture(current);
+        }
+      }
       return;
     }
     unawaited(_begin(current));
@@ -391,19 +491,27 @@ final class DictationController {
   void _onReleased() {
     final _Run? run = _run;
     if (run == null || run.finished || run.captureEnded) return;
+    if (run.stopOnRelease) {
+      run.stopOnRelease = false;
+      _endCapture(run);
+      return;
+    }
     if (run.ignoreRelease) {
       run.ignoreRelease = false;
       return;
     }
-    if (clock.now().difference(run.pressedAt) < holdThreshold) {
+    // Modificateurs seuls : `pressed` n'arrive qu'au seuil, le maintien est
+    // déjà confirmé par le plugin (jamais recompté ici).
+    if (!_modifiersOnly &&
+        clock.now().difference(run.pressedAt) < holdThreshold) {
       run.toggled = true; // appui bref : l'écoute continue
       return;
     }
     _endCapture(run);
   }
 
-  Future<void> _begin(_Run? previous) async {
-    final _Run run = _Run(clock.now());
+  Future<void> _begin(_Run? previous, {bool toggled = false}) async {
+    final _Run run = _Run(clock.now())..toggled = toggled;
     _run = run;
     if (_modelCached != null && !await _isModelCached()) {
       // Ni capture, ni Échap, ni serveur : Réglages propose le téléchargement.
@@ -413,6 +521,17 @@ final class DictationController {
     }
     unawaited(_shortcuts.setCancelKeyEnabled(true));
     _arbiter.dictationStarted();
+    // Bornes : personne n'a parlé (fin sans bruit), ou trop long (texte dit
+    // jusque-là produit). Un relâchement jamais livré n'attend pas sans fin.
+    run.noSpeechTimer = Timer(noSpeechTimeout, () {
+      if (!run.finished && !run.captureEnded && !run.heardSpeech) _cancel(run);
+    });
+    run.maxTimer = Timer(maxDictationDuration, () {
+      if (!run.finished && !run.captureEnded) {
+        run.ignoreRelease = true;
+        _endCapture(run);
+      }
+    });
     // Ancien flux resté ouvert après un délai de garde : fermé d'abord.
     if (previous != null && previous.streaming) {
       previous.late = false;
@@ -473,6 +592,7 @@ final class DictationController {
     if (run.finished || run.captureEnded || chunk.source != AudioSource.input) {
       return;
     }
+    if (!run.heardSpeech && _isSpeech(chunk)) _heardSpeech(run);
     if (run.streaming) {
       _remote.sendAudio(chunk);
       return;
@@ -654,8 +774,15 @@ final class DictationController {
     return DictationDelivery.pasted;
   }
 
-  void _cancel(_Run run) {
-    run.meeting?.cancel();
+  /// Échap : la dictée est annulée (ses mots exclus de la note aussi).
+  /// [abandon] : appui abandonné (raccourci d'une autre app) : pendant une
+  /// réunion, rien n'était dicté, le micro reste à la note.
+  void _cancel(_Run run, {bool abandon = false}) {
+    if (abandon) {
+      run.meeting?.abandon();
+    } else {
+      run.meeting?.cancel();
+    }
     run.late = false;
     _end(run, const DictationIdle());
     unawaited(_closeStream(run));
@@ -673,6 +800,8 @@ final class DictationController {
     if (run.finished) return;
     run.finished = true;
     run.finalTimer?.cancel();
+    run.noSpeechTimer?.cancel();
+    run.maxTimer?.cancel();
     _stopCapture(run);
     run.buffer.clear();
     unawaited(_shortcuts.setCancelKeyEnabled(false));
@@ -736,6 +865,14 @@ final class _Run {
   Timer? finalTimer;
   bool toggled = false;
   bool ignoreRelease = false;
+
+  /// Modificateurs seuls : second appui d'une bascule, arrêt au relâchement.
+  bool stopOnRelease = false;
+
+  /// Une parole a été entendue : plus de fin faute de parole.
+  bool heardSpeech = false;
+  Timer? noSpeechTimer;
+  Timer? maxTimer;
   bool captureEnded = false;
   bool committed = false;
   bool streaming = false;

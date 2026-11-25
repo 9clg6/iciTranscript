@@ -24,6 +24,7 @@ import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/transcript_formatter.dart';
+import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 import 'package:ici_transcript/core/platform/app_data_directory.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
@@ -58,7 +59,9 @@ final class LiveTranscriptionService {
     GapBackfillService? gapBackfill,
     GapBackfillRetry? gapBackfillRetry,
     ServerPorts? ports,
-  }) : _gapBackfill = gapBackfill,
+    Future<int?> Function()? freeBytes,
+  }) : _freeBytes = freeBytes,
+       _gapBackfill = gapBackfill,
        _gapBackfillRetry = gapBackfillRetry,
        _ports = ports ?? serverPorts(),
        _processManagerService = processManagerService,
@@ -75,6 +78,8 @@ final class LiveTranscriptionService {
   final TranscriptionService _transcriptionService;
   final LiveDiarizationService? _liveDiarization;
   final WavRecorder Function() _createWavRecorder;
+  // Place libre du volume des données ; null : pas de contrôle (tests).
+  final Future<int?> Function()? _freeBytes;
   final GapBackfillService? _gapBackfill;
   // Si présent, la première tentative passe par lui : un serveur absent
   // laisse la session en attente de reprise.
@@ -367,12 +372,20 @@ final class LiveTranscriptionService {
           await _systemRecorder!.open(
             '$recordingsDir/${recSessionId}_system.wav',
           );
+          _watchRecorders();
         } catch (e) {
           _log.warning('Ouverture enregistreurs WAV échouée: $e');
           _micRecorder = null;
           _systemRecorder = null;
         }
       }
+      // Place disque : avant le départ, puis toutes les 30 s.
+      await _checkStorage();
+      _storageTimer?.cancel();
+      _storageTimer = Timer.periodic(
+        RecordingStorage.checkEvery,
+        (_) => unawaited(_checkStorage()),
+      );
 
       // 5. Écouter les deux flux avant de relayer l'audio. Ainsi, aucun delta
       // ni `done` ne peut être perdu si le serveur répond immédiatement.
@@ -536,6 +549,15 @@ final class LiveTranscriptionService {
     } catch (e) {
       _log.warning('Fermeture enregistreurs WAV: $e');
     }
+    // Un disque encore plein à l'arrêt : l'intervalle ouvert est dit aussi.
+    _noteMissingAudio();
+    _storageTimer?.cancel();
+    _storageTimer = null;
+    for (final StreamSubscription<Object> sub in _wavErrorSubscriptions) {
+      _cancel(sub);
+    }
+    _wavErrorSubscriptions.clear();
+    _publishStorage(audioCopyFailing: false);
     _micRecorder = null;
     _systemRecorder = null;
     _capturePaused = false;
@@ -796,7 +818,7 @@ final class LiveTranscriptionService {
       return;
     }
     _chainWrite(current.id, () async {
-      await _transcriptionService.discardProvisional(current.id);
+      await _discard(current.id);
       _transcriptionService.segmentsStream.add(
         List<TranscriptSegmentEntity>.from(
           _transcriptionService.segmentsStream.value,
@@ -820,6 +842,8 @@ final class LiveTranscriptionService {
 
   /// Libere les ressources du service.
   Future<void> dispose() async {
+    _storageTimer?.cancel();
+    _unsavedTimer?.cancel();
     _resetServerSupervision();
     await _serverStateSubscription?.cancel();
     await _connectionSubscription?.cancel();
@@ -942,6 +966,43 @@ final class LiveTranscriptionService {
       '$_untranscribedPrefix (${TranscriptFormatter.timestamp(startMs)} '
       '– ${TranscriptFormatter.timestamp(endMs)})';
 
+  static const String _notRecordedAfterPrefix =
+      "Rien n'a pu être enregistré après ";
+  static const String _notRecordedAfterSuffix =
+      ' (app arrêtée ou disque plein)';
+
+  /// Repère OUVERT écrit au relancement après un arrêt brutal (app tuée,
+  /// disque plein) : rien de la source n'a été gardé après [startMs], ni
+  /// texte ni audio. Jamais rattrapé ni retiré, jamais pris pour du silence.
+  static String notRecordedAfterMarkerText(int startMs) =>
+      '$_notRecordedAfterPrefix${TranscriptFormatter.timestamp(startMs)}'
+      '$_notRecordedAfterSuffix';
+
+  static final RegExp _notRecordedAfter = RegExp(
+    "^Rien n'a pu être enregistré après (\\d+:\\d{2}:\\d{2}) "
+    r'\(app arrêtée ou disque plein\)$',
+  );
+
+  /// Vrai pour un texte écrit par [notRecordedAfterMarkerText].
+  static bool isNotRecordedAfterMarker(String text) =>
+      _notRecordedAfter.hasMatch(text);
+
+  /// Heure (hh:mm:ss) d'un repère [notRecordedAfterMarkerText].
+  static String? notRecordedAfterTime(String text) =>
+      _notRecordedAfter.firstMatch(text)?.group(1);
+
+  static const String _noAudioCopyPrefix = 'Pas de copie audio';
+
+  /// Repère d'un intervalle dont l'audio n'a pas pu être gardé (disque
+  /// plein) : ni rattrapable, ni du silence vérifié.
+  static String noAudioCopyMarkerText(int startMs, int endMs) =>
+      '$_noAudioCopyPrefix : ${TranscriptFormatter.timestamp(startMs)} '
+      '– ${TranscriptFormatter.timestamp(endMs)}';
+
+  /// Vrai pour un texte écrit par [noAudioCopyMarkerText].
+  static bool isNoAudioCopyMarker(String text) =>
+      text.startsWith('$_noAudioCopyPrefix : ');
+
   /// Vrai pour un texte écrit par [untranscribedMarkerText].
   static bool isUntranscribedMarker(String text) =>
       _untranscribed.hasMatch(text);
@@ -1062,40 +1123,240 @@ final class LiveTranscriptionService {
     ];
     _chainWrite(id, () async {
       await Future.wait(absorbedWrites);
-      if (!await _saveWithRetry(marker)) return;
-      // Une seule émission : l'union remplace les absorbés à l'écran.
+      // Une seule émission : l'union remplace les absorbés à l'écran, rangée
+      // ou non (montrée même si la base refuse).
+      if (session.id == currentSessionStream.valueOrNull?.id) {
+        _transcriptionService.segmentsStream.add(
+          List<TranscriptSegmentEntity>.from(
+              _transcriptionService.segmentsStream.value,
+            )
+            ..removeWhere(
+              (TranscriptSegmentEntity x) =>
+                  x.id == id || absorbed.contains(x.id),
+            )
+            ..add(marker),
+        );
+        _sortAndDedupeSegments();
+      }
+      // Rangée d'abord (réessayée sans limite), les absorbés ne partent
+      // qu'ensuite.
+      await _persist(
+        marker,
+        show: false,
+        then: () async {
+          for (final String other in absorbed) {
+            await _discard(other);
+          }
+        },
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Place disque (règles : [RecordingStorage]) et copie audio (WAV).
+  // ---------------------------------------------------------------------------
+
+  final BehaviorSubject<RecordingStorage> _storage =
+      BehaviorSubject<RecordingStorage>.seeded(const RecordingStorage());
+  Timer? _storageTimer;
+  final List<StreamSubscription<Object>> _wavErrorSubscriptions =
+      <StreamSubscription<Object>>[];
+  // Intervalles sans copie déjà dits dans la note, par enregistreur.
+  final Map<WavRecorder, int> _missingNoted = <WavRecorder, int>{};
+
+  /// Place disque de la note en cours (valeur courante + changements).
+  Stream<RecordingStorage> get storageStream => _storage.stream;
+
+  void _publishStorage({bool? audioCopyFailing}) {
+    if (_storage.isClosed) return;
+    final RecordingStorage next = _storage.value.copyWith(
+      unsavedLines: _unsaved.length,
+      audioCopyFailing: audioCopyFailing,
+    );
+    if (next != _storage.value) _storage.add(next);
+  }
+
+  Future<void> _checkStorage() async {
+    final Future<int?> Function()? probe = _freeBytes;
+    if (probe == null || _storage.isClosed) return;
+    final int? free = await probe();
+    if (_storage.isClosed) return;
+    final RecordingStorage next = _storage.value.withFreeBytes(
+      free,
+      _captureOutputEnabled ? 2 : 1,
+    );
+    if (next != _storage.value) _storage.add(next);
+  }
+
+  void _watchRecorders() {
+    for (final WavRecorder? w in <WavRecorder?>[
+      _micRecorder,
+      _systemRecorder,
+    ]) {
+      if (w == null) continue;
+      _missingNoted[w] = 0;
+      _wavErrorSubscriptions.add(
+        w.writeErrors.listen((Object e) {
+          _log.error('Copie audio (WAV) en échec', e);
+          _publishStorage(audioCopyFailing: true);
+        }),
+      );
+    }
+  }
+
+  /// Après une écriture WAV : l'écriture a pu reprendre (intervalle sans
+  /// copie dit dans la note).
+  void _afterWavWrite() {
+    final bool failing =
+        (_micRecorder?.failing ?? false) || (_systemRecorder?.failing ?? false);
+    if (failing != _storage.value.audioCopyFailing) {
+      _publishStorage(audioCopyFailing: failing);
+    }
+    _noteMissingAudio();
+  }
+
+  /// Écrit dans la note un repère « pas de copie audio » pour chaque
+  /// intervalle neuf que les WAV n'ont pas pu garder : le rattrapage ne le
+  /// couvrira pas, et ce n'est pas du silence.
+  void _noteMissingAudio() {
+    final SessionEntity? session = currentSessionStream.valueOrNull;
+    if (session == null) return;
+    for (final (WavRecorder? w, AudioSource source)
+        in <(WavRecorder?, AudioSource)>[
+          (_micRecorder, AudioSource.input),
+          (_systemRecorder, AudioSource.output),
+        ]) {
+      if (w == null) continue;
+      final List<({int startMs, int endMs})> missing = w.missing;
+      final int done = _missingNoted[w] ?? 0;
+      for (final ({int startMs, int endMs}) m in missing.skip(done)) {
+        final TranscriptSegmentEntity marker = TranscriptSegmentEntity(
+          id: _newSegmentId(session, source),
+          sessionId: session.id,
+          source: source,
+          text: noAudioCopyMarkerText(m.startMs, m.endMs),
+          timestampMs: m.startMs,
+          createdAt: clock.now(),
+        );
+        _log.warning('Pas de copie audio: ${marker.text} (${source.name})');
+        _chainWrite(marker.id, () async {
+          await _persist(marker);
+          _sortAndDedupeSegments();
+        });
+      }
+      _missingNoted[w] = missing.length;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rangement sans perte : une ligne (phrase ou repère) que la base refuse
+  // (disque plein, SQLite) reste montrée, gardée ici et réessayée sans limite
+  // tant que l'app vit, même après l'arrêt ; l'utilisateur voit le nombre de
+  // lignes en attente ([RecordingStorage.unsavedLines]).
+  // ponytail: en mémoire seulement ; un arrêt brutal pendant que la base
+  // refuse perd ces lignes (fichier de secours si cela arrive).
+  // ---------------------------------------------------------------------------
+
+  final Map<
+    String,
+    ({
+      TranscriptSegmentEntity segment,
+      bool show,
+      Future<void> Function()? then,
+    })
+  >
+  _unsaved =
+      <
+        String,
+        ({
+          TranscriptSegmentEntity segment,
+          bool show,
+          Future<void> Function()? then,
+        })
+      >{};
+  Timer? _unsavedTimer;
+  int _unsavedRound = 0;
+  static const Duration _maxUnsavedWait = Duration(seconds: 30);
+
+  /// Range [segment] (la dernière valeur voulue pour son id) ; si [show], le
+  /// montre aussi, rangé ou non, tant que sa séance est à l'écran. [then]
+  /// suit le rangement réussi.
+  Future<bool> _persist(
+    TranscriptSegmentEntity segment, {
+    bool show = true,
+    Future<void> Function()? then,
+  }) async {
+    bool ok;
+    try {
+      ok = await _transcriptionService.saveProvisional(segment);
+      // Une base fermée lève une Error (StateError), pas une Exception :
+      // réessayée comme les autres refus.
+      // ignore: avoid_catches_without_on_clauses
+    } catch (e) {
+      _log.error('Ligne non rangée', e);
+      ok = false;
+    }
+    if (show && segment.sessionId == currentSessionStream.valueOrNull?.id) {
       _transcriptionService.segmentsStream.add(
         List<TranscriptSegmentEntity>.from(
             _transcriptionService.segmentsStream.value,
           )
-          ..removeWhere(
-            (TranscriptSegmentEntity x) =>
-                x.id == id || absorbed.contains(x.id),
-          )
-          ..add(marker),
+          ..removeWhere((TranscriptSegmentEntity x) => x.id == segment.id)
+          ..add(segment),
       );
-      _sortAndDedupeSegments();
-      for (final String other in absorbed) {
-        await _transcriptionService.discardProvisional(other);
-      }
-    });
+    }
+    if (ok) {
+      final bool waited = _unsaved.remove(segment.id) != null;
+      if (then != null) await then();
+      if (waited) _publishStorage();
+      return true;
+    }
+    _unsaved[segment.id] = (segment: segment, show: show, then: then);
+    _publishStorage();
+    _armUnsavedRetry();
+    return false;
   }
 
-  // Un repère qui ne se range pas est réessayé : 1, 2, 4, 8 s.
-  // ponytail: 5 essais (15 s, Stop attend au pire autant) puis abandon
-  // journalisé ; file durable si un disque plein doit tenir plus longtemps.
-  static const int _markerWriteAttempts = 5;
+  /// Retire [id] de la base, et de l'attente : un repère absorbé ou retiré
+  /// ne revient jamais.
+  Future<void> _discard(String id) async {
+    if (_unsaved.remove(id) != null) _publishStorage();
+    await _transcriptionService.discardProvisional(id);
+  }
 
-  Future<bool> _saveWithRetry(TranscriptSegmentEntity segment) async {
-    for (int attempt = 0; attempt < _markerWriteAttempts; attempt++) {
-      if (attempt > 0) {
-        await Future<void>.delayed(Duration(seconds: 1 << (attempt - 1)));
+  void _armUnsavedRetry() {
+    if (_unsavedTimer != null || _unsaved.isEmpty) return;
+    final int seconds = 1 << math.min(_unsavedRound, 5);
+    final Duration wait = Duration(seconds: seconds) > _maxUnsavedWait
+        ? _maxUnsavedWait
+        : Duration(seconds: seconds);
+    _unsavedRound++;
+    _unsavedTimer = Timer(wait, () {
+      _unsavedTimer = null;
+      for (final MapEntry<
+            String,
+            ({
+              TranscriptSegmentEntity segment,
+              bool show,
+              Future<void> Function()? then,
+            })
+          >
+          e
+          in _unsaved.entries.toList()) {
+        _chainWrite(e.key, () async {
+          // Une écriture plus récente a pu le ranger entre-temps.
+          final ({
+            TranscriptSegmentEntity segment,
+            bool show,
+            Future<void> Function()? then,
+          })?
+          now = _unsaved[e.key];
+          if (now == null) return;
+          await _persist(now.segment, show: now.show, then: now.then);
+          if (_unsaved.isEmpty) _unsavedRound = 0;
+        });
       }
-      // Rangé sans être montré : l'appelant l'affiche en une fois.
-      if (await _transcriptionService.saveProvisional(segment)) return true;
-    }
-    _log.error('Repère non rangé après $_markerWriteAttempts essais');
-    return false;
+    });
   }
 
   // Écritures chaînées par id de segment : la dernière valeur voulue est
@@ -1158,10 +1419,10 @@ final class LiveTranscriptionService {
           );
         }
         if (chunk.source == AudioSource.input) {
-          _micRecorder?.append(chunk.data);
+          _micRecorder?.append(chunk.data).then((_) => _afterWavWrite());
           _micAudioEndMs = chunk.timestampMs + chunk.data.length ~/ 32;
         } else {
-          _systemRecorder?.append(chunk.data);
+          _systemRecorder?.append(chunk.data).then((_) => _afterWavWrite());
           _traceSystemLevel(chunk.data);
           if (_liveDiarizationEnabled) {
             _liveDiarization?.sendAudio(chunk.data, chunk.timestampMs);
@@ -1383,7 +1644,7 @@ final class LiveTranscriptionService {
   void _savePartial(TranscriptSegmentEntity segment, {Future<void>? after}) {
     _chainWrite(segment.id, () async {
       await after;
-      await _transcriptionService.saveSegment(segment);
+      await _persist(segment);
       _sortAndDedupeSegments();
     });
   }
@@ -1509,7 +1770,7 @@ final class LiveTranscriptionService {
     await provisionalWrite;
     if (untranscribed) {
       final int start = _offsetOf(session, window!.startMs);
-      await _transcriptionService.saveSegment(
+      await _persist(
         TranscriptSegmentEntity(
           id: provisionalId ?? _newSegmentId(session, source),
           sessionId: session.id,
@@ -1524,7 +1785,7 @@ final class LiveTranscriptionService {
       );
     } else if (text == null) {
       if (provisionalWrite != null && provisionalId != null) {
-        await _transcriptionService.discardProvisional(provisionalId);
+        await _discard(provisionalId);
       }
     } else {
       final TranscriptSegmentEntity segment = TranscriptSegmentEntity(
@@ -1535,7 +1796,7 @@ final class LiveTranscriptionService {
         timestampMs: phraseStart,
         createdAt: clock.now(),
       );
-      await _transcriptionService.saveSegment(segment);
+      await _persist(segment);
       if (!_finalized.isClosed) _finalized.add(segment);
       if (source == AudioSource.output && _liveDiarizationEnabled) {
         _queueSpeakerLabel(
@@ -1669,7 +1930,8 @@ final class LiveTranscriptionService {
       isFinal: true,
       sources: <AudioSource>{AudioSource.input},
     );
-    _clearMicPhrase();
+    // La phrase de réunion en cours garde son id : son `done` remplace le
+    // provisoire déjà sauvé (sinon deux lignes dans la note).
     return d;
   }
 
@@ -1713,6 +1975,14 @@ final class LiveTranscriptionService {
 
   // Bien au-delà du délai de garde de la dictée (texte tardif encore livré).
   static const Duration _dictationGiveUp = Duration(seconds: 60);
+
+  void _abandonDictation(MeetingDictation d) {
+    d
+      ..onText = null
+      ..onComplete = null;
+    _dictations.remove(d);
+    d._finish();
+  }
 
   /// Un `done` micro de la dictée : il ne va pas à la note.
   bool _routeToDictation(TranscriptEventRemoteModel event) {
@@ -1870,6 +2140,10 @@ final class MeetingDictation {
 
   /// Annulation : ses mots sont jetés, ni sortie ni note.
   void cancel() => _service._endDictation(this, cancelled: true);
+
+  /// Appui abandonné (raccourci d'une autre app) : ce n'était pas une
+  /// dictée. Aucun intervalle noté, le micro dit depuis l'appui va à la note.
+  void abandon() => _service._abandonDictation(this);
 
   void _finish() {
     if (_complete) return;

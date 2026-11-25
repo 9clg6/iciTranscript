@@ -3,6 +3,7 @@ import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
+import 'package:ici_transcript/application/services/recording_storage.dart';
 
 part 'live_transcription.state.freezed.dart';
 
@@ -46,6 +47,9 @@ abstract class LiveTranscriptionState with _$LiveTranscriptionState {
 
     /// Raison pour laquelle le son du Mac n'est pas capté (null si capté).
     String? systemAudioError,
+
+    /// Place disque de la note, copie audio et lignes pas encore rangées.
+    @Default(RecordingStorage()) RecordingStorage storage,
 
     /// Dernière ligne du serveur de transcription pendant son démarrage.
     String? serverStartupLine,

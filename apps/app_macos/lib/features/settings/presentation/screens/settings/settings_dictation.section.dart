@@ -27,8 +27,10 @@ String dictationShortcutLabel(DictationShortcut shortcut, String? keyLabel) {
     if (m & _carbonShift != 0) '\u21E7',
     if (m & _carbonCommand != 0) '\u2318',
   ].join();
+  final int? keyCode = shortcut.keyCode;
+  if (keyCode == null) return mods; // modificateurs seuls : « ⌥⌘ »
   // Espace : un seul texte traduit (« ⌃⌥Espace »), modificateurs compris.
-  if (shortcut.keyCode == _macSpace) {
+  if (keyCode == _macSpace) {
     return LocaleKeys.settings_dictation_shortcut_space.tr(
       args: <String>[mods],
     );
@@ -59,6 +61,13 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
   );
   final FocusNode _recorderFocus = FocusNode();
   bool _recording = false;
+  // Modificateurs tenus ensemble depuis le dernier « tout relâché », et si
+  // une autre touche est venue (alors ce n'est pas un raccourci
+  // modificateurs seuls).
+  int _chord = 0;
+  bool _chordHadKey = false;
+  // Un seul modificateur relâché : refusé, message affiché.
+  bool _needsTwo = false;
 
   @override
   void initState() {
@@ -74,32 +83,75 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
   }
 
   void _startRecording() {
-    setState(() => _recording = true);
+    _chord = 0;
+    _chordHadKey = false;
+    setState(() {
+      _recording = true;
+      _needsTwo = false;
+    });
     _recorderFocus.requestFocus();
   }
 
-  KeyEventResult _onKey(FocusNode _, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.handled;
-    final PhysicalKeyboardKey key = event.physicalKey;
-    if (key == PhysicalKeyboardKey.escape) {
-      setState(() => _recording = false);
-      return KeyEventResult.handled;
-    }
-    final int? keyCode = _macKeyCodes[key];
-    final HardwareKeyboard k = HardwareKeyboard.instance;
-    final int modifiers =
-        (k.isControlPressed ? _carbonControl : 0) |
-        (k.isAltPressed ? _carbonOption : 0) |
-        (k.isShiftPressed ? _carbonShift : 0) |
-        (k.isMetaPressed ? _carbonCommand : 0);
-    final bool modifierKey = <LogicalKeyboardKey>{
-      ...LogicalKeyboardKey.expandSynonyms(<LogicalKeyboardKey>{
+  static final Set<LogicalKeyboardKey> _modifierKeys =
+      LogicalKeyboardKey.expandSynonyms(<LogicalKeyboardKey>{
         LogicalKeyboardKey.control,
         LogicalKeyboardKey.alt,
         LogicalKeyboardKey.shift,
         LogicalKeyboardKey.meta,
-      }),
-    }.contains(event.logicalKey);
+      });
+
+  static int _heldModifiers() {
+    final HardwareKeyboard k = HardwareKeyboard.instance;
+    return (k.isControlPressed ? _carbonControl : 0) |
+        (k.isAltPressed ? _carbonOption : 0) |
+        (k.isShiftPressed ? _carbonShift : 0) |
+        (k.isMetaPressed ? _carbonCommand : 0);
+  }
+
+  /// Modificateurs relâchés sans autre touche : raccourci « modificateurs
+  /// seuls » (au moins deux, dont ⌃, ⌥ ou ⌘), sinon refusé avec un message.
+  void _onModifiersReleased() {
+    final int chord = _chord;
+    final bool hadKey = _chordHadKey;
+    _chord = 0;
+    _chordHadKey = false;
+    if (hadKey || chord == 0) return;
+    if (!DictationShortcut.isValidModifiersOnly(chord)) {
+      setState(() => _needsTwo = true);
+      return;
+    }
+    setState(() {
+      _recording = false;
+      _needsTwo = false;
+    });
+    ref
+        .read(dictationSettingsViewModelProvider.notifier)
+        .setShortcut(DictationShortcut(keyCode: null, modifiers: chord));
+  }
+
+  KeyEventResult _onKey(FocusNode _, KeyEvent event) {
+    final bool modifierKey = _modifierKeys.contains(event.logicalKey);
+    if (event is KeyUpEvent) {
+      if (modifierKey && _heldModifiers() == 0) _onModifiersReleased();
+      return KeyEventResult.handled;
+    }
+    if (event is! KeyDownEvent) return KeyEventResult.handled;
+    if (modifierKey) {
+      _chord |= _heldModifiers();
+      if (_needsTwo) setState(() => _needsTwo = false);
+      return KeyEventResult.handled;
+    }
+    _chordHadKey = true;
+    final PhysicalKeyboardKey key = event.physicalKey;
+    if (key == PhysicalKeyboardKey.escape) {
+      setState(() {
+        _recording = false;
+        _needsTwo = false;
+      });
+      return KeyEventResult.handled;
+    }
+    final int? keyCode = _macKeyCodes[key];
+    final int modifiers = _heldModifiers();
     // Une touche seule volerait la frappe à toutes les apps : il faut ⌃, ⌥
     // ou ⌘ (⇧ seul ne suffit pas), sauf pour une touche de fonction.
     final bool strongModifier =
@@ -109,7 +161,10 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
         (!strongModifier && !_isFunctionKey(key))) {
       return KeyEventResult.handled;
     }
-    setState(() => _recording = false);
+    setState(() {
+      _recording = false;
+      _needsTwo = false;
+    });
     ref
         .read(dictationSettingsViewModelProvider.notifier)
         .setShortcut(DictationShortcut(keyCode: keyCode, modifiers: modifiers));
@@ -124,10 +179,15 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
     final DictationSettingsViewModel vm = ref.read(
       dictationSettingsViewModelProvider.notifier,
     );
-    final bool unavailable =
-        ref.watch(dictationShortcutStatusProvider).value ==
-        ShortcutStatus.unavailable;
+    final ShortcutStatus? status = ref
+        .watch(dictationShortcutStatusProvider)
+        .value;
+    final bool unavailable = status == ShortcutStatus.unavailable;
     final DictationSettings settings = state.settings;
+    final bool needsAccessibility =
+        settings.enabled &&
+        settings.shortcut.keyCode == null &&
+        status == ShortcutStatus.needsAccessibility;
     final bool modelMissing =
         settings.enabled &&
         ref.watch(transcriptionModelCachedProvider).value == false;
@@ -206,6 +266,47 @@ class _DictationSectionState extends ConsumerState<_DictationSection> {
                   child: Text(
                     LocaleKeys.settings_dictation_shortcut_unavailable.tr(),
                     style: o.meta.copyWith(color: o.danger),
+                  ),
+                ),
+              if (_recording && _needsTwo)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    OatsSpace.lg,
+                    0,
+                    OatsSpace.lg,
+                    OatsSpace.md,
+                  ),
+                  child: Text(
+                    LocaleKeys.settings_dictation_shortcut_needs_two_modifiers
+                        .tr(),
+                    style: o.meta.copyWith(color: o.danger),
+                  ),
+                ),
+              if (needsAccessibility)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    OatsSpace.lg,
+                    0,
+                    OatsSpace.lg,
+                    OatsSpace.md,
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          LocaleKeys
+                              .settings_dictation_shortcut_needs_accessibility
+                              .tr(),
+                          style: o.meta.copyWith(color: o.danger),
+                        ),
+                      ),
+                      const SizedBox(width: OatsSpace.md),
+                      OatsButton(
+                        label: LocaleKeys.settings_dictation_accessibility_open
+                            .tr(),
+                        onPressed: vm.openAccessibilitySettings,
+                      ),
+                    ],
                   ),
                 ),
             ],

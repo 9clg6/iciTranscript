@@ -195,7 +195,10 @@ final class GapBackfillService {
       s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix);
 
   static bool _isMarker(TranscriptSegmentEntity s) =>
-      _isGapMarker(s) || LiveTranscriptionService.isUntranscribedMarker(s.text);
+      _isGapMarker(s) ||
+      LiveTranscriptionService.isUntranscribedMarker(s.text) ||
+      LiveTranscriptionService.isNoAudioCopyMarker(s.text) ||
+      LiveTranscriptionService.isNotRecordedAfterMarker(s.text);
 
   static List<BackfillGap> _planMarker(
     TranscriptSegmentEntity marker,
@@ -601,8 +604,12 @@ final class GapBackfillService {
         kept = kept.sublist(1);
       }
       if (result == _Part.noAudio) result = _Part.nothingNew;
-      // Une tranche sans parole est rattrapée : rien n'y a été dit.
-      if (kept.isNotEmpty || !_hasSpeech(pcm, 0, pcm.length ~/ 32)) {
+      // Une tranche sans parole est rattrapée : rien n'y a été dit — sauf
+      // si le WAV n'a pas gardé cet audio (disque plein : un trou, pas du
+      // silence ; le repère reste).
+      if (kept.isNotEmpty ||
+          (!_hasSpeech(pcm, 0, pcm.length ~/ 32) &&
+              !_noCopy(segments, gap.source, from, to))) {
         result = _Part.saved;
         _progressed = true;
         for (int k = 0; k < kept.length; k++) {
@@ -662,6 +669,24 @@ final class GapBackfillService {
 
   // Une phrase dure au plus 30 s : au-delà, ce n'est plus le voisin.
   static const Duration _neighbourSpan = Duration(seconds: 35);
+
+  /// [from, to[ recoupe un repère « pas de copie audio » de [source].
+  static bool _noCopy(
+    List<TranscriptSegmentEntity> segments,
+    AudioSource source,
+    int from,
+    int to,
+  ) => segments.any((TranscriptSegmentEntity s) {
+    if (s.source != source) return false;
+    // Rien de gardé après lui : un audio absent, pas du silence.
+    if (LiveTranscriptionService.isNotRecordedAfterMarker(s.text)) {
+      return s.timestampMs < to;
+    }
+    if (!LiveTranscriptionService.isNoAudioCopyMarker(s.text)) return false;
+    final RegExpMatch? m = _markerTimes.firstMatch(s.text);
+    if (m == null) return false;
+    return _ms(m, 1) < to && from < _ms(m, 4);
+  });
 
   // Silence au-delà duquel deux phrases sont deux prises de parole.
   static const Duration _pause = Duration(seconds: 3);

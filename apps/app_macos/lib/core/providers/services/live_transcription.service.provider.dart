@@ -1,5 +1,6 @@
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
+import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/live_diarization.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/core/platform/audio_capture_channel.dart';
@@ -50,6 +51,9 @@ LiveTranscriptionService liveTranscriptionService(Ref ref) {
     ),
     ports: ports,
     gapBackfillRetry: ref.watch(gapBackfillRetryProvider),
+    // Place libre du volume des données de l'app (WAV et base).
+    freeBytes: () =>
+        RecordingStorage.freeBytesAt(LiveTranscriptionService.recordingsDir),
   );
 
   ref.onDispose(service.dispose);

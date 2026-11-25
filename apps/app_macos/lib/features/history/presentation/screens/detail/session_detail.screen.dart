@@ -733,6 +733,13 @@ List<TranscriptSegmentEntity> _localizedMarkers(
           args: <String>[from, to],
         ),
       )
+    else if (LiveTranscriptionService.notRecordedAfterTime(s.text)
+        case final String at)
+      s.copyWith(
+        text: LocaleKeys.transcription_gap_not_recorded_after.tr(
+          args: <String>[at],
+        ),
+      )
     else
       s,
 ];

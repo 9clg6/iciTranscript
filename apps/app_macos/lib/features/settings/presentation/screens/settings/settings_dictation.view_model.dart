@@ -103,9 +103,26 @@ class DictationSettingsViewModel extends _$DictationSettingsViewModel {
   );
 
   /// Relit la permission Accessibilité (retour des Réglages Système).
+  ///
+  /// Accordée avec un raccourci « modificateurs seuls » : il est reposé
+  /// (jamais un raccourci muet), sans le réenregistrer.
   Future<void> refreshAccessibility() async {
     final bool trusted = await _output.isAccessibilityTrusted();
-    if (ref.mounted) state = state._with(accessibilityTrusted: trusted);
+    if (!ref.mounted) return;
+    state = state._with(accessibilityTrusted: trusted);
+    final DictationSettings s = state.settings;
+    if (trusted && s.enabled && s.shortcut.keyCode == null) {
+      // Nouvelle instance : le contrôleur réapplique même à l'identique.
+      ref
+          .read(dictationSettingsAppliedProvider.notifier)
+          .set(
+            DictationSettings(
+              enabled: s.enabled,
+              shortcut: s.shortcut,
+              outputMode: s.outputMode,
+            ),
+          );
+    }
   }
 
   /// Demande système d'Accessibilité.
@@ -146,7 +163,9 @@ class DictationSettingsViewModel extends _$DictationSettingsViewModel {
     if (ref.mounted) state = state._with(keyLabel: () => label);
   }
 
-  Future<String?> _keyLabel(DictationSettings settings) => ref
-      .read(globalShortcutChannelProvider)
-      .keyLabel(settings.shortcut.keyCode);
+  Future<String?> _keyLabel(DictationSettings settings) async {
+    final int? keyCode = settings.shortcut.keyCode;
+    if (keyCode == null) return null; // modificateurs seuls : pas de touche
+    return ref.read(globalShortcutChannelProvider).keyLabel(keyCode);
+  }
 }

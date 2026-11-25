@@ -15,7 +15,28 @@ class DictationShortcut {
     modifiers: 4096 | 2048,
   );
 
-  final int keyCode;
+  /// Code de touche macOS ; null : modificateurs seuls (⌘⌥), surveillés
+  /// par le plugin (Accessibilité requise), Carbon ne sachant pas les poser.
+  final int? keyCode;
+
+  /// Masques Carbon (HIToolbox Events.h).
+  static const int command = 256;
+  static const int shift = 512;
+  static const int option = 2048;
+  static const int control = 4096;
+
+  /// Modificateurs seuls utilisables : au moins deux parmi ⌃⌥⇧⌘, dont ⌃, ⌥
+  /// ou ⌘ (⇧ seul ou un seul modificateur volerait une frappe ordinaire).
+  static bool isValidModifiersOnly(int modifiers) {
+    const int all = command | shift | option | control;
+    if (modifiers & ~all != 0) return false;
+    int count = 0;
+    for (final int bit in <int>[command, shift, option, control]) {
+      if (modifiers & bit != 0) count++;
+    }
+    return count >= 2 && modifiers & (command | option | control) != 0;
+  }
+
   final int modifiers;
 }
 
@@ -49,12 +70,20 @@ class DictationPreferences {
   Future<DictationSettings> load() async {
     final Map<String, Object?> json = await _store.read();
     const DictationSettings d = DictationSettings();
-    final int? keyCode = prefValue<int>(json, _keyCode);
+    final Object? keyCode = json[_keyCode];
     final int? modifiers = prefValue<int>(json, _modifiers);
+    // Clé absente avec des modificateurs valides : modificateurs seuls. Une
+    // clé présente mais illisible n'est jamais lue comme telle.
+    final bool modifiersOnly =
+        !json.containsKey(_keyCode) &&
+        modifiers != null &&
+        DictationShortcut.isValidModifiersOnly(modifiers);
     return DictationSettings(
       enabled: prefValue<bool>(json, _enabled) ?? d.enabled,
-      shortcut: keyCode != null && modifiers != null
+      shortcut: keyCode is int && modifiers != null
           ? DictationShortcut(keyCode: keyCode, modifiers: modifiers)
+          : modifiersOnly
+          ? DictationShortcut(keyCode: null, modifiers: modifiers)
           : d.shortcut,
       outputMode:
           DictationOutputMode.values.asNameMap()[json[_outputMode]] ??

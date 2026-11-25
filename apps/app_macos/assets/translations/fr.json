@@ -154,10 +154,15 @@
       "system_audio_error": "Son du Mac non capté : {}",
       "ollama_binary": "Téléchargement du moteur IA ({} %)…",
       "ollama_server": "Démarrage du moteur IA…",
-      "ollama_model": "Téléchargement du modèle Mistral ({} %, ~4 Go, une seule fois)…"
+      "ollama_model": "Téléchargement du modèle Mistral ({} %, ~4 Go, une seule fois)…",
+      "storage_low": "Peu de place sur le disque : environ {} d'enregistrement possible ({} min).",
+      "storage_critical": "Disque presque plein (moins de 200 Mo) : libérez de la place, l'enregistrement va échouer.",
+      "storage_audio_copy": "L'audio ne s'enregistre plus (disque plein) : ce passage ne pourra pas être rattrapé.",
+      "storage_unsaved": "{} ligne(s) pas encore enregistrée(s) : elles restent affichées et seront rangées dès que possible."
     },
     "gap": {
-      "untranscribed": "Passage non transcrit ({} – {})"
+      "untranscribed": "Passage non transcrit ({} – {})",
+      "not_recorded_after": "Rien n'a pu être enregistré après {} (app arrêtée ou disque plein)"
     },
     "status_bar": {
       "level": "Niveau",
@@ -286,7 +291,7 @@
       "shortcut": "Raccourci",
       "shortcut_change": "Modifier",
       "shortcut_recording": "Tapez le raccourci…",
-      "shortcut_recording_hint": "Échap pour annuler. Ajoutez ⌃, ⌥ ou ⌘ à la touche.",
+      "shortcut_recording_hint": "Échap pour annuler. Deux modificateurs seuls (⌥ et ⌘, par exemple) ou des modificateurs et une touche.",
       "shortcut_unavailable": "Ce raccourci est déjà pris par une autre app. Choisissez-en un autre.",
       "shortcut_space": "{}Espace",
       "key_code": "Touche {}",
@@ -301,7 +306,9 @@
       "model_missing": "Le modèle de transcription (plusieurs Go) n'est pas encore sur ce Mac. Rien n'est téléchargé sans votre accord.",
       "download_model": "Télécharger le modèle",
       "model_downloading": "Téléchargement du modèle… La dictée sera prête à la fin.",
-      "model_download_failed": "Le téléchargement a échoué. Vérifiez la connexion, puis réessayez."
+      "model_download_failed": "Le téléchargement a échoué. Vérifiez la connexion, puis réessayez.",
+      "shortcut_needs_two_modifiers": "Un seul modificateur ne suffit pas : tenez-en deux, par exemple ⌥ et ⌘, ou ajoutez une touche.",
+      "shortcut_needs_accessibility": "Ce raccourci sans touche demande l'Accessibilité pour être vu dans toutes les apps. Il ne marche pas tant qu'elle n'est pas accordée."
     }
   },
   "ollama": {

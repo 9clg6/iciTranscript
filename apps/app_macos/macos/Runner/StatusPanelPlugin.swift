@@ -50,6 +50,9 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
         static let paused = "En pause"
         static let finalising = "Finalisation… %d s"
         static let dictating = "Dictée en cours"
+        static let storageLow = "Peu de place sur le disque : environ %@ d'enregistrement possible."
+        static let storageCritical = "Disque presque plein (moins de 200 Mo) : libérez de la place, l'enregistrement va échouer."
+        static let storageAudioCopy = "L'audio ne s'enregistre plus (disque plein) : ce passage ne pourra pas être rattrapé."
         static let answer = "Répondre"
         static let ignore = "Ignorer"
         static let open = "Ouvrir Oats"
@@ -251,6 +254,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
 
     private static func icon(for status: String) -> NSImage? {
         if status == "recording" { return dot() }
+        if status == "idle", let glyph = glyph() { return glyph }
         let name: String
         switch status {
         case "paused": name = "pause.circle"
@@ -264,6 +268,19 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             image = ring()
         }
         image?.isTemplate = true
+        return image
+    }
+
+    /// The logo (lowercase o on a note line), vector template from
+    /// Assets.xcassets/MenuBarGlyph, 18 pt high; nil if the asset is missing.
+    private static func glyph() -> NSImage? {
+        guard let source = NSImage(named: "MenuBarGlyph"),
+              let image = source.copy() as? NSImage,
+              image.size.height > 0 else { return nil }
+        let height: CGFloat = 18
+        image.size = NSSize(width: image.size.width * height / image.size.height, height: height)
+        image.isTemplate = true
+        image.accessibilityDescription = "Oats"
         return image
     }
 
@@ -443,6 +460,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
                 time.spacing = 6
                 views.append(time)
             }
+            if let line = storageLine() { views.append(line) }
             views.append(row([
                 button(L.stop, "stop", primary: true),
                 button(status == "paused" ? L.resume : L.pause, "pauseResume"),
@@ -454,8 +472,10 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
                 label(String(format: L.finalising, seconds), secondary: true),
                 button(L.skip, "skipFinalising"),
             ]))
+            if let line = storageLine() { views.append(line) }
         default:
             views.append(label(L.idle, secondary: true))
+            if let line = storageLine() { views.append(line) }
             // One "Démarrer la note" only: a suggestion carries its own.
             if snapshot["showStart"] as? Bool ?? true {
                 views.append(row([button(L.start, "start", primary: true)]))
@@ -465,6 +485,26 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             views.append(label(L.dictating, secondary: true))
         }
         return views
+    }
+
+    /// Disk space: low = secondary text with the time left; critical or a
+    /// failing audio write = the error in the system red (the panel's only
+    /// red). Absent when all is well.
+    private func storageLine() -> NSView? {
+        guard let storage = snapshot["storage"] as? [String: Any] else { return nil }
+        if storage["audioCopyFailing"] as? Bool == true {
+            return label(L.storageAudioCopy, color: .systemRed)
+        }
+        switch storage["level"] as? String {
+        case "critical":
+            return label(L.storageCritical, color: .systemRed)
+        case "low":
+            guard let minutes = storage["minutesLeft"] as? Int else { return nil }
+            let left = minutes >= 60 ? String(format: "%d h %02d", minutes / 60, minutes % 60) : "\(minutes) min"
+            return label(String(format: L.storageLow, left), secondary: true)
+        default:
+            return nil
+        }
     }
 
     private func transcriptBlock() -> [NSView] {
@@ -521,11 +561,13 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
 
     // MARK: - Views
 
-    private func label(_ text: String, bold: Bool = false, secondary: Bool = false, small: Bool = false) -> NSTextField {
+    private func label(
+        _ text: String, bold: Bool = false, secondary: Bool = false, small: Bool = false, color: NSColor? = nil
+    ) -> NSTextField {
         let field = NSTextField(wrappingLabelWithString: text)
         let size: CGFloat = small ? 11 : 13
         field.font = bold ? .systemFont(ofSize: size, weight: .semibold) : .systemFont(ofSize: size)
-        field.textColor = secondary ? PanelColor.muted : PanelColor.ink
+        field.textColor = color ?? (secondary ? PanelColor.muted : PanelColor.ink)
         field.preferredMaxLayoutWidth = StatusPanelPlugin.width - 2 * StatusPanelPlugin.padding
         field.isSelectable = false
         return field
