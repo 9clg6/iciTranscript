@@ -726,7 +726,9 @@ def cmd_svcscore(a):
     print(json.dumps(out, ensure_ascii=False, indent=1))
 
 
-MARK = re.compile(r"(Transcription interrompue|Passage non transcrit)\D*(\d+):(\d{2}):(\d{2})\s*[–-]\s*(\d+):(\d{2}):(\d{2})")
+MARK = re.compile(r"(Transcription interrompue|Passage non transcrit|Pas de copie audio)\D*(\d+):(\d{2}):(\d{2})\s*[–-]\s*(\d+):(\d{2}):(\d{2})")
+# Open-ended marker written by LaunchRepair: nothing kept after that time.
+OPEN_MARK = re.compile(r"Rien n'a pu être enregistré après (\d+):(\d{2}):(\d{2})")
 
 
 def coverage(sentence, text_words):
@@ -758,9 +760,13 @@ def check_note(sched_src, segs, end_s):
     markers, live = [], []
     for g in sorted(segs, key=lambda g: g["t"]):
         m = MARK.search(g["text"])
+        o = OPEN_MARK.search(g["text"])
         if m:
             v = list(map(int, m.groups()[1:]))
             markers.append((v[0] * 3600 + v[1] * 60 + v[2], v[3] * 3600 + v[4] * 60 + v[5] + 1))
+        elif o:
+            v = list(map(int, o.groups()))
+            markers.append((v[0] * 3600 + v[1] * 60 + v[2], float("inf")))
         else:
             live.append(g)
     res = {"violations": [], "garbled": [], "under_marker": [], "dup_full": [], "dup_end": [], "ts_off": [], "order_breaks": 0}
