@@ -105,7 +105,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               },
                             ),
                     ),
-                    _SttEngineRow(cloudAllowed: state.llmCloudAllowed),
                     _Row(
                       label: LocaleKeys.settings_audio_system_audio.tr(),
                       subtitle: LocaleKeys
@@ -175,6 +174,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const _CalendarSection(),
                 const _AiSection(),
+                // Après le modèle local : plus haut, la ligne pousserait le
+                // bouton d'installation hors de l'écran.
+                _Section(
+                  title: LocaleKeys.settings_audio_engine_title.tr(),
+                  rows: <Widget>[
+                    _SttEngineRow(cloudAllowed: state.llmCloudAllowed),
+                  ],
+                ),
                 const _DictationSection(),
                 _Section(
                   title: LocaleKeys.settings_server_title.tr(),
