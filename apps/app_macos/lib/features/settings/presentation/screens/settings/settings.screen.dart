@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:core_domain/domain/entities/audio_device.entity.dart';
 import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
+import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
@@ -25,6 +30,7 @@ import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 part 'settings_ai.section.dart';
 part 'settings_calendar.section.dart';
 part 'settings_dictation.section.dart';
+part 'settings_engine.section.dart';
 
 /// Largeur de la colonne des réglages.
 const double kSettingsWidth = 610;
@@ -99,6 +105,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               },
                             ),
                     ),
+                    _SttEngineRow(cloudAllowed: state.llmCloudAllowed),
                     _Row(
                       label: LocaleKeys.settings_audio_system_audio.tr(),
                       subtitle: LocaleKeys
