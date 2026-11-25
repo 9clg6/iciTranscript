@@ -217,6 +217,12 @@ const List<String> _distinct = <String>[
 AudioSource sourceOf(String s) =>
     s == 'input' ? AudioSource.input : AudioSource.output;
 
+/// Coupe d'une phrase du direct : une ligne rangée porte au plus cela.
+// ponytail: copie de `_maxUtteranceMs` (core_data,
+// transcription.remote.data_source.impl.dart:59) ; remplacer par
+// `TranscriptionRemoteDataSourceImpl.maxUtteranceMs` dès qu'il est public.
+const int _maxUtteranceMs = 30000;
+
 /// WAV micro de [ms] ms (parole aux heures de [said]) le temps de [body].
 Future<void> _onMicWav(
   String session,
@@ -461,14 +467,14 @@ void main() {
   // Vraie réunion : parole continue (pauses < 1 s), un seul passage dans le
   // WAV. Lignes rangées à 0 s et 55 s seulement ; celles du milieu ont été
   // refusées par la base puis perdues à l'arrêt brutal.
-  // Tolérance : une ligne couvre de 2 s avant son heure jusqu'à la ligne
-  // suivante, 15 s au plus (morceaux du rattrapage ≤ 12 s, phrases de la
-  // sonde ≤ 8 s ; la coupe du direct à 30 s laisserait passer une ligne
-  // qui prétend porter une demi-minute). Donc ~15–53 s doit être sous un
-  // repère (le « 10–50 s » de la revue, avec cette tolérance).
+  // Tolérance (décision du 2026-11-25) : une ligne du direct peut porter
+  // jusqu'à la coupe du direct, 30 s ; elle couvre de 2 s avant son heure
+  // jusqu'à la ligne suivante, [_maxUtteranceMs] au plus. Donc ~30–53 s
+  // doit être sous un repère.
   test('parole continue 60 s, lignes rangées à 0 s et 55 s seulement : '
       'chaque seconde de parole du WAV est près d une ligne rangée (de 2 s '
-      'avant à la suivante, 15 s au plus) ou sous un repère', () async {
+      'avant à la suivante, coupe du direct au plus) ou sous un '
+      'repère', () async {
     const String session = '1700000000000';
     expect(
       <int>[
@@ -516,7 +522,7 @@ void main() {
           bool near = false;
           for (int i = 0; i < lines.length; i++) {
             final int end = math.min(
-              lines[i] + 15000,
+              lines[i] + _maxUtteranceMs,
               i + 1 < lines.length ? lines[i + 1] : 1 << 40,
             );
             if (s >= lines[i] - 2000 && s < end) near = true;
@@ -535,6 +541,29 @@ void main() {
               'secondes de parole (s) sans ligne proche ni repère : $missing\n'
               'repères : ${mic.where((TranscriptSegmentEntity m) => isTranscriptMarker(m.text)).map((TranscriptSegmentEntity m) => m.text).join(' | ')}',
         );
+      },
+    );
+  });
+
+  test('une seule ligne rangée à 0 s, puis 25 s de parole continue et du '
+      'silence : une ligne longue du direct, légitime, pas de repère de '
+      'perte', () async {
+    const String session = '1700000000000';
+    await _onMicWav(
+      session,
+      35000,
+      <_Said>[(source: 'input', startMs: 0, endMs: 25000, text: 'continu')],
+      (String dir) async {
+        final InMemoryTranscriptRepository repo =
+            InMemoryTranscriptRepository();
+        final TranscriptSegmentEntity line = _micLine(session, 1, 0);
+        repo.store[line.id] = line;
+        await LaunchRepair(
+          sessions: _activeSession(session),
+          transcripts: repo,
+          recordingsDir: dir,
+        ).run();
+        expect(_gapMarkers(repo), isEmpty);
       },
     );
   });
