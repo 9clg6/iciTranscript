@@ -80,24 +80,18 @@ class WavRecorder {
     return _pendingWrites;
   }
 
-  /// Avance le WAV de [duration] de silence (zéros), pour qu'il garde sa
-  /// place dans le temps pendant une pause. Écrit par blocs d'une seconde
-  /// (rien de gardé en mémoire ; un fichier creux demanderait un setLength
-  /// à la fermeture). Chaîné comme [append] : c'est de l'audio réel, pas
-  /// un trou : un échec d'écriture reste dit par [missing].
-  Future<void> appendSilence(Duration duration) {
-    final RandomAccessFile? raf = _raf;
-    int left = duration.inMicroseconds * _bytesPerSecond ~/ 1000000 & ~1;
-    if (raf == null || !_acceptingWrites || left <= 0) {
+  /// Avance le WAV de [duration] sans rien écrire (pause) : le prochain
+  /// bloc se pose après un trou, que le disque lit comme des zéros. Ce n'est
+  /// pas une perte : rien n'est dit par [missing]. Le trou est toujours suivi
+  /// d'audio réel, donc la taille du fichier reste juste.
+  Future<void> skip(Duration duration) {
+    final int n = duration.inMicroseconds * _bytesPerSecond ~/ 1000000 & ~1;
+    if (_raf == null || !_acceptingWrites || n <= 0) {
       return Future<void>.value();
     }
-    final Uint8List zeros = Uint8List(_bytesPerSecond);
-    _pendingWrites = _pendingWrites.then((_) async {
-      while (left > 0) {
-        final int n = left < zeros.length ? left : zeros.length;
-        await _writeBlock(raf, Uint8List.sublistView(zeros, 0, n));
-        left -= n;
-      }
+    _pendingWrites = _pendingWrites.then((_) {
+      _dataBytes += n;
+      _seek = true;
     });
     return _pendingWrites;
   }
