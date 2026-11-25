@@ -557,6 +557,16 @@ final class LiveTranscriptionService {
     }
     _dictations.clear();
 
+    // Deconnecte le WebSocket AVANT de quitter l'écoute : un delta reçu entre
+    // `input_audio.end` et `transcription.done` doit encore arriver.
+    // L'audio encore en tampon de coupure est perdu pour la transcription :
+    // la perte arrive par `audioGaps` et son repère doit être sauvé avant de
+    // clore la session.
+    await _transcriptionRemoteDataSource.disconnect();
+    // ponytail: un tour de boucle suffit à livrer la perte (PublishSubject
+    // asynchrone). Faire rendre les pertes par disconnect() si cela change.
+    await Future<void>.delayed(Duration.zero);
+
     // Plus aucun événement distant après ce point : cela évite qu'un `done`
     // tardif duplique le fallback local.
     _cancel(_transcriptionSubscription);
@@ -599,14 +609,6 @@ final class LiveTranscriptionService {
     _micPausedAt = _systemPausedAt = null;
     _captureInputDeviceId = null;
     _captureOutputEnabled = false;
-
-    // Deconnecte le WebSocket. L'audio encore en tampon de coupure est perdu
-    // pour la transcription : la perte arrive par `audioGaps` et son repère
-    // doit être sauvé avant de clore la session.
-    await _transcriptionRemoteDataSource.disconnect();
-    // ponytail: un tour de boucle suffit à livrer la perte (PublishSubject
-    // asynchrone). Faire rendre les pertes par disconnect() si cela change.
-    await Future<void>.delayed(Duration.zero);
 
     // Repli : phrases restantes si le serveur n'a pas répondu à temps. Après
     // la déconnexion, pour que la perte de l'arrêt soit connue et place la
@@ -1513,7 +1515,10 @@ final class LiveTranscriptionService {
       _stopFinalizationWaiters[source] = Completer<void>();
     }
     _transcriptionRemoteDataSource.sendCommit(isFinal: true);
-    if (_stopFinalizationWaiters.isEmpty) {
+    // Clé refusée : rien ne reviendra d'une socket refusée, pas d'attente
+    // (le repère de perte reste).
+    if (_stopFinalizationWaiters.isEmpty || _keyRejected) {
+      _stopFinalizationWaiters.clear();
       if (publish) _finalisingRemaining.add(Duration.zero);
       return;
     }
@@ -1599,6 +1604,13 @@ final class LiveTranscriptionService {
     TranscriptEventRemoteModel event,
     AudioSource source,
   ) {
+    if (event.type == keyRejectedEventType) {
+      // Refus en pleine réunion : visible tout de suite ; le WAV continue,
+      // la perte est sous un repère à l'arrêt.
+      _keyRejected = true;
+      _updateHealth();
+      return;
+    }
     final SessionEntity? currentSession = currentSessionStream.valueOrNull;
     if (currentSession == null) return;
 

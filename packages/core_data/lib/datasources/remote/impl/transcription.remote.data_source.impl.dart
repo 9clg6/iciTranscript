@@ -406,6 +406,9 @@ final class TranscriptionRemoteDataSourceImpl
       // Clé refusée : réessayer n'y changera rien (pas de tempête) ; la
       // coupure reste, ses pertes sont dites à l'arrêt.
       slowMark.cancel();
+      _control[source]!.add(
+        const TranscriptEventRemoteModel(type: keyRejectedEventType),
+      );
       return;
     } catch (_) {
       slowMark.cancel();

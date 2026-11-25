@@ -14,6 +14,10 @@ const String utteranceResentEventType = 'client.utterance_resent';
 /// le texte déjà reçu pour cette phrase ne sera pas retranscrit.
 const String utteranceLostEventType = 'client.utterance_lost';
 
+/// Événement émis par la source quand la reconnexion d'une source échoue en
+/// 401 : la clé est refusée, réessayer n'y changera rien.
+const String keyRejectedEventType = 'client.key_rejected';
+
 /// Contrat de la source de donnees distante pour la transcription via WebSocket.
 abstract interface class TranscriptionRemoteDataSource {
   /// Se connecte au serveur WebSocket de transcription.
