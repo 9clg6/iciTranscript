@@ -167,9 +167,13 @@ void main() {
         : null;
     expect(stored, isNot('mistral'), reason: 'le choix refusé n est pas rangé');
     expect(
-      tester.widget<DropdownButton<TranscriptionEngine>>(menu()).value,
-      TranscriptionEngine.local,
+      find.descendant(of: row(), matching: find.text(_local())),
+      findsOneWidget,
       reason: 'le menu reste sur ce Mac',
+    );
+    expect(
+      find.text('settings.audio.engine_refused_cloud'.tr()),
+      findsOneWidget,
     );
   });
 
@@ -180,6 +184,7 @@ void main() {
     await allowCloud(tester);
     await choose(tester, _mistral());
     expect(refusal(), findsOneWidget);
+    expect(find.text('settings.audio.engine_refused_key'.tr()), findsOneWidget);
   });
 
   testWidgets('envoi permis et clé rangée : Mistral choisi et rangé, la clé '
