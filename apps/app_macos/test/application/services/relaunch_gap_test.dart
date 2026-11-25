@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
@@ -216,6 +217,125 @@ const List<String> _distinct = <String>[
 AudioSource sourceOf(String s) =>
     s == 'input' ? AudioSource.input : AudioSource.output;
 
+/// WAV micro de [ms] ms (parole aux heures de [said]) le temps de [body].
+Future<void> _onMicWav(
+  String session,
+  int ms,
+  List<_Said> said,
+  Future<void> Function(String dir) body,
+) async {
+  final Directory dir = await Directory.systemTemp.createTemp('oats_relaunch_');
+  try {
+    await _wav('${dir.path}/${session}_mic.wav', 'input', ms, said);
+    await body(dir.path);
+  } finally {
+    await dir.delete(recursive: true);
+  }
+}
+
+InMemorySessionRepository _activeSession(String session) =>
+    InMemorySessionRepository()
+      ..store[session] = FakeData.createSession(
+        id: session,
+        status: SessionStatus.active,
+      );
+
+TranscriptSegmentEntity _micLine(String session, int k, int atMs) =>
+    TranscriptSegmentEntity(
+      id: '${session}_input_$k',
+      sessionId: session,
+      source: AudioSource.input,
+      text: _distinct[k % _distinct.length],
+      timestampMs: atMs,
+      createdAt: DateTime(2026, 11, 25),
+    );
+
+/// Repères de perte rattrapables rangés, « heure texte », triés.
+List<String> _gapMarkers(InMemoryTranscriptRepository repo) => <String>[
+  for (final TranscriptSegmentEntity m in repo.store.values)
+    if (m.text.startsWith(LiveTranscriptionService.gapMarkerPrefix))
+      '${m.timestampMs} ${m.text}',
+]..sort();
+
+/// App tuée pendant la réparation : la base meurt à l'écriture qui suit
+/// [savesLeft] écritures réussies ; `null` : jamais. Le vrai `save`
+/// (core_data, `insertOnConflictUpdate`) écrase un id existant : la map
+/// aussi.
+final class _KilledDuringRepair extends InMemoryTranscriptRepository {
+  int? savesLeft;
+
+  @override
+  Future<TranscriptSegmentEntity> save(TranscriptSegmentEntity segment) async {
+    final int? left = savesLeft;
+    if (left != null) {
+      if (left == 0) throw StateError('app killed during the launch repair');
+      savesLeft = left - 1;
+    }
+    return super.save(segment);
+  }
+}
+
+/// Parole 0–5 s (ligne rangée à 0 s), puis deux passages sans ligne,
+/// 10–15 s et 30–35 s (écart > 5 s : deux repères, pas un fusionné). Un
+/// relancement sans accident donne la référence ; puis l'app meurt après
+/// le 1er repère rangé, et l'app relancée répare de nouveau avec une base
+/// saine. Rend (référence, repères après les deux lancements).
+Future<({List<String> control, List<String> after})> _killedMidRepair({
+  required bool sessionStillActive,
+}) async {
+  const String session = '1700000000000';
+  final List<_Said> said = <_Said>[
+    for (final (int from, int to) in <(int, int)>[
+      (0, 5000),
+      (10000, 15000),
+      (30000, 35000),
+    ])
+      (source: 'input', startMs: from, endMs: to, text: 'phrase'),
+  ];
+  late List<String> control;
+  late List<String> after;
+  await _onMicWav(session, 40000, said, (String dir) async {
+    final TranscriptSegmentEntity first = _micLine(session, 1, 0);
+    final InMemoryTranscriptRepository clean = InMemoryTranscriptRepository()
+      ..store[first.id] = first;
+    await LaunchRepair(
+      sessions: _activeSession(session),
+      transcripts: clean,
+      recordingsDir: dir,
+    ).run();
+    control = _gapMarkers(clean);
+
+    final InMemorySessionRepository sessions = _activeSession(session);
+    final _KilledDuringRepair repo = _KilledDuringRepair()
+      ..store[first.id] = first
+      ..savesLeft = 1;
+    await expectLater(
+      LaunchRepair(
+        sessions: sessions,
+        transcripts: repo,
+        recordingsDir: dir,
+      ).run(),
+      throwsStateError,
+    );
+    if (sessionStillActive) {
+      // État forcé : celui que laisse une réparation qui ne ferme la
+      // session qu'à la fin (la session reste `active` après l'arrêt).
+      sessions.store[session] = FakeData.createSession(
+        id: session,
+        status: SessionStatus.active,
+      );
+    }
+    repo.savesLeft = null;
+    await LaunchRepair(
+      sessions: sessions,
+      transcripts: repo,
+      recordingsDir: dir,
+    ).run();
+    after = _gapMarkers(repo);
+  });
+  return (control: control, after: after);
+}
+
 void main() {
   test(
     'rejeu du run 2 : après la réparation et le rattrapage, chaque phrase '
@@ -335,5 +455,101 @@ void main() {
       ),
       isEmpty,
     );
+  });
+
+  // Vraie réunion : parole continue (pauses < 1 s), un seul passage dans le
+  // WAV. Lignes rangées à 0 s et 55 s seulement ; celles du milieu ont été
+  // refusées par la base puis perdues à l'arrêt brutal.
+  // Tolérance : une ligne couvre de 2 s avant son heure jusqu'à la ligne
+  // suivante, 15 s au plus (morceaux du rattrapage ≤ 12 s, phrases de la
+  // sonde ≤ 8 s ; la coupe du direct à 30 s laisserait passer une ligne
+  // qui prétend porter une demi-minute). Donc ~15–53 s doit être sous un
+  // repère (le « 10–50 s » de la revue, avec cette tolérance).
+  test('parole continue 60 s, lignes rangées à 0 s et 55 s seulement : '
+      'chaque seconde de parole du WAV est près d une ligne rangée (de 2 s '
+      'avant à la suivante, 15 s au plus) ou sous un repère', () async {
+    const String session = '1700000000000';
+    expect(
+      <int>[
+        for (int c = 0; c < 600; c++)
+          if (!TranscriptionRemoteDataSourceImpl.isSpeechChunk(
+            _chunk(c, 1, true),
+          ))
+            c,
+      ],
+      isEmpty,
+      reason: 'précondition : chaque chunk est de la parole',
+    );
+    await _onMicWav(
+      session,
+      60000,
+      <_Said>[(source: 'input', startMs: 0, endMs: 60000, text: 'continu')],
+      (String dir) async {
+        final InMemoryTranscriptRepository repo =
+            InMemoryTranscriptRepository();
+        for (final TranscriptSegmentEntity l in <TranscriptSegmentEntity>[
+          _micLine(session, 1, 0),
+          _micLine(session, 12, 55000),
+        ]) {
+          repo.store[l.id] = l;
+        }
+        await LaunchRepair(
+          sessions: _activeSession(session),
+          transcripts: repo,
+          recordingsDir: dir,
+        ).run();
+
+        final List<TranscriptSegmentEntity> mic = repo.of(AudioSource.input);
+        final List<int> lines = <int>[
+          for (final TranscriptSegmentEntity l in mic)
+            if (!isTranscriptMarker(l.text)) l.timestampMs,
+        ]..sort();
+        final List<({int startMs, int endMs})> marked =
+            <({int startMs, int endMs})>[
+              for (final TranscriptSegmentEntity m in mic)
+                if (isTranscriptMarker(m.text) && _range(m.text) != null)
+                  _range(m.text)!,
+            ];
+        final List<int> missing = <int>[];
+        for (int s = 0; s < 60000; s += 1000) {
+          bool near = false;
+          for (int i = 0; i < lines.length; i++) {
+            final int end = math.min(
+              lines[i] + 15000,
+              i + 1 < lines.length ? lines[i + 1] : 1 << 40,
+            );
+            if (s >= lines[i] - 2000 && s < end) near = true;
+          }
+          // Heures des repères à la seconde : ±1 s.
+          final bool under = marked.any(
+            (({int startMs, int endMs}) r) =>
+                r.startMs - 1000 <= s && s < r.endMs + 1000,
+          );
+          if (!near && !under) missing.add(s ~/ 1000);
+        }
+        expect(
+          missing,
+          isEmpty,
+          reason:
+              'secondes de parole (s) sans ligne proche ni repère : $missing\n'
+              'repères : ${mic.where((TranscriptSegmentEntity m) => isTranscriptMarker(m.text)).map((TranscriptSegmentEntity m) => m.text).join(' | ')}',
+        );
+      },
+    );
+  });
+
+  test('app tuée pendant la réparation du lancement : au lancement suivant, '
+      'les mêmes repères qu une réparation sans accident (mêmes plages), '
+      'aucun perdu, aucun en double', () async {
+    final r = await _killedMidRepair(sessionStillActive: false);
+    expect(r.control, hasLength(2), reason: 'scénario : deux passages');
+    expect(r.after, r.control);
+  });
+
+  test('app tuée pendant la réparation, session encore active au lancement '
+      'suivant : le 1er repère garde sa plage, le 2e n écrase rien', () async {
+    final r = await _killedMidRepair(sessionStillActive: true);
+    expect(r.control, hasLength(2), reason: 'scénario : deux passages');
+    expect(r.after, r.control);
   });
 }
