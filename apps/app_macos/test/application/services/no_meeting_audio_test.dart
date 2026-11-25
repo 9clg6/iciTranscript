@@ -16,6 +16,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/diarization.service.dart';
 import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
+import 'package:core_domain/domain/repositories/transcript.repository.dart';
+import 'package:ici_transcript/application/services/gap_backfill.service.dart';
+import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
+import 'package:ici_transcript/application/services/transcription_server_arbiter.dart';
+import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
+import 'package:ici_transcript/core/providers/services/transcription_server_arbiter.provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_settings.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
@@ -91,6 +97,45 @@ void main() {
     timeout: const Duration(seconds: 5),
   );
 
+  /// The note's processing is not finished (its passages are still to be
+  /// tried): its audio and its "processing in progress" record stay.
+  Future<void> expectAudioKept(String sessionId, {required String why}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(
+      filesOf(sessionId),
+      containsAll(<String>['${sessionId}_mic.wav', '${sessionId}_processing']),
+      reason: why,
+    );
+  }
+
+  /// What an app killed during a meeting leaves: a session still `active`,
+  /// its mic WAV (10 s of speech, never transcribed) and a dictation
+  /// interval.
+  Future<String> seedKilledMeeting(_App app) async {
+    final String id = '${DateTime.now().millisecondsSinceEpoch - 3600000}';
+    final DateTime at = DateTime.fromMillisecondsSinceEpoch(int.parse(id));
+    await app.container
+        .read(sessionRepositoryProvider)
+        .create(
+          SessionEntity(
+            id: id,
+            title: 'Killed meeting',
+            createdAt: at,
+            updatedAt: at,
+            status: SessionStatus.active,
+          ),
+        );
+    final WavRecorder wav = WavRecorder();
+    await wav.open('${recordings.path}/${id}_mic.wav');
+    await wav.append(voicedPcm(10 * 32000));
+    await wav.close();
+    DictatedIntervalsStore(
+      recordings.path,
+    ).add(id, const DictatedInterval(startMs: 9000, endMs: 10000));
+    expect(filesOf(id), <String>['${id}_dictations.json', '${id}_mic.wav']);
+    return id;
+  }
+
   test('normal stop, post-call pass succeeds: no audio file of the session '
       'remains', () async {
     final _App app = _App(pass: _PassOutcome.succeeds);
@@ -141,38 +186,70 @@ void main() {
     await expectNoAudioLeft(id);
   });
 
-  test('stop with a gap marker the backfill cannot recover (transcriber '
-      'unavailable): no audio file remains, the marker stays, and no retry '
-      'waits on the deleted audio', () async {
+  test('stop with a gap marker, transcriber unavailable: while the note waits '
+      'for its retry the audio stays; once the retry recovers the marker, no '
+      'audio remains', () async {
     final _App app = _App(pass: _PassOutcome.fails);
     addTearDown(app.dispose);
     await app.writePrefs();
     await app.launch();
-    app.http.transcriberDown = true;
+    app.http.transcriber = _Transcriber.down;
 
     final String id = await app.recordNote(gap: true);
     await app.stop();
     await eventually(() => expect(app.pass.finished, <String>[id]));
     expect(app.pass.sawAudio, <bool>[true], reason: 'the pass got the audio');
-
     expect(app.http.transcriptions, isNotEmpty, reason: 'backfill was tried');
     expect(await app.markers(id), hasLength(1), reason: 'marker kept');
-    await expectNoAudioLeft(id);
+    await expectAudioKept(id, why: 'the marker is still to be retried');
 
-    // Later: the transcriber is back, the app retries what is pending (as
-    // when the server is ready, and at next launch). Nothing waits on this
-    // session any more: no request, no error, the marker is unchanged.
-    app.http.transcriberDown = false;
-    final int requests = app.http.transcriptions.length;
-    await app.container.read(gapBackfillRetryProvider).retryPending();
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(app.http.transcriptions, hasLength(requests));
+    // The transcriber is back; the app retries what is pending.
+    app.http.transcriber = _Transcriber.up;
+    await app.retryPending();
+
+    await eventually(
+      () async => expect(await app.lines(id), contains('Retrouvé.')),
+    );
+    await eventually(
+      () async => expect(await app.markers(id), isEmpty, reason: 'recovered'),
+    );
+    await expectNoAudioLeft(id);
+  });
+
+  test('stop with a gap marker the transcriber never recovers: the audio '
+      'stays until the retry attempts are exhausted, then no audio remains '
+      'and the marker stays', () async {
+    final _App app = _App(pass: _PassOutcome.fails);
+    addTearDown(app.dispose);
+    await app.writePrefs();
+    await app.launch();
+    app.http.transcriber = _Transcriber.down;
+
+    final String id = await app.recordNote(gap: true);
+    await app.stop();
+    await eventually(() => expect(app.pass.finished, <String>[id]));
+    await expectAudioKept(id, why: 'the marker is still to be retried');
+
+    // The transcriber answers from now on, but finds nothing in the gap:
+    // each retry is a real attempt that recovers nothing.
+    app.http.transcriber = _Transcriber.silent;
+    final int before = app.http.transcriptions.length;
+    await app.retryPending();
+    expect(app.http.transcriptions.length, greaterThan(before));
+    await expectAudioKept(id, why: 'one real attempt, two left');
+    for (int i = 1; i < GapBackfillRetry.maxAttempts; i++) {
+      await app.retryPending();
+    }
+
     expect(await app.markers(id), hasLength(1), reason: 'never invented');
+    await expectNoAudioLeft(id);
+    expect(await app.markers(id), hasLength(1), reason: 'never removed');
   });
 
   test('stop with a gap marker, server busy because a new recording is '
-      'started during the stop: once the note is done its audio is gone and '
-      'its marker stays, the new recording keeps its own audio', () async {
+      'started during the stop: the first note keeps its audio while it '
+      'waits, the retry after the new meeting recovers it and then discards '
+      'its audio; the new meeting\'s audio is untouched meanwhile', () async {
     final _App app = _App(pass: _PassOutcome.fails);
     addTearDown(app.dispose);
     await app.writePrefs();
@@ -191,21 +268,106 @@ void main() {
 
     expect(app.http.transcriptions, isEmpty, reason: 'server was busy');
     expect(await app.markers(first), hasLength(1), reason: 'marker kept');
-    await expectNoAudioLeft(first);
+    await expectAudioKept(first, why: 'never tried yet: pending');
     expect(
       filesOf(second),
       contains('${second}_mic.wav'),
       reason: 'the recording in progress keeps its audio',
     );
 
-    // The new meeting ends, the server is free: the first note is not
-    // retried on deleted audio, its marker stays.
+    // The new meeting ends, the server is free: the first note is retried
+    // from its audio, then its audio is discarded.
     await app.stop();
-    await eventually(() => expect(app.pass.finished, <String>[first, second]));
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(app.http.transcriptions, isEmpty, reason: 'nothing left to retry');
-    expect(await app.markers(first), hasLength(1), reason: 'never invented');
-    expect(filesOf(first), isEmpty);
+    await eventually(
+      () async => expect(await app.lines(first), contains('Retrouvé.')),
+    );
+    await eventually(
+      () async =>
+          expect(await app.markers(first), isEmpty, reason: 'recovered'),
+    );
+    await expectNoAudioLeft(first);
+  });
+
+  test('"Passer" (skip finalising) during the stop: the audio stays until '
+      'the retry runs, then no audio remains', () async {
+    final _App app = _App(pass: _PassOutcome.fails);
+    addTearDown(app.dispose);
+    await app.writePrefs();
+    await app.launch();
+    app.http.transcriber = _Transcriber.down;
+
+    final String id = await app.recordNote(gap: true);
+    final Future<void> stopping = app.stop();
+    app.vm.skipFinalising();
+    await stopping;
+    await eventually(() => expect(app.pass.finished, <String>[id]));
+    expect(await app.markers(id), hasLength(1), reason: 'marker kept');
+    await expectAudioKept(id, why: 'skipped, not finished: pending');
+
+    app.http.transcriber = _Transcriber.up;
+    await app.retryPending();
+
+    await eventually(
+      () async => expect(await app.lines(id), contains('Retrouvé.')),
+    );
+    await expectNoAudioLeft(id);
+  });
+
+  test('at launch, a transcript store that refuses writes (the repair '
+      'fails): the killed session\'s audio is still there afterwards, and '
+      'the next launch finishes its processing', () async {
+    final _RefusingTranscripts refusing = _RefusingTranscripts();
+    final _App app = _App(pass: _PassOutcome.succeeds, transcripts: refusing);
+    addTearDown(app.kill);
+    await app.writePrefs();
+    final String id = await seedKilledMeeting(app);
+
+    await app.launch();
+    await Future<void>.delayed(const Duration(seconds: 1));
+
+    expect(refusing.refused, greaterThan(0), reason: 'the repair was tried');
+    expect(
+      filesOf(id),
+      containsAll(<String>['${id}_mic.wav', '${id}_dictations.json']),
+      reason: 'its passages were never tried',
+    );
+    app.kill();
+
+    // Next launch, the store accepts writes again: repair, backfill from
+    // the audio, then the audio goes.
+    final _App next = _App(pass: _PassOutcome.succeeds, db: app.db);
+    addTearDown(next.dispose);
+    await next.launch();
+    await eventually(
+      () async => expect(await next.lines(id), contains('Retrouvé.')),
+      timeout: const Duration(seconds: 5),
+    );
+    await expectNoAudioLeft(id);
+  });
+
+  test('at launch with the LOCAL engine whose server is ready only after '
+      '3 s: the killed session\'s markers are backfilled from its audio '
+      'before the audio is discarded', () async {
+    final _LocalTranscriber local = _LocalTranscriber();
+    final _App app = _App(pass: _PassOutcome.succeeds, local: local);
+    addTearDown(app.dispose);
+    await app.writePrefs(engine: TranscriptionEngine.local);
+    app.process
+      ..startDuration =
+          const Duration(seconds: 3) // model loading
+      ..onReady = () => local.ready = true;
+    final String id = await seedKilledMeeting(app);
+
+    await app.launch();
+    await expectAudioKept(id, why: 'the local server is still loading');
+
+    await eventually(
+      () async => expect(await app.lines(id), contains('Retrouvé.')),
+      timeout: const Duration(seconds: 8),
+    );
+    expect(local.sawWav, isNotEmpty, reason: 'backfilled from the WAV');
+    expect(local.sawWav, everyElement(isTrue), reason: 'WAV there each time');
+    await expectNoAudioLeft(id);
   });
 
   test('app killed during a meeting: at next launch the repair and its '
@@ -214,29 +376,7 @@ void main() {
     final _App app = _App(pass: _PassOutcome.succeeds);
     addTearDown(app.dispose);
     await app.writePrefs();
-    // What the killed app left: a session still `active`, its mic WAV
-    // (10 s of speech, never transcribed) and a dictation interval.
-    final String id = '${DateTime.now().millisecondsSinceEpoch - 3600000}';
-    final DateTime at = DateTime.fromMillisecondsSinceEpoch(int.parse(id));
-    await app.container
-        .read(sessionRepositoryProvider)
-        .create(
-          SessionEntity(
-            id: id,
-            title: 'Killed meeting',
-            createdAt: at,
-            updatedAt: at,
-            status: SessionStatus.active,
-          ),
-        );
-    final WavRecorder wav = WavRecorder();
-    await wav.open('${recordings.path}/${id}_mic.wav');
-    await wav.append(voicedPcm(10 * 32000));
-    await wav.close();
-    DictatedIntervalsStore(
-      recordings.path,
-    ).add(id, const DictatedInterval(startMs: 9000, endMs: 10000));
-    expect(filesOf(id), <String>['${id}_dictations.json', '${id}_mic.wav']);
+    final String id = await seedKilledMeeting(app);
     // A note finished before this change: its audio is the user's to sort.
     const String old = '1500000000000';
     await app.container
@@ -280,13 +420,14 @@ void main() {
   });
 
   test('app killed during the post-call pass, with a marker the stop could '
-      'not backfill: at next launch the processing is finished, then its '
-      'audio is gone, transcript intact, marker kept', () async {
+      'not backfill: at next launch the processing goes on (audio kept '
+      'while the transcriber is down), and once the attempts are exhausted '
+      'the audio is gone, transcript intact, marker kept', () async {
     final _App first = _App(pass: _PassOutcome.succeeds);
     addTearDown(first.kill);
     await first.writePrefs();
     await first.launch();
-    first.http.transcriberDown = true;
+    first.http.transcriber = _Transcriber.down;
     first.pass.gate = Completer<void>(); // the pass never ends: killed
 
     final String id = await first.recordNote(gap: true);
@@ -297,7 +438,7 @@ void main() {
     // Next launch, same database and folder; the transcriber is still down.
     final _App next = _App(pass: _PassOutcome.succeeds, db: first.db);
     addTearDown(next.dispose);
-    next.http.transcriberDown = true;
+    next.http.transcriber = _Transcriber.down;
     await next.launch();
 
     await eventually(
@@ -306,6 +447,14 @@ void main() {
     );
     expect(await next.lines(id), contains(_App.spoken), reason: 'transcript');
     expect(await next.markers(id), hasLength(1), reason: 'marker kept');
+    await expectAudioKept(id, why: 'the marker is still to be retried');
+
+    // The transcriber answers but finds nothing: attempts run out.
+    next.http.transcriber = _Transcriber.silent;
+    for (int i = 0; i < GapBackfillRetry.maxAttempts; i++) {
+      await next.retryPending();
+    }
+
     await expectNoAudioLeft(id);
     expect(await next.lines(id), contains(_App.spoken), reason: 'transcript');
     expect(await next.markers(id), hasLength(1), reason: 'marker kept');
@@ -442,12 +591,15 @@ final class _FakePostCallPass extends DiarizationService {
   }
 }
 
-/// Mistral batch API: a sentence per transcription, or 503 while
-/// [transcriberDown]; anything else (coach) is refused. Nothing leaves the
-/// machine.
+/// The transcriber's state: answers with a sentence, unreachable (503), or
+/// answers with nothing (a real attempt that recovers nothing).
+enum _Transcriber { up, down, silent }
+
+/// Mistral batch API, as [transcriber] says; anything else (coach) is
+/// refused. Nothing leaves the machine.
 final class _MistralHttp implements HttpClientAdapter {
   final List<Uri> requests = <Uri>[];
-  bool transcriberDown = false;
+  _Transcriber transcriber = _Transcriber.up;
 
   Iterable<Uri> get transcriptions =>
       requests.where((Uri u) => u.path.contains('audio/transcriptions'));
@@ -463,12 +615,16 @@ final class _MistralHttp implements HttpClientAdapter {
     if (!options.uri.path.contains('audio/transcriptions')) {
       return ResponseBody.fromString('{}', 500);
     }
-    if (transcriberDown) return ResponseBody.fromString('{}', 503);
+    if (transcriber == _Transcriber.down) {
+      return ResponseBody.fromString('{}', 503);
+    }
+    final bool silent = transcriber == _Transcriber.silent;
     return ResponseBody.fromString(
       jsonEncode(<String, Object>{
-        'text': 'Retrouvé.',
+        'text': silent ? '' : 'Retrouvé.',
         'segments': <Object>[
-          <String, Object>{'start': 0.0, 'end': 1.0, 'text': 'Retrouvé.'},
+          if (!silent)
+            <String, Object>{'start': 0.0, 'end': 1.0, 'text': 'Retrouvé.'},
         ],
       }),
       200,
@@ -482,14 +638,66 @@ final class _MistralHttp implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Transcript store whose writes are refused (disk full, database error).
+final class _RefusingTranscripts extends InMemoryTranscriptRepository {
+  int refused = 0;
+
+  @override
+  Future<TranscriptSegmentEntity> save(TranscriptSegmentEntity segment) {
+    refused++;
+    throw const FileSystemException('No space left on device');
+  }
+
+  @override
+  Future<List<TranscriptSegmentEntity>> saveBatch(
+    List<TranscriptSegmentEntity> segments,
+  ) {
+    refused++;
+    throw const FileSystemException('No space left on device');
+  }
+}
+
+/// The local transcription server, seen by the backfill: refused until
+/// [ready] (model loading), then a sentence. No socket.
+final class _LocalTranscriber implements PcmTranscriber {
+  bool ready = false;
+
+  /// Whether a WAV of the recordings folder existed at each answered call.
+  final List<bool> sawWav = <bool>[];
+
+  @override
+  Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
+    if (!ready) throw const SocketException('Connection refused');
+    sawWav.add(
+      Directory(
+        LiveTranscriptionService.recordingsDir,
+      ).listSync().any((FileSystemEntity f) => f.path.endsWith('_mic.wav')),
+    );
+    return <({int offsetMs, String text})>[(offsetMs: 0, text: 'Retrouvé.')];
+  }
+}
+
 final class _App {
   /// [db]: the database of a previous run (a relaunch). [realPass]: the
-  /// real [DiarizationService] instead of the fake pass.
-  _App({required _PassOutcome pass, AppDatabase? db, bool realPass = false})
-    : pass = _FakePostCallPass(pass) {
+  /// real [DiarizationService] instead of the fake pass. [transcripts]: a
+  /// transcript store in place of the database's. [local]: the backfill
+  /// goes to this local server instead of the engine's (no socket).
+  _App({
+    required _PassOutcome pass,
+    AppDatabase? db,
+    bool realPass = false,
+    TranscriptRepository? transcripts,
+    PcmTranscriber? local,
+  }) : pass = _FakePostCallPass(pass) {
     this.db = db ?? memoryDatabase();
     container = ProviderContainer(
       overrides: <Override>[
+        if (transcripts != null)
+          transcriptRepositoryProvider.overrideWithValue(transcripts),
+        if (local != null)
+          gapBackfillRetryProvider.overrideWith(
+            (Ref ref) => _localRetry(ref, local),
+          ),
         ...localModelOverrides(this.db, InstantOllamaService(installed: false)),
         processManagerChannelProvider.overrideWithValue(process),
         audioCaptureChannelProvider.overrideWithValue(audio),
@@ -510,6 +718,36 @@ final class _App {
   }
 
   static const String spoken = 'Bonjour à tous.';
+
+  /// The app's backfill retry (same wiring as its provider), with the local
+  /// server [local] as transcriber.
+  static GapBackfillRetry _localRetry(Ref ref, PcmTranscriber local) {
+    final TranscriptionServerArbiter arbiter = ref.watch(
+      transcriptionServerArbiterProvider,
+    );
+    bool mustYield() => arbiter.backfillMustYield;
+    final GapBackfillRetry retry = GapBackfillRetry(
+      backfill: GapBackfillService(
+        transcriber: local,
+        transcripts: ref.watch(transcriptRepositoryProvider),
+        isRecording: mustYield,
+        dictatedIntervals: DictatedIntervalsStore(
+          LiveTranscriptionService.recordingsDir,
+        ),
+      ),
+      serverStates: ref.watch(processManagerServiceProvider).stateStream,
+      isRecording: mustYield,
+      recordingsDirectory: LiveTranscriptionService.recordingsDir,
+      resumeSignals: arbiter.backfillMayResume,
+    );
+    ref.onDispose(retry.dispose);
+    return retry;
+  }
+
+  /// What the app does when the server is ready again or at launch: retry
+  /// the pending notes.
+  Future<void> retryPending() =>
+      container.read(gapBackfillRetryProvider).retryPending();
 
   final _FakePostCallPass pass;
   late final AppDatabase db;
@@ -539,10 +777,13 @@ final class _App {
 
   /// prefs.json: online engine (Mistral, no local server or socket), post-
   /// call pass through the English coach, dictation on, live speakers off.
-  Future<void> writePrefs({bool coach = true}) async {
+  Future<void> writePrefs({
+    bool coach = true,
+    TranscriptionEngine engine = TranscriptionEngine.mistral,
+  }) async {
     resetPrefs();
     await PrefsStore().update(<String, Object?>{
-      TranscriptionEngineSettings.engineKey: TranscriptionEngine.mistral.name,
+      TranscriptionEngineSettings.engineKey: engine.name,
       LlmSettings.cloudAllowedKey: true,
       'coach_enabled': coach,
       'live_speakers_enabled': false,
