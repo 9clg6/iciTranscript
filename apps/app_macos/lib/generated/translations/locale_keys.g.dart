@@ -128,6 +128,10 @@ abstract class  LocaleKeys {
   static const transcription_live_ollama_binary = 'transcription.live.ollama_binary';
   static const transcription_live_ollama_server = 'transcription.live.ollama_server';
   static const transcription_live_ollama_model = 'transcription.live.ollama_model';
+  static const transcription_live_storage_low = 'transcription.live.storage_low';
+  static const transcription_live_storage_critical = 'transcription.live.storage_critical';
+  static const transcription_live_storage_audio_copy = 'transcription.live.storage_audio_copy';
+  static const transcription_live_storage_unsaved = 'transcription.live.storage_unsaved';
   static const transcription_live = 'transcription.live';
   static const transcription_gap_untranscribed = 'transcription.gap.untranscribed';
   static const transcription_gap = 'transcription.gap';

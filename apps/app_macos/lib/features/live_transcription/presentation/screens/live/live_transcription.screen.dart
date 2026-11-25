@@ -4,6 +4,7 @@ import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/ollama.service.dart';
 import 'package:ici_transcript/application/services/transcript_grouping.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
@@ -109,6 +110,7 @@ class _LiveTranscriptionScreenState
           ),
           onOpenSettings: _vm.openScreenRecordingSettings,
         ),
+      ..._storageNotices(state.storage),
       if (state.ollamaSetupStage != OllamaSetupStage.idle &&
           state.ollamaSetupStage != OllamaSetupStage.ready &&
           state.ollamaSetupStage != OllamaSetupStage.error)
@@ -166,6 +168,50 @@ class _LiveTranscriptionScreenState
       ),
     ],
   );
+
+  /// Place disque : peu de place (temps restant), critique, copie audio en
+  /// échec, lignes pas encore rangées.
+  List<Widget> _storageNotices(RecordingStorage s) {
+    final Duration? left = s.recordingTimeLeft;
+    final String time = left == null
+        ? ''
+        : left.inHours > 0
+        ? '${left.inHours} h ${(left.inMinutes % 60).toString().padLeft(2, '0')}'
+        : '${left.inMinutes} min';
+    return <Widget>[
+      if (s.level == StorageLevel.critical)
+        OatsNotice(
+          key: const ValueKey<String>('storage-critical'),
+          icon: Icons.sd_card_alert_outlined,
+          danger: true,
+          message: LocaleKeys.transcription_live_storage_critical.tr(),
+        )
+      else if (s.level == StorageLevel.low)
+        OatsNotice(
+          key: const ValueKey<String>('storage-warning'),
+          icon: Icons.sd_card_outlined,
+          message: LocaleKeys.transcription_live_storage_low.tr(
+            args: <String>[time, '${left?.inMinutes ?? 0}'],
+          ),
+        ),
+      if (s.audioCopyFailing)
+        OatsNotice(
+          key: const ValueKey<String>('storage-audio-copy'),
+          icon: Icons.mic_external_off_outlined,
+          danger: true,
+          message: LocaleKeys.transcription_live_storage_audio_copy.tr(),
+        ),
+      if (s.unsavedLines > 0)
+        OatsNotice(
+          key: const ValueKey<String>('storage-unsaved'),
+          icon: Icons.save_outlined,
+          danger: true,
+          message: LocaleKeys.transcription_live_storage_unsaved.tr(
+            args: <String>['${s.unsavedLines}'],
+          ),
+        ),
+    ];
+  }
 
   Widget _ollamaNotice(LiveTranscriptionState state) {
     final String pct = (state.ollamaSetupProgress * 100).toStringAsFixed(0);
@@ -272,8 +318,7 @@ class _LiveTranscriptionScreenState
   /// ligne configuré et autorisé ; sinon désactivé, et la raison est dite
   /// sous les options.
   Widget _liveCoachOption(LiveTranscriptionState state) {
-    final bool available =
-        ref.watch(liveCoachAvailableProvider).value ?? false;
+    final bool available = ref.watch(liveCoachAvailableProvider).value ?? false;
     return MergeSemantics(
       child: Row(
         mainAxisSize: MainAxisSize.min,
