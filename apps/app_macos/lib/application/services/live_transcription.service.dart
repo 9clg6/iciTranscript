@@ -109,6 +109,10 @@ final class LiveTranscriptionService {
   // micro = MOI, système = interlocuteurs (diarization).
   WavRecorder? _micRecorder;
   WavRecorder? _systemRecorder;
+
+  /// Début de la pause en cours : les WAV gardent leur place dans le temps
+  /// (heure murale, comme les repères) en avançant de ce silence.
+  DateTime? _pausedAt;
   String? _captureInputDeviceId;
   bool _captureOutputEnabled = false;
   bool _capturePaused = false;
@@ -458,6 +462,7 @@ final class LiveTranscriptionService {
   Future<void> _pauseTranscription() async {
     if (!isRecording || _capturePaused) return;
     _capturePaused = true;
+    _pausedAt = clock.now();
     _cancel(_audioSubscription);
     _audioSubscription = null;
     await _audioCaptureChannel.stopCapture();
@@ -468,18 +473,31 @@ final class LiveTranscriptionService {
   Future<void> _resumeTranscription() async {
     if (!isRecording || !_capturePaused) return;
     _subscribeToAudio();
+    // Avant tout nouveau chunk : le silence est chaîné devant eux.
+    _fillPausedSilence();
     try {
       await _audioCaptureChannel.startCapture(
         inputDeviceId: _captureInputDeviceId,
         outputEnabled: _captureOutputEnabled,
       );
       _capturePaused = false;
+      _pausedAt = null;
       _log.info('Capture audio reprise');
     } catch (_) {
       _cancel(_audioSubscription);
       _audioSubscription = null;
       rethrow;
     }
+  }
+
+  /// Avance les deux WAV de la durée de pause écoulée (silence).
+  void _fillPausedSilence() {
+    final DateTime? since = _pausedAt;
+    if (since == null) return;
+    _pausedAt = clock.now();
+    final Duration paused = clock.now().difference(since);
+    _micRecorder?.appendSilence(paused);
+    _systemRecorder?.appendSilence(paused);
   }
 
   Future<void> _stopTranscription() async {
@@ -543,6 +561,7 @@ final class LiveTranscriptionService {
     await _stopLiveDiarization();
 
     // Finaliser les enregistrements WAV (corrige l'en-tête).
+    if (_capturePaused) _fillPausedSilence();
     try {
       await _micRecorder?.close();
       await _systemRecorder?.close();
@@ -561,6 +580,7 @@ final class LiveTranscriptionService {
     _micRecorder = null;
     _systemRecorder = null;
     _capturePaused = false;
+    _pausedAt = null;
     _captureInputDeviceId = null;
     _captureOutputEnabled = false;
 

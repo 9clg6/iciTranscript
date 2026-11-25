@@ -76,34 +76,58 @@ class WavRecorder {
     // The platform chunk is owned by the caller. Keep an immutable snapshot
     // until its turn in the write chain.
     final Uint8List pendingPcm = Uint8List.fromList(pcm);
+    _pendingWrites = _pendingWrites.then((_) => _writeBlock(raf, pendingPcm));
+    return _pendingWrites;
+  }
+
+  /// Avance le WAV de [duration] de silence (zéros), pour qu'il garde sa
+  /// place dans le temps pendant une pause. Écrit par blocs d'une seconde
+  /// (rien de gardé en mémoire ; un fichier creux demanderait un setLength
+  /// à la fermeture). Chaîné comme [append] : c'est de l'audio réel, pas
+  /// un trou : un échec d'écriture reste dit par [missing].
+  Future<void> appendSilence(Duration duration) {
+    final RandomAccessFile? raf = _raf;
+    int left = duration.inMicroseconds * _bytesPerSecond ~/ 1000000 & ~1;
+    if (raf == null || !_acceptingWrites || left <= 0) {
+      return Future<void>.value();
+    }
+    final Uint8List zeros = Uint8List(_bytesPerSecond);
     _pendingWrites = _pendingWrites.then((_) async {
-      final int at = _dataBytes;
-      // Sa place est gardée, écrit ou non.
-      _dataBytes += pendingPcm.length;
-      try {
-        if (_seek) await raf.setPosition(_headerBytes + at);
-        _seek = false;
-        await raf.writeFrom(pendingPcm);
-        final int? failedAt = _failedAtBytes;
-        if (failedAt != null) {
-          _missing.add((startMs: _ms(failedAt), endMs: _ms(at)));
-          _failedAtBytes = null;
-        }
-        if (_dataBytes - _headerDataBytes >= _bytesPerSecond) {
-          await raf.setPosition(0);
-          await raf.writeFrom(_header(_dataBytes));
-          await raf.setPosition(_headerBytes + _dataBytes);
-          _headerDataBytes = _dataBytes;
-        }
-      } catch (error) {
-        _seek = true;
-        if (_failedAtBytes == null) {
-          _failedAtBytes = at;
-          _errors.add(error);
-        }
+      while (left > 0) {
+        final int n = left < zeros.length ? left : zeros.length;
+        await _writeBlock(raf, Uint8List.sublistView(zeros, 0, n));
+        left -= n;
       }
     });
     return _pendingWrites;
+  }
+
+  Future<void> _writeBlock(RandomAccessFile raf, Uint8List pcm) async {
+    final int at = _dataBytes;
+    // Sa place est gardée, écrit ou non.
+    _dataBytes += pcm.length;
+    try {
+      if (_seek) await raf.setPosition(_headerBytes + at);
+      _seek = false;
+      await raf.writeFrom(pcm);
+      final int? failedAt = _failedAtBytes;
+      if (failedAt != null) {
+        _missing.add((startMs: _ms(failedAt), endMs: _ms(at)));
+        _failedAtBytes = null;
+      }
+      if (_dataBytes - _headerDataBytes >= _bytesPerSecond) {
+        await raf.setPosition(0);
+        await raf.writeFrom(_header(_dataBytes));
+        await raf.setPosition(_headerBytes + _dataBytes);
+        _headerDataBytes = _dataBytes;
+      }
+    } catch (error) {
+      _seek = true;
+      if (_failedAtBytes == null) {
+        _failedAtBytes = at;
+        _errors.add(error);
+      }
+    }
   }
 
   /// Corrige l'en-tête (tailles réelles) et ferme le fichier.
