@@ -10,6 +10,7 @@ import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/application/services/session_audio.dart';
 import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
 import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
@@ -357,6 +358,13 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
     final String? sessionId = _liveService?.currentSessionStream.value?.id;
     final bool coachEnabled = state.isCoachEnabled;
 
+    // Traitement de la note en cours (durable) : l'audio de la session est
+    // supprimé quand il finit, ou au lancement suivant si l'app s'arrête.
+    final SessionAudio audio = SessionAudio(
+      LiveTranscriptionService.recordingsDir,
+    );
+    if (sessionId != null) audio.markProcessing(sessionId);
+
     // Avant le rattrapage de l'arrêt : plus rien ne part pendant
     // « Finalisation… », la réponse en vol est abandonnée.
     await _answers.stop();
@@ -408,11 +416,15 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
               .catchError((Object error, StackTrace stackTrace) {
                 _log.error('Post-traitement échoué: $error');
               })
-              .whenComplete(() {
+              .whenComplete(() async {
+                await audio.discard(sessionId);
                 if (identical(_postProcessTask, task)) _postProcessTask = null;
               });
       _postProcessTask = task;
       unawaited(task);
+    } else if (sessionId != null) {
+      // Pas de passe après l'appel : le traitement de la note est fini.
+      await audio.discard(sessionId);
     }
     return sessionId;
   }

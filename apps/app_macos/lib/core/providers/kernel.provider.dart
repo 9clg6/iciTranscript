@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:core_data/database/app_database.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/launch_repair.dart';
+import 'package:ici_transcript/application/services/session_audio.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
@@ -40,7 +41,11 @@ Future<void> kernel(Ref ref) async {
   // Les dossiers viennent de appDataDirectory() (temporaire sous test).
   // Sessions tuées net (encore `active`) : leurs repères, provisoires
   // compris, seront rattrapés depuis le WAV.
-  final List<String> killed = await _activeSessionIds(ref, log);
+  // Plus les notes dont l'arrêt n'avait pas fini de traiter (SessionAudio).
+  final List<String> killed = <String>[
+    ...await _activeSessionIds(ref, log),
+    ...SessionAudio(LiveTranscriptionService.recordingsDir).processing(),
+  ];
   await _repairAfterCrash(ref, log);
   unawaited(_retryBackfills(ref, killed, log));
 
@@ -73,7 +78,9 @@ Future<void> _startDictation(Ref ref, Log log) async {
 
 /// Répare ce qu'un arrêt brutal en pleine session a laissé : sessions
 /// restées `active`, WAV dont l'en-tête n'a pas été finalisé. Ne supprime
-/// rien. Un échec est journalisé et ne bloque pas le lancement.
+/// rien ici : seul le traitement des sessions tuées ou « en cours de
+/// traitement » (`_retryBackfills`) supprime leur audio, une fois fini ;
+/// l'audio des notes terminées avant n'est jamais touché. Un échec est journalisé et ne bloque pas le lancement.
 Future<void> _repairAfterCrash(Ref ref, Log log) async {
   try {
     // Sessions restées actives : `interrupted`, et un repère ouvert par
@@ -87,10 +94,9 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
     log.warning('Réparation des sessions interrompues échouée: $e');
   }
 
-  // Aucune suppression au lancement : les WAV d'un utilisateur existant ont
-  // des mois, une purge automatique les effacerait tous au premier
-  // lancement. RecordingRetention reste sans appelant ; un geste explicite
-  // de l'utilisateur la déclenchera (tranche ultérieure).
+  // Aucune purge au lancement : les WAV des notes terminées avant (des mois)
+  // restent, l'utilisateur les trie lui-même. Seules les sessions tuées ou
+  // « en cours de traitement » perdent leur audio, une fois traitées.
   final String recordingsDir = LiveTranscriptionService.recordingsDir;
   final Directory recordings = Directory(recordingsDir);
   if (!recordings.existsSync()) return;
@@ -125,6 +131,11 @@ Future<void> _retryBackfills(Ref ref, List<String> killed, Log log) async {
       await retry.enqueue(id);
     }
     await retry.retryPending();
+    // Leur traitement est fini (réussi ou non) : l'audio part. Les repères
+    // non récupérés restent dans la note.
+    for (final String id in killed) {
+      await SessionAudio(LiveTranscriptionService.recordingsDir).discard(id);
+    }
   } catch (e) {
     log.warning('Rattrapage au lancement échoué: $e');
   }
