@@ -516,45 +516,11 @@ void main() {
     });
   });
 
-  // Revue PR #33 : un delta qui arrive APRÈS le `done` de sa phrase (rendu
-  // 500 ms après le delta précédent) ne doit pas disparaître en silence.
-  test('delta tardif après le done de la phrase, puis arrêt : ses mots sont '
-      'dans un done ou sous une perte signalée', () {
-    fakeAsync((FakeAsync async) {
-      final ({int startMs, int endMs, String text}) s0 =
-          mistralProbeSentences.first;
-      final _Bench b = _Bench(
-        async,
-        said: <({int startMs, int endMs, String text})>[s0],
-      );
-      b.play(9000);
-      expect(b.dones, hasLength(1), reason: 'le done de la phrase est parti');
-      expect(b.dones.single.text, isNot(contains('TARDIF')));
-
-      _liveSocket(b)!.push(<String, Object?>{
-        'type': 'transcription.text.delta',
-        'text': ' TARDIF',
-      });
-      async.elapse(const Duration(seconds: 1));
-      b.stop();
-
-      final bool inDone = b.dones.any(
-        (TranscriptEventRemoteModel e) => (e.text ?? '').contains('TARDIF'),
-      );
-      final bool underGap = b.gaps.any(
-        (AudioGap g) =>
-            g.startMs <= _Bench.t0 + s0.startMs + 1000 &&
-            g.endMs + 1000 >= _Bench.t0 + s0.endMs,
-      );
-      expect(
-        inDone || underGap,
-        isTrue,
-        reason:
-            'dones ${b.dones.map((TranscriptEventRemoteModel e) => e.text)}, '
-            'pertes ${b.gaps.length}',
-      );
-    });
-  });
+  // Revue PR #33, mots arrivés tard : la note en est juge (un delta
+  // tardif y arrive par le flux de deltas), voir
+  // apps/app_macos/test/application/services/stt/mistral_live_session_test.dart.
+  // Ici : un `done` en plus ne doit jamais prendre la fenêtre d une autre
+  // phrase.
 
   test('delta tardif de la phrase 1, puis la phrase 2 : chaque done garde la '
       'fenêtre de sa propre phrase', () {

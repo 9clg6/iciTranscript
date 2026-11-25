@@ -258,7 +258,9 @@ void main() {
       app.remote.connectedUrls,
       isNot(contains(MistralRealtimeClient.url)),
     );
-    expect(app.process.starts, hasLength(greaterThanOrEqualTo(2)));
+    await eventually(
+      () => expect(app.process.starts, hasLength(greaterThanOrEqualTo(2))),
+    );
   });
 
   test('moteur Mistral : un serveur local qui tombe pendant la note n est pas '

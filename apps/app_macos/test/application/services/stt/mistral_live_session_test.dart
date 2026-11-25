@@ -144,7 +144,9 @@ void main() {
         final _Meeting m = _Meeting(async);
         sentenceThenLateDelta(m);
         // Le serveur finit l'audio reçu après l'arrêt : un dernier delta
-        // avant son `transcription.done`.
+        // avant son `transcription.done`. Non observé dans la sonde (dernier
+        // delta 2 s avant `input_audio.end`) ; plausible si l'on arrête en
+        // pleine parole (deltas ~0,28 s après l'audio).
         m.server.onEnd = (FakeMistralSocket s) =>
             Timer(const Duration(milliseconds: 300), () => s.delta(' TARDIF'));
 
