@@ -183,6 +183,42 @@ async def t_model2602(a, k):  # 5b: other model, 20 s
     log.w(dir="ref", text=ref_text(sched, 0, 20))
 
 
+async def t_delays(a, k):  # one 90 s real-time session per target_streaming_delay_ms
+    pcm, sched = bench()
+    for delay in (80, 240, 480):
+        log = Log(a.out / f"delay_{delay}.jsonl")
+        ws, task = await session(log, k, delay_ms=delay)
+        log.w(dir="stream_start", delay_ms=delay)  # audio time 0 = now
+        await stream(ws, log, pcm[:90 * RATE * 2])
+        log.w(dir="stream_end")
+        if delay == 480:  # idle: nothing sent for 30 s, then 1 s more
+            log.w(dir="note", msg="idle 30 s, nothing sent")
+            await asyncio.sleep(30)
+            if task.done():
+                log.w(dir="note", msg="socket closed during idle")
+                continue
+            await stream(ws, log, bytes(RATE * 2))
+        await end_and_wait(ws, task, log)
+        log.w(dir="ref", sentences=[s for s in sched if s["end"] <= 90])
+
+
+def t_batch60(a, k):  # 60 s file for the backfill
+    log = Log(a.out / "batch60.jsonl")
+    pcm, sched = bench()
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1), w.setsampwidth(2), w.setframerate(RATE)
+        w.writeframes(pcm[:60 * RATE * 2])
+    t = time.monotonic()
+    r = httpx.post("https://api.mistral.ai/v1/audio/transcriptions",
+                   headers={"Authorization": f"Bearer {k}"},
+                   data={"model": "voxtral-mini-transcribe-3-0", "timestamp_granularities": "segment"},
+                   files={"file": ("bench60.wav", buf.getvalue(), "audio/wav")}, timeout=120)
+    log.w(dir="http", status=r.status_code, latency_s=round(time.monotonic() - t, 2),
+          body=r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text[:2000])
+    log.w(dir="ref", sentences=[s for s in sched if s["end"] <= 60])
+
+
 def t_batch(a, k):  # 6: 30 s WAV, segment timestamps
     log = Log(a.out / "batch.jsonl")
     pcm, sched = bench()
@@ -202,11 +238,14 @@ def t_batch(a, k):  # 6: 30 s WAV, segment timestamps
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("test", choices=["all", "stream", "flush", "fast", "badkey", "model2602", "batch"])
+    p.add_argument("test", choices=["all", "delays", "stream", "flush", "fast", "badkey", "model2602", "batch"])
     p.add_argument("--out", type=Path, required=True)
     a = p.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
     k = None if a.test == "badkey" else key()  # one keychain call per run
+    if a.test == "delays":  # 3 x 90 s streaming + 60 s file = 5.5 min of audio
+        asyncio.run(t_delays(a, k))
+        return t_batch60(a, k)
     if a.test == "all":
         print("key read", flush=True)  # never the key itself
         for t in ("stream", "flush", "fast", "model2602"):
