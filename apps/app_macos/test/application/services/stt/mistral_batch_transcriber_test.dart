@@ -13,6 +13,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 import 'package:ici_transcript/application/services/stt/mistral_batch_transcriber.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
+import '../../../fixtures/mistral_batch60.dart';
 import '../../../helpers/live_service_fakes.dart';
 
 // Rattrapage (et dictée) par l'API Mistral « batch » quand le moteur en
@@ -25,8 +26,8 @@ import '../../../helpers/live_service_fakes.dart';
 // API supposée (lib/application/services/stt/mistral_batch_transcriber.dart) :
 // `MistralBatchTranscriber({required Dio dio, required Future<String?>
 // Function() apiKey}) implements PcmTranscriber` ; `static const String
-// model` (batch : un modèle listé par le compte, `voxtral-mini-transcribe-
-// 3-0` ou `voxtral-mini-latest`) ; `static const String endpoint`.
+// model` (`voxtral-mini-transcribe-3-0`, vérifié par la sonde réelle,
+// test/fixtures/mistral_batch60.dart) ; `static const String endpoint`.
 // Requête : en-tête `Authorization: Bearer` + clé ; champs `model`,
 // `timestamp_granularities` = `segment` (incompatible avec `language` :
 // pas de `language`), `file` = WAV RIFF PCM16 16 kHz mono. Réponse
@@ -154,10 +155,9 @@ void main() {
       expect(_header(o, 'content-type'), startsWith('multipart/form-data'));
       final Uint8List body = http.bodies.single;
       expect(_field(body, 'model'), MistralBatchTranscriber.model);
-      expect(<String>[
-        'voxtral-mini-transcribe-3-0',
-        'voxtral-mini-latest',
-      ], contains(MistralBatchTranscriber.model));
+      // Sonde réelle : `voxtral-mini-transcribe-3-0` répond 200 en 3,3 s
+      // pour 60 s, segments horodatés.
+      expect(MistralBatchTranscriber.model, mistralBatch60Model);
       expect(_field(body, 'timestamp_granularities'), 'segment');
       expect(_field(body, 'language'), isNull);
     });
@@ -176,6 +176,32 @@ void main() {
         ));
       },
     );
+
+    test('réponse réelle de la sonde (60 s) : un morceau par segment, à son '
+        'heure (secondes depuis le début du fichier), texte nettoyé', () async {
+      http.reply = (RequestOptions o, Uint8List b) async =>
+          ResponseBody.fromString(
+            mistralBatch60Body,
+            200,
+            headers: <String, List<String>>{
+              Headers.contentTypeHeader: <String>['application/json'],
+            },
+          );
+      final Map<String, dynamic> recorded =
+          jsonDecode(mistralBatch60Body) as Map<String, dynamic>;
+      final List<dynamic> segments = recorded['segments'] as List<dynamic>;
+      expect(
+        await transcriber.transcribe(_voiced(60000)),
+        <({int offsetMs, String text})>[
+          for (final dynamic seg in segments)
+            (
+              offsetMs: (((seg as Map<String, dynamic>)['start'] as num) * 1000)
+                  .round(),
+              text: (seg['text'] as String).trim(),
+            ),
+        ],
+      );
+    });
 
     test('segments → morceaux à leur heure, texte nettoyé', () async {
       expect(
