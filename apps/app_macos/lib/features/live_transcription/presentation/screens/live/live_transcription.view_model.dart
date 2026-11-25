@@ -11,6 +11,7 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
 import 'package:ici_transcript/application/services/session_audio.dart';
+import 'package:ici_transcript/core/providers/services/gap_backfill_retry.provider.dart';
 import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
 import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
@@ -344,16 +345,11 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// repère de perte, l'arrêt se termine.
   void skipFinalising() => _liveService?.skipFinalising();
 
-  bool _quitting = false;
-
-  /// L'app quitte : un arrêt en cours ne supprime plus l'audio (son
-  /// rattrapage a pu être coupé par l'arrêt des serveurs) ; le lancement
-  /// suivant finit le traitement de la note, puis supprime.
-  void quitting() => _quitting = true;
-
-  Future<void> _discardAudio(SessionAudio audio, String sessionId) async {
-    if (!_quitting) await audio.discard(sessionId);
-  }
+  /// Fin du traitement de la note : l'audio part, sauf si un rattrapage
+  /// l'attend encore (GapBackfillRetry le supprime alors en lâchant la
+  /// session ; un arrêt de l'app avant laisse le lancement suivant finir).
+  Future<void> _finishNote(String sessionId) =>
+      ref.read(gapBackfillRetryProvider).finish(sessionId);
 
   /// Arrete la session et sauvegarde la transcription.
   ///
@@ -428,14 +424,14 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
                 _log.error('Post-traitement échoué: $error');
               })
               .whenComplete(() async {
-                await _discardAudio(audio, sessionId);
+                await _finishNote(sessionId);
                 if (identical(_postProcessTask, task)) _postProcessTask = null;
               });
       _postProcessTask = task;
       unawaited(task);
     } else if (sessionId != null) {
       // Pas de passe après l'appel : le traitement de la note est fini.
-      await _discardAudio(audio, sessionId);
+      await _finishNote(sessionId);
     }
     return sessionId;
   }

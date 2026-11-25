@@ -46,8 +46,8 @@ Future<void> kernel(Ref ref) async {
     ...await _activeSessionIds(ref, log),
     ...SessionAudio(LiveTranscriptionService.recordingsDir).processing(),
   ];
-  await _repairAfterCrash(ref, log);
-  unawaited(_retryBackfills(ref, killed, log));
+  final bool repaired = await _repairAfterCrash(ref, log);
+  unawaited(_retryBackfills(ref, killed, log, repaired: repaired));
 
   // Serveurs laissés par un arrêt brutal : seulement ceux notés par cette
   // app dont le PID a encore la même identité. Ne lève jamais.
@@ -81,7 +81,8 @@ Future<void> _startDictation(Ref ref, Log log) async {
 /// rien ici : seul le traitement des sessions tuées ou « en cours de
 /// traitement » (`_retryBackfills`) supprime leur audio, une fois fini ;
 /// l'audio des notes terminées avant n'est jamais touché. Un échec est journalisé et ne bloque pas le lancement.
-Future<void> _repairAfterCrash(Ref ref, Log log) async {
+Future<bool> _repairAfterCrash(Ref ref, Log log) async {
+  bool repaired = true;
   try {
     // Sessions restées actives : `interrupted`, et un repère ouvert par
     // source à son dernier point durable (rien gardé après).
@@ -91,6 +92,7 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
       recordingsDir: LiveTranscriptionService.recordingsDir,
     ).run();
   } catch (e) {
+    repaired = false;
     log.warning('Réparation des sessions interrompues échouée: $e');
   }
 
@@ -99,7 +101,7 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
   // « en cours de traitement » perdent leur audio, une fois traitées.
   final String recordingsDir = LiveTranscriptionService.recordingsDir;
   final Directory recordings = Directory(recordingsDir);
-  if (!recordings.existsSync()) return;
+  if (!recordings.existsSync()) return repaired;
   for (final FileSystemEntity entry in recordings.listSync()) {
     if (entry is! File || !entry.path.endsWith('.wav')) continue;
     try {
@@ -108,6 +110,7 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
       log.warning('Réparation WAV échouée (${entry.path}): $e');
     }
   }
+  return repaired;
 }
 
 Future<List<String>> _activeSessionIds(Ref ref, Log log) async {
@@ -123,18 +126,25 @@ Future<List<String>> _activeSessionIds(Ref ref, Log log) async {
   }
 }
 
-/// Rattrapages en attente (reprises bornées), plus les sessions tuées net.
-Future<void> _retryBackfills(Ref ref, List<String> killed, Log log) async {
+/// Rattrapages en attente (reprises bornées), plus les sessions tuées net ou
+/// « en cours de traitement ». Leur audio part quand elles ne sont plus en
+/// attente (rattrapées, ou tentatives épuisées) ; jamais si la réparation a
+/// échoué, ni tant que le rattrapage n'a pas atteint le transcripteur.
+Future<void> _retryBackfills(
+  Ref ref,
+  List<String> killed,
+  Log log, {
+  required bool repaired,
+}) async {
   try {
     final GapBackfillRetry retry = ref.read(gapBackfillRetryProvider);
     for (final String id in killed) {
-      await retry.enqueue(id);
+      repaired ? await retry.adopt(id) : await retry.enqueue(id);
     }
     await retry.retryPending();
-    // Leur traitement est fini (réussi ou non) : l'audio part. Les repères
-    // non récupérés restent dans la note.
+    if (!repaired) return;
     for (final String id in killed) {
-      await SessionAudio(LiveTranscriptionService.recordingsDir).discard(id);
+      await retry.finish(id);
     }
   } catch (e) {
     log.warning('Rattrapage au lancement échoué: $e');

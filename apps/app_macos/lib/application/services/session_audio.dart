@@ -25,6 +25,24 @@ final class SessionAudio {
     _marker(sessionId).writeAsStringSync('', flush: true);
   }
 
+  static const String _retrying = 'retry';
+
+  /// Le traitement de la note est fini mais un rattrapage attend : l'audio
+  /// reste jusqu'à ce que GapBackfillRetry lâche la session.
+  void markRetrying(String sessionId) {
+    Directory(recordingsDir).createSync(recursive: true);
+    _marker(sessionId).writeAsStringSync(_retrying, flush: true);
+  }
+
+  /// Supprime l'audio de [sessionId] seulement si son traitement est fini
+  /// (marqué par [markRetrying]) : appelé quand le rattrapage lâche la session.
+  Future<void> discardIfRetrying(String sessionId) async {
+    final File marker = _marker(sessionId);
+    if (marker.existsSync() && marker.readAsStringSync() == _retrying) {
+      await discard(sessionId);
+    }
+  }
+
   /// Sessions dont le traitement n'a pas fini (app arrêtée en route).
   List<String> processing() {
     final Directory dir = Directory(recordingsDir);

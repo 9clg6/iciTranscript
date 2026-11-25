@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
+import 'package:ici_transcript/application/services/session_audio.dart';
 
 /// Rattrapage des repères quand le serveur de transcription n'était pas là.
 ///
@@ -23,7 +24,8 @@ final class GapBackfillRetry {
     Stream<void>? resumeSignals,
   }) : _backfill = backfill,
        _isRecording = isRecording,
-       _directory = recordingsDirectory {
+       _directory = recordingsDirectory,
+       _audio = SessionAudio(recordingsDirectory) {
     _states = serverStates.listen((ServerState state) {
       if (state == ServerState.ready) unawaited(_retryAll());
     });
@@ -38,6 +40,7 @@ final class GapBackfillRetry {
   final GapBackfillService _backfill;
   final bool Function() _isRecording;
   final String _directory;
+  final SessionAudio _audio;
   late final StreamSubscription<ServerState> _states;
   StreamSubscription<void>? _resumes;
   final Log _log = Log.named('GapBackfillRetry');
@@ -143,6 +146,25 @@ final class GapBackfillRetry {
     await _write(pending);
   });
 
+  /// Fin du traitement de la note : son audio part, sauf si le rattrapage
+  /// l'attend encore (il le supprime alors en lâchant la session).
+  Future<void> finish(String sessionId) => _serialized(() async {
+    if ((await _read()).containsKey(sessionId)) {
+      _audio.markRetrying(sessionId);
+    } else {
+      await _audio.discard(sessionId);
+    }
+  });
+
+  /// Lancement : session réparée, son rattrapage (même sans repère) puis la
+  /// suppression de son audio relèvent de la reprise.
+  Future<void> adopt(String sessionId) => _serialized(() async {
+    final Map<String, int> pending = await _read();
+    pending.putIfAbsent(sessionId, () => 0);
+    await _write(pending);
+    _audio.markRetrying(sessionId);
+  });
+
   /// Rend faux si le serveur n'a pas pu être utilisé (absent, ou un
   /// enregistrement a la priorité) : inutile alors d'essayer les autres.
   Future<bool> _attempt(String sessionId) async {
@@ -182,15 +204,18 @@ final class GapBackfillRetry {
     final int attempts =
         (pending[sessionId] ?? 0) +
         (outcome.reachedServer && !outcome.progressed ? 1 : 0);
-    if (outcome.markersLeft == 0) {
-      pending.remove(sessionId);
-    } else if (attempts >= maxAttempts) {
+    final bool dropped = outcome.markersLeft == 0 || attempts >= maxAttempts;
+    if (outcome.markersLeft > 0 && attempts >= maxAttempts) {
       _log.warning('Session $sessionId : $attempts tentatives, repères gardés');
+    }
+    if (dropped) {
       pending.remove(sessionId);
     } else {
       pending[sessionId] = attempts;
     }
     await _write(pending);
+    // Rattrapé ou abandonné : si la note est finie, son audio part.
+    if (dropped) await _audio.discardIfRetrying(sessionId);
     if (outcome.markersLeft > 0 && !outcome.reachedServer) {
       _scheduleUnreached();
     } else if (outcome.reachedServer) {
