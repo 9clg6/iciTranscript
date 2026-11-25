@@ -491,15 +491,8 @@ final class LiveTranscriptionService {
   }
 
   /// Saute la pause d'une piste, jusqu'à l'arrivée de son premier chunk.
-  /// Le chunk arrive à `now` mais porte les derniers ms d'audio : on les
-  /// retire du trou (jamais négatif).
-  Duration? _takePause(DateTime? since, int chunkBytes) {
-    if (since == null) return null;
-    final Duration gap =
-        clock.now().difference(since) -
-        Duration(milliseconds: chunkBytes ~/ 32);
-    return gap.isNegative ? Duration.zero : gap;
-  }
+  Duration? _takePause(DateTime? since) =>
+      since == null ? null : clock.now().difference(since);
 
   Future<void> _stopTranscription() async {
     _log.info('Arret de la transcription en direct');
@@ -1439,13 +1432,13 @@ final class LiveTranscriptionService {
           );
         }
         if (chunk.source == AudioSource.input) {
-          final Duration? gap = _takePause(_micPausedAt, chunk.data.length);
+          final Duration? gap = _takePause(_micPausedAt);
           if (gap != null) _micRecorder?.skip(gap);
           _micPausedAt = null;
           _micRecorder?.append(chunk.data).then((_) => _afterWavWrite());
           _micAudioEndMs = chunk.timestampMs + chunk.data.length ~/ 32;
         } else {
-          final Duration? gap = _takePause(_systemPausedAt, chunk.data.length);
+          final Duration? gap = _takePause(_systemPausedAt);
           if (gap != null) _systemRecorder?.skip(gap);
           _systemPausedAt = null;
           _systemRecorder?.append(chunk.data).then((_) => _afterWavWrite());
