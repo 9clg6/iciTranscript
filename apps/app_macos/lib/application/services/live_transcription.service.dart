@@ -966,6 +966,31 @@ final class LiveTranscriptionService {
       '$_untranscribedPrefix (${TranscriptFormatter.timestamp(startMs)} '
       '– ${TranscriptFormatter.timestamp(endMs)})';
 
+  static const String _notRecordedAfterPrefix =
+      "Rien n'a pu être enregistré après ";
+  static const String _notRecordedAfterSuffix =
+      ' (app arrêtée ou disque plein)';
+
+  /// Repère OUVERT écrit au relancement après un arrêt brutal (app tuée,
+  /// disque plein) : rien de la source n'a été gardé après [startMs], ni
+  /// texte ni audio. Jamais rattrapé ni retiré, jamais pris pour du silence.
+  static String notRecordedAfterMarkerText(int startMs) =>
+      '$_notRecordedAfterPrefix${TranscriptFormatter.timestamp(startMs)}'
+      '$_notRecordedAfterSuffix';
+
+  static final RegExp _notRecordedAfter = RegExp(
+    "^Rien n'a pu être enregistré après (\\d+:\\d{2}:\\d{2}) "
+    r'\(app arrêtée ou disque plein\)$',
+  );
+
+  /// Vrai pour un texte écrit par [notRecordedAfterMarkerText].
+  static bool isNotRecordedAfterMarker(String text) =>
+      _notRecordedAfter.hasMatch(text);
+
+  /// Heure (hh:mm:ss) d'un repère [notRecordedAfterMarkerText].
+  static String? notRecordedAfterTime(String text) =>
+      _notRecordedAfter.firstMatch(text)?.group(1);
+
   static const String _noAudioCopyPrefix = 'Pas de copie audio';
 
   /// Repère d'un intervalle dont l'audio n'a pas pu être gardé (disque

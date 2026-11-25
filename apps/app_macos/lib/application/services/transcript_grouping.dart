@@ -25,7 +25,8 @@ class TranscriptBlock {
 bool isTranscriptMarker(String text) =>
     text.startsWith(LiveTranscriptionService.gapMarkerPrefix) ||
     LiveTranscriptionService.isUntranscribedMarker(text) ||
-    LiveTranscriptionService.isNoAudioCopyMarker(text);
+    LiveTranscriptionService.isNoAudioCopyMarker(text) ||
+    LiveTranscriptionService.isNotRecordedAfterMarker(text);
 
 final RegExp _sentenceEnd = RegExp(r'[.!?…]["»”’)]*$');
 

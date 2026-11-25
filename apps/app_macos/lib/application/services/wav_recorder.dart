@@ -154,6 +154,15 @@ class WavRecorder {
 
   int _ms(int bytes) => bytes * 1000 ~/ _bytesPerSecond;
 
+  /// Durée d'audio de [path] d'après sa taille (en-tête de 44 octets,
+  /// 32 octets par ms à 16 kHz) ; null sans fichier.
+  static Future<Duration?> recordedDuration(String path) async {
+    final File file = File(path);
+    if (!file.existsSync()) return null;
+    final int bytes = await file.length() - _headerBytes;
+    return Duration(milliseconds: bytes <= 0 ? 0 : bytes ~/ 32);
+  }
+
   /// Recale les tailles d'un WAV dont l'en-tête n'a pas été finalisé (app
   /// arrêtée en pleine session) sur la taille réelle du fichier.
   ///

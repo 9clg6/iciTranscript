@@ -220,7 +220,8 @@ class LiveAnswersService {
       !_paused &&
       !s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix) &&
       !LiveTranscriptionService.isUntranscribedMarker(s.text) &&
-      !LiveTranscriptionService.isNoAudioCopyMarker(s.text);
+      !LiveTranscriptionService.isNoAudioCopyMarker(s.text) &&
+      !LiveTranscriptionService.isNotRecordedAfterMarker(s.text);
 
   static String _normalized(String text) => fold(text)
       .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')

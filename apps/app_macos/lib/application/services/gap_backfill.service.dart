@@ -197,7 +197,8 @@ final class GapBackfillService {
   static bool _isMarker(TranscriptSegmentEntity s) =>
       _isGapMarker(s) ||
       LiveTranscriptionService.isUntranscribedMarker(s.text) ||
-      LiveTranscriptionService.isNoAudioCopyMarker(s.text);
+      LiveTranscriptionService.isNoAudioCopyMarker(s.text) ||
+      LiveTranscriptionService.isNotRecordedAfterMarker(s.text);
 
   static List<BackfillGap> _planMarker(
     TranscriptSegmentEntity marker,
@@ -676,10 +677,12 @@ final class GapBackfillService {
     int from,
     int to,
   ) => segments.any((TranscriptSegmentEntity s) {
-    if (s.source != source ||
-        !LiveTranscriptionService.isNoAudioCopyMarker(s.text)) {
-      return false;
+    if (s.source != source) return false;
+    // Rien de gardé après lui : un audio absent, pas du silence.
+    if (LiveTranscriptionService.isNotRecordedAfterMarker(s.text)) {
+      return s.timestampMs < to;
     }
+    if (!LiveTranscriptionService.isNoAudioCopyMarker(s.text)) return false;
     final RegExpMatch? m = _markerTimes.firstMatch(s.text);
     if (m == null) return false;
     return _ms(m, 1) < to && from < _ms(m, 4);
