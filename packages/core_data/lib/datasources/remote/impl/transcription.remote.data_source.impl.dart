@@ -55,8 +55,10 @@ final class TranscriptionRemoteDataSourceImpl
   static const double _voiceContinueRms = 180;
   // Une respiration au milieu d'une phrase dépasse souvent 0,7 s : en dessous
   // de ~1,2 s, une même phrase était coupée en plusieurs lignes.
-  static const int _silenceToFinalizeMs = 1200;
-  static const int _maxUtteranceMs = 30000;
+  /// Silence qui clôt une phrase du direct ; `LaunchRepair` s'en sert aussi.
+  static const int silenceToFinalizeMs = 1200;
+  /// Longueur maximale d'une phrase du direct avant coupe forcée.
+  static const int maxUtteranceMs = 30000;
   // Une phrase restée moins longtemps au-dessus du seuil de parole est
   // marquée sans parole (UtteranceWindow.hadSpeech) : filtre d'hallucinations.
   static const int _minSpeechMs = 300;
@@ -199,7 +201,7 @@ final class TranscriptionRemoteDataSourceImpl
 
       // Même sans pause, borner une session évite que l'état incrémental du
       // modèle dérive après plusieurs minutes (langue parasite / ponctuation).
-      if (now - _utteranceStartedMs[source]! >= _maxUtteranceMs) {
+      if (now - _utteranceStartedMs[source]! >= maxUtteranceMs) {
         _finalizeSource(source);
       }
       return;
@@ -210,7 +212,7 @@ final class TranscriptionRemoteDataSourceImpl
     }
 
     // Conserver une courte queue de silence pour ne pas couper la fin du mot.
-    if (now - _lastVoicedMs[source]! <= _silenceToFinalizeMs) {
+    if (now - _lastVoicedMs[source]! <= silenceToFinalizeMs) {
       _sendChunk(chunk);
       return;
     }
