@@ -1,3 +1,10 @@
+import 'package:ici_transcript/core/providers/platform/prefs_store.provider.dart';
+import 'package:ici_transcript/core/providers/services/llm_dio.provider.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/application/services/llm/api_key_store.dart';
+import 'package:ici_transcript/application/services/stt/mistral_batch_transcriber.dart';
+import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
 import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
 import 'package:ici_transcript/application/services/transcription_server_arbiter.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
@@ -21,16 +28,29 @@ GapBackfillRetry gapBackfillRetry(Ref ref) {
   );
   // Enregistrement ou dictée : le rattrapage cède le serveur (séquentiel).
   bool mustYield() => arbiter.backfillMustYield;
+  final ApiKeyStore keys = ref.watch(apiKeyStoreProvider);
   final GapBackfillRetry retry = GapBackfillRetry(
     backfill: GapBackfillService(
-      transcriber: WebSocketPcmTranscriber(
-        url: ref
-            .watch(launchServerPortsProvider)
-            .transcriptionWebSocket
-            .toString(),
-        // Vrai dès qu'un démarrage est demandé (LiveTranscriptionService) ou
-        // qu'une dictée commence : aucun morceau ne part ensuite.
-        shouldYield: mustYield,
+      // Le moteur choisi AU MOMENT du rattrapage (pas celui de la note) :
+      // voxmlx sur ce Mac, ou l'API batch de Mistral. Une ancienne note
+      // locale part chez Mistral après un changement de moteur.
+      transcriber: EngineTranscriber(
+        local: WebSocketPcmTranscriber(
+          url: ref
+              .watch(launchServerPortsProvider)
+              .transcriptionWebSocket
+              .toString(),
+          // Vrai dès qu'un démarrage est demandé (LiveTranscriptionService)
+          // ou qu'une dictée commence : aucun morceau ne part ensuite.
+          shouldYield: mustYield,
+        ),
+        cloud: MistralBatchTranscriber(
+          dio: ref.watch(llmDioProvider),
+          apiKey: () => keys.read(LlmProviderId.mistral),
+        ),
+        engine: () async => TranscriptionEngineSelection(
+          keys,
+        ).fromPrefs(await ref.read(prefsStoreProvider).read()),
       ),
       transcripts: ref.watch(transcriptRepositoryProvider),
       isRecording: mustYield,

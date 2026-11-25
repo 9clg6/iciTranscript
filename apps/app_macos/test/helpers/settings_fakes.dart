@@ -238,6 +238,12 @@ const Map<LlmProviderId, String> kOkStream = <LlmProviderId, String>{
   LlmProviderId.gemini:
       'data: {"candidates": [{"content": {"parts": [{"text": "OK"}],"role": "model"},"finishReason": "STOP"}]}\n'
       '\n',
+  // API compatible OpenAI.
+  LlmProviderId.mistral:
+      'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":null}]}\n'
+      '\n'
+      'data: [DONE]\n'
+      '\n',
   LlmProviderId.ollama:
       '{"model":"mistral","message":{"role":"assistant","content":"OK"},"done":false}\n'
       '{"model":"mistral","message":{"role":"assistant","content":""},"done":true}\n',

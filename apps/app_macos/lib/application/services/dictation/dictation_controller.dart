@@ -11,6 +11,7 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:flutter/services.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
+import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/transcript_text_normalizer.dart';
 import 'package:ici_transcript/application/services/transcription_server_arbiter.dart';
@@ -122,7 +123,11 @@ final class DictationController {
     required String webSocketUrl,
     PrefsStore? prefs,
     Future<bool> Function()? isTranscriptionModelCached,
-  }) : _prefs = prefs ?? PrefsStore(),
+    PcmTranscriber? cloudTranscriber,
+    Future<bool> Function()? cloudChosen,
+  }) : _cloud = cloudTranscriber,
+       _cloudChosen = cloudChosen,
+       _prefs = prefs ?? PrefsStore(),
        _modelCached = isTranscriptionModelCached,
        _arbiter = arbiter,
        _shortcuts = shortcuts,
@@ -173,6 +178,25 @@ final class DictationController {
 
   final TranscriptionServerArbiter _arbiter;
   final GlobalShortcutChannel _shortcuts;
+
+  // Moteur en ligne : l'audio de l'appui est envoyé une fois au relâchement
+  // (API batch), sans serveur local ni flux temps réel. [_cloudChosen] dit,
+  // à chaque appui, si ce moteur est celui choisi (défaut : oui dès qu'un
+  // transcripteur en ligne est donné).
+  final PcmTranscriber? _cloud;
+  final Future<bool> Function()? _cloudChosen;
+
+  Future<bool> _usesCloud() async {
+    if (_cloud == null) return false;
+    final Future<bool> Function()? chosen = _cloudChosen;
+    if (chosen == null) return true;
+    try {
+      return await chosen();
+    } catch (_) {
+      return false;
+    }
+  }
+
   final TextOutputChannel _output;
   final AudioCaptureChannel _audio;
   final TranscriptionRemoteDataSource _remote;
@@ -319,6 +343,8 @@ final class DictationController {
 
   Future<void> _warmServer() async {
     if (_lending != null || _live.isRecording) return;
+    // Moteur en ligne : pas de serveur local (7 Go de mémoire évités).
+    if (await _usesCloud()) return;
     try {
       // Démarrer le serveur téléchargerait le modèle (plusieurs Go) sans
       // que l'utilisateur l'ait demandé.
@@ -513,7 +539,8 @@ final class DictationController {
   Future<void> _begin(_Run? previous, {bool toggled = false}) async {
     final _Run run = _Run(clock.now())..toggled = toggled;
     _run = run;
-    if (_modelCached != null && !await _isModelCached()) {
+    run.cloud = !_live.isRunning && await _usesCloud();
+    if (!run.cloud && _modelCached != null && !await _isModelCached()) {
       // Ni capture, ni Échap, ni serveur : Réglages propose le téléchargement.
       run.finished = true;
       if (identical(_run, run)) _state.add(const DictationModelMissing());
@@ -544,12 +571,14 @@ final class DictationController {
     }
     _set(
       run,
-      _serverFree ? const DictationListening() : const DictationStarting(),
+      run.cloud || _serverFree
+          ? const DictationListening()
+          : const DictationStarting(),
     );
     run.audio = _audio.audioStream.listen(
       (AudioChunk chunk) => _onChunk(run, chunk),
     );
-    unawaited(_openStream(run));
+    if (!run.cloud) unawaited(_openStream(run));
     try {
       // Micro choisi dans Réglages, relu à chaque appui (null : le système).
       final String? mic = prefValue<String>(
@@ -598,7 +627,9 @@ final class DictationController {
       return;
     }
     run.buffer.add(chunk);
-    if (run.buffer.length * _chunkMs >= maxStartingBuffer.inMilliseconds) {
+    // En ligne : tout l'appui est gardé (borné par maxDictationDuration).
+    if (!run.cloud &&
+        run.buffer.length * _chunkMs >= maxStartingBuffer.inMilliseconds) {
       // Borne atteinte : la capture s'arrête comme au relâchement ; la touche
       // encore tenue n'y change plus rien.
       run.ignoreRelease = true;
@@ -684,7 +715,43 @@ final class DictationController {
       return;
     }
     _stopCapture(run);
+    if (run.cloud) {
+      unawaited(_transcribeCloud(run));
+      return;
+    }
     if (run.streaming) _commit(run);
+  }
+
+  /// En ligne : l'audio de l'appui, envoyé une fois ; le texte produit une
+  /// fois, par les mêmes filtres que le flux.
+  Future<void> _transcribeCloud(_Run run) async {
+    final PcmTranscriber? cloud = _cloud;
+    if (cloud == null) return;
+    _startFinalTimer(run);
+    final BytesBuilder pcm = BytesBuilder(copy: false);
+    for (final AudioChunk chunk in run.buffer) {
+      pcm.add(chunk.data);
+    }
+    run.buffer.clear();
+    final List<({int offsetMs, String text})> pieces;
+    try {
+      pieces = await cloud.transcribe(pcm.takeBytes());
+    } on TranscriberUnavailable catch (e) {
+      _log.warning('Dictée en ligne indisponible: ${e.reason}');
+      if (!run.finished) _fail(run, DictationErrorReason.serverUnavailable);
+      return;
+    } catch (e) {
+      _log.warning('Dictée en ligne échouée (${e.runtimeType})');
+      if (!run.finished) _fail(run, DictationErrorReason.serverUnavailable);
+      return;
+    }
+    if (run.finished) return;
+    _onText(
+      run,
+      pieces.map((({int offsetMs, String text}) p) => p.text).join(' '),
+      run.heardSpeech,
+    );
+    await _complete(run);
   }
 
   void _stopCapture(_Run run) {
@@ -877,6 +944,9 @@ final class _Run {
   bool committed = false;
   bool streaming = false;
   bool finished = false;
+
+  /// Moteur en ligne pour cet appui (API batch au relâchement).
+  bool cloud = false;
 
   /// Délai de garde passé : le prochain texte va au presse-papiers.
   bool late = false;

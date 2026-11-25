@@ -57,6 +57,7 @@ const Map<LlmProviderId, String> _defaultModel = <LlmProviderId, String>{
   LlmProviderId.anthropic: 'claude-haiku-5-5',
   LlmProviderId.openai: 'gpt-6-luna',
   LlmProviderId.gemini: 'gemini-3.5-flash-lite',
+  LlmProviderId.mistral: 'mistral-small-latest',
   LlmProviderId.ollama: 'mistral',
 };
 

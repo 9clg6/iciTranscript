@@ -22,6 +22,7 @@ const List<LlmProviderId> kCloudLlmProviders = <LlmProviderId>[
   LlmProviderId.anthropic,
   LlmProviderId.openai,
   LlmProviderId.gemini,
+  LlmProviderId.mistral,
 ];
 
 /// ViewModel de l'ecran des reglages.

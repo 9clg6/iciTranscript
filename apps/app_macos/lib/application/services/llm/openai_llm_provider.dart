@@ -42,14 +42,16 @@ class OpenAiLlmProvider implements LlmProvider {
         ],
       },
     );
-    return sseData(lines).expand(_texts);
+    return sseData(lines).expand(chatTexts);
   }
 
-  static Iterable<String> _texts(String data) {
+  /// Textes d'un événement SSE de Chat Completions (aussi Mistral, même
+  /// format) ; [provider] nomme le service dans l'erreur.
+  static Iterable<String> chatTexts(String data, {String provider = 'OpenAI'}) {
     if (data == '[DONE]') return const <String>[];
     final Map<String, dynamic> chunk = jsonDecode(data) as Map<String, dynamic>;
     if (chunk['error'] != null) {
-      throw const LlmException('OpenAI : erreur pendant la réponse');
+      throw LlmException('$provider : erreur pendant la réponse');
     }
     return <String>[
       for (final dynamic choice in chunk['choices'] as List<dynamic>)

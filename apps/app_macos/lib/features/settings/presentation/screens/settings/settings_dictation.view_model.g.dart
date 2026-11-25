@@ -50,7 +50,7 @@ final class DictationSettingsViewModelProvider
 }
 
 String _$dictationSettingsViewModelHash() =>
-    r'0a5b46bee8f5ebe8d798b91e40cb332f6fdf4c63';
+    r'aa0f15a3e9a2fdc6664631b44fc83f497ee33ccd';
 
 /// Section « Dictée » de Réglages : lit et écrit prefs.json par le
 /// `PrefsStore` partagé, puis fait appliquer les réglages par la dictée.

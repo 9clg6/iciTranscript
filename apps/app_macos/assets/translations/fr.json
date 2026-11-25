@@ -212,7 +212,13 @@
       "title": "Audio",
       "microphone": "Microphone",
       "system_audio": "Audio système",
-      "system_audio_description": "Capture via ScreenCaptureKit"
+      "system_audio_description": "Capture via ScreenCaptureKit",
+      "engine_title": "Moteur de transcription",
+      "engine_local": "Sur ce Mac",
+      "engine_mistral": "Mistral (en ligne)",
+      "engine_privacy": "En ligne, l'audio part chez Mistral. Coupez l'entraînement dans admin.mistral.ai › Privacy (« Data usage for improving our services »).",
+      "engine_refused_cloud": "Permettez d'abord l'envoi en ligne (Intelligence artificielle) pour utiliser Mistral.",
+      "engine_refused_key": "Rangez d'abord une clé Mistral (Intelligence artificielle) pour utiliser Mistral."
     },
     "recording": {
       "title": "Enregistrement",
@@ -254,6 +260,7 @@
         "anthropic": "Claude",
         "openai": "OpenAI",
         "gemini": "Gemini",
+        "mistral": "Mistral",
         "ollama": "Local (Ollama)"
       },
       "api_key_label": "Clé API",

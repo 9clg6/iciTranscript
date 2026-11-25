@@ -3,6 +3,12 @@ import 'dart:async';
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:flutter/widgets.dart';
+import 'package:ici_transcript/core/providers/services/llm_dio.provider.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/application/services/llm/api_key_store.dart';
+import 'package:ici_transcript/application/services/stt/mistral_batch_transcriber.dart';
+import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_controller.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/core/platform/global_shortcut_channel.dart';
@@ -70,6 +76,7 @@ StreamSubscription<bool> followDictation(
 DictationController dictationController(Ref ref) {
   final TranscriptionRemoteDataSourceImpl remote =
       TranscriptionRemoteDataSourceImpl();
+  final ApiKeyStore keys = ref.watch(apiKeyStoreProvider);
   final DictationController controller = DictationController(
     arbiter: ref.watch(transcriptionServerArbiterProvider),
     shortcuts: ref.watch(globalShortcutChannelProvider),
@@ -82,6 +89,17 @@ DictationController dictationController(Ref ref) {
     serverArgs: voxmlxArgs(),
     prefs: ref.watch(prefsStoreProvider),
     isTranscriptionModelCached: () async => transcriptionModelCachedNow(),
+    // Moteur en ligne choisi (envoi permis, clé rangée) : l'API batch de
+    // Mistral au relâchement, sans serveur local.
+    cloudTranscriber: MistralBatchTranscriber(
+      dio: ref.watch(llmDioProvider),
+      apiKey: () => keys.read(LlmProviderId.mistral),
+    ),
+    cloudChosen: () async =>
+        await TranscriptionEngineSelection(
+          keys,
+        ).fromPrefs(await ref.read(prefsStoreProvider).read()) ==
+        TranscriptionEngine.mistral,
     webSocketUrl: ref
         .watch(launchServerPortsProvider)
         .transcriptionWebSocket

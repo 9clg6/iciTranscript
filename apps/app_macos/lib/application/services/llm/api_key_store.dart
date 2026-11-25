@@ -61,6 +61,7 @@ class LlmProviderSelection {
     LlmProviderId.anthropic,
     LlmProviderId.openai,
     LlmProviderId.gemini,
+    LlmProviderId.mistral,
   ];
 
   /// Ollama (local) est toujours configure ; un fournisseur cloud l'est

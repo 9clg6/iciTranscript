@@ -9,6 +9,8 @@ import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
 import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_rules.dart';
@@ -266,7 +268,9 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       final bool systemAudio = ref
           .read(settingsViewModelProvider)
           .systemAudioEnabled;
+      final TranscriptionEngine engine = await _engine();
       await _liveService?.startTranscription(
+        engine: engine,
         inputDeviceId: micId,
         serverCommand: voxmlxCommand,
         serverArgs: voxmlxArgs(),
@@ -489,6 +493,12 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       return null;
     }
   }
+
+  /// Moteur de cette note : le choix des réglages, si l'envoi en ligne est
+  /// permis et la clé Mistral rangée ; sinon sur ce Mac.
+  Future<TranscriptionEngine> _engine() async => TranscriptionEngineSelection(
+    ref.read(apiKeyStoreProvider),
+  ).fromPrefs(await ref.read(prefsStoreProvider).read());
 
   /// Interrupteurs « Coach anglais » et « Interlocuteurs en direct » rangés
   /// dans prefs.json ; défauts de l'état initial si absents ou illisibles.

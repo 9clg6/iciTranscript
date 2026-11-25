@@ -179,6 +179,12 @@ abstract class  LocaleKeys {
   static const settings_audio_microphone = 'settings.audio.microphone';
   static const settings_audio_system_audio = 'settings.audio.system_audio';
   static const settings_audio_system_audio_description = 'settings.audio.system_audio_description';
+  static const settings_audio_engine_title = 'settings.audio.engine_title';
+  static const settings_audio_engine_local = 'settings.audio.engine_local';
+  static const settings_audio_engine_mistral = 'settings.audio.engine_mistral';
+  static const settings_audio_engine_privacy = 'settings.audio.engine_privacy';
+  static const settings_audio_engine_refused_cloud = 'settings.audio.engine_refused_cloud';
+  static const settings_audio_engine_refused_key = 'settings.audio.engine_refused_key';
   static const settings_audio = 'settings.audio';
   static const settings_recording_title = 'settings.recording.title';
   static const settings_recording_coach = 'settings.recording.coach';
@@ -213,6 +219,7 @@ abstract class  LocaleKeys {
   static const settings_ai_provider_anthropic = 'settings.ai.provider.anthropic';
   static const settings_ai_provider_openai = 'settings.ai.provider.openai';
   static const settings_ai_provider_gemini = 'settings.ai.provider.gemini';
+  static const settings_ai_provider_mistral = 'settings.ai.provider.mistral';
   static const settings_ai_provider_ollama = 'settings.ai.provider.ollama';
   static const settings_ai_provider = 'settings.ai.provider';
   static const settings_ai_api_key_label = 'settings.ai.api_key_label';
