@@ -530,7 +530,9 @@ final class GapBackfillService {
       if (read == null || read.isEmpty) {
         // Le WAV s'arrête avant la fin du repère : ce qui existe est rendu,
         // le repère (rétréci) reste sur la partie sans audio.
-        return result == _Part.saved ? _Part.failed : result;
+        return result == _Part.saved && lostEnd != null && from < lostEnd
+            ? _Part.failed
+            : result;
       }
       final Uint8List pcm = until < gap.endMs ? _cutAtSilence(read) : read;
       final int to = from + pcm.length ~/ 32;
