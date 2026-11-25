@@ -344,6 +344,17 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// repère de perte, l'arrêt se termine.
   void skipFinalising() => _liveService?.skipFinalising();
 
+  bool _quitting = false;
+
+  /// L'app quitte : un arrêt en cours ne supprime plus l'audio (son
+  /// rattrapage a pu être coupé par l'arrêt des serveurs) ; le lancement
+  /// suivant finit le traitement de la note, puis supprime.
+  void quitting() => _quitting = true;
+
+  Future<void> _discardAudio(SessionAudio audio, String sessionId) async {
+    if (!_quitting) await audio.discard(sessionId);
+  }
+
   /// Arrete la session et sauvegarde la transcription.
   ///
   /// Renvoie l'ID de session (pour naviguer vers la fiche). Le post-traitement
@@ -417,14 +428,14 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
                 _log.error('Post-traitement échoué: $error');
               })
               .whenComplete(() async {
-                await audio.discard(sessionId);
+                await _discardAudio(audio, sessionId);
                 if (identical(_postProcessTask, task)) _postProcessTask = null;
               });
       _postProcessTask = task;
       unawaited(task);
     } else if (sessionId != null) {
       // Pas de passe après l'appel : le traitement de la note est fini.
-      await audio.discard(sessionId);
+      await _discardAudio(audio, sessionId);
     }
     return sessionId;
   }

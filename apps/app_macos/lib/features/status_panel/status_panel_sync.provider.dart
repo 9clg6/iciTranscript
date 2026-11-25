@@ -195,6 +195,7 @@ class StatusPanelSync {
   /// `terminate` part au plus [kQuitNoteBound] + [kQuitServersBound] après
   /// la demande, quoi qu'il reste bloqué.
   Future<void> _quit() async {
+    _liveVm.quitting();
     _skipIfFinalising();
     try {
       await _noteStopped().timeout(kQuitNoteBound);
