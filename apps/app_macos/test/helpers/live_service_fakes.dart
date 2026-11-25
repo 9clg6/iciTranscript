@@ -388,6 +388,7 @@ final class LiveServiceHarness {
     this.async, {
     TranscriptionRemoteDataSource? remote,
     InMemoryTranscriptRepository? segments,
+    WavRecorder Function()? createWavRecorder,
   }) : process = FakeProcessManagerChannel(now: () => async.elapsed),
        remote = remote ?? FakeTranscriptionRemoteDataSource(),
        segments = segments ?? InMemoryTranscriptRepository() {
@@ -403,11 +404,14 @@ final class LiveServiceHarness {
       audioCaptureChannel: audio,
       transcriptionRemoteDataSource: this.remote,
       transcriptionService: transcription,
-      createWavRecorder: () {
-        final FakeWavRecorder recorder = FakeWavRecorder();
-        recorders.add(recorder);
-        return recorder;
-      },
+      // Un vrai enregistreur (disque factice) si le test en donne un.
+      createWavRecorder:
+          createWavRecorder ??
+          () {
+            final FakeWavRecorder recorder = FakeWavRecorder();
+            recorders.add(recorder);
+            return recorder;
+          },
     );
   }
 
