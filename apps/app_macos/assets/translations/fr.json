@@ -161,7 +161,8 @@
       "storage_unsaved": "{} ligne(s) pas encore enregistrée(s) : elles restent affichées et seront rangées dès que possible."
     },
     "gap": {
-      "untranscribed": "Passage non transcrit ({} – {})"
+      "untranscribed": "Passage non transcrit ({} – {})",
+      "not_recorded_after": "Rien n'a pu être enregistré après {} (app arrêtée ou disque plein)"
     },
     "status_bar": {
       "level": "Niveau",

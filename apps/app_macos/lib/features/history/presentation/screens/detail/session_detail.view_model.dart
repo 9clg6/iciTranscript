@@ -365,7 +365,8 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
       .where(
         (TranscriptSegmentEntity x) =>
             !LiveTranscriptionService.isUntranscribedMarker(x.text) &&
-            !LiveTranscriptionService.isNoAudioCopyMarker(x.text),
+            !LiveTranscriptionService.isNoAudioCopyMarker(x.text) &&
+            !LiveTranscriptionService.isNotRecordedAfterMarker(x.text),
       )
       .map(TranscriptFormatter.plainLine)
       .join('\n');
