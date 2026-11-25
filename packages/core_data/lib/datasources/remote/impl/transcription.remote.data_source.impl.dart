@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:core_data/clients/mistral_realtime_client.dart';
 import 'package:core_data/clients/websocket_client.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_data/model/audio_chunk.dart';
@@ -400,6 +401,11 @@ final class TranscriptionRemoteDataSourceImpl
         outage.slowAccepts++;
         unawaited(_reconnect(source, outage));
       }
+      return;
+    } on MistralKeyRejected {
+      // Clé refusée : réessayer n'y changera rien (pas de tempête) ; la
+      // coupure reste, ses pertes sont dites à l'arrêt.
+      slowMark.cancel();
       return;
     } catch (_) {
       slowMark.cancel();
