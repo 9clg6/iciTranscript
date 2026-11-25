@@ -148,7 +148,7 @@ final class GapBackfillRetry {
   Future<bool> _attempt(String sessionId) async {
     final Map<String, int> pending = await _read();
     if (!_hasRecording(sessionId)) {
-      // WAV supprimé (passe post-session) : plus rien à rattraper.
+      // Audio supprimé (fin du traitement de la note) : plus rien à rattraper.
       pending.remove(sessionId);
       await _write(pending);
       return true;
