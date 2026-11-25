@@ -144,7 +144,7 @@ void main() {
   test('stop with a gap marker the backfill cannot recover (transcriber '
       'unavailable): no audio file remains, the marker stays, and no retry '
       'waits on the deleted audio', () async {
-    final _App app = _App(pass: _PassOutcome.succeeds);
+    final _App app = _App(pass: _PassOutcome.fails);
     addTearDown(app.dispose);
     await app.writePrefs();
     await app.launch();
@@ -170,28 +170,26 @@ void main() {
     expect(await app.markers(id), hasLength(1), reason: 'never invented');
   });
 
-  test('stop with a gap marker, server busy because a new recording started: '
-      'once the note is done its audio is gone and its marker stays, the new '
-      'recording keeps its own audio', () async {
-    final _App app = _App(pass: _PassOutcome.succeeds);
+  test('stop with a gap marker, server busy because a new recording is '
+      'started during the stop: once the note is done its audio is gone and '
+      'its marker stays, the new recording keeps its own audio', () async {
+    final _App app = _App(pass: _PassOutcome.fails);
     addTearDown(app.dispose);
     await app.writePrefs();
     await app.launch();
-    app.http.transcriberDown = true;
-    final Completer<void> passGate = app.pass.gate = Completer<void>();
 
     final String first = await app.recordNote(gap: true);
-    await app.stop();
-    await eventually(() => expect(app.pass.started, <String>[first]));
-
-    // The user starts the next meeting while the first note is processed.
+    // The user starts the next meeting while the first one is finalising:
+    // the recording has the server, the marker is not backfilled now.
+    final Future<void> stopping = app.stop();
     final Future<void> next = app.vm.startSession();
-    passGate.complete();
+    await stopping;
     await next;
     final String second = app.currentSessionId;
     expect(second, isNot(first));
-    await eventually(() => expect(app.pass.finished, <String>[first]));
+    await eventually(() => expect(app.pass.finished, contains(first)));
 
+    expect(app.http.transcriptions, isEmpty, reason: 'server was busy');
     expect(await app.markers(first), hasLength(1), reason: 'marker kept');
     await expectNoAudioLeft(first);
     expect(
@@ -200,12 +198,12 @@ void main() {
       reason: 'the recording in progress keeps its audio',
     );
 
-    // The new meeting ends with the transcriber back: the first note is
-    // not retried on deleted audio, its marker stays.
-    app.http.transcriberDown = false;
+    // The new meeting ends, the server is free: the first note is not
+    // retried on deleted audio, its marker stays.
     await app.stop();
     await eventually(() => expect(app.pass.finished, <String>[first, second]));
     await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(app.http.transcriptions, isEmpty, reason: 'nothing left to retry');
     expect(await app.markers(first), hasLength(1), reason: 'never invented');
     expect(filesOf(first), isEmpty);
   });
@@ -287,9 +285,10 @@ void main() {
     expect(filesOf(id), contains('${id}_mic.wav'), reason: 'precondition');
     await app.stop();
 
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(app.pass.started, isEmpty, reason: 'no post-call pass');
     expect(await app.lines(id), contains(_App.spoken), reason: 'transcript');
     await expectNoAudioLeft(id);
-    expect(app.pass.started, isEmpty, reason: 'no post-call pass');
   });
 }
 
@@ -307,9 +306,6 @@ final class _FakePostCallPass extends DiarizationService {
   /// Whether the session's mic WAV was there when each pass started.
   final List<bool> sawAudio = <bool>[];
 
-  /// Holds the pass until completed (a long pass).
-  Completer<void>? gate;
-
   @override
   Future<DiarizationResult?> processSession(String sessionId) async {
     started.add(sessionId);
@@ -320,7 +316,6 @@ final class _FakePostCallPass extends DiarizationService {
       if (input != micWavPath(sessionId) && File(input).existsSync()) {
         mutedCopies.add(File(input).uri.pathSegments.last);
       }
-      await gate?.future;
       switch (outcome) {
         case _PassOutcome.succeeds:
           return const DiarizationResult(micText: _App.spoken);
