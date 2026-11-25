@@ -563,6 +563,72 @@ void main() {
     );
   });
 
+  // Le direct ne ferme une phrase qu'après 1,2 s de silence
+  // (`_silenceToFinalizeMs`, transcription.remote.data_source.impl.dart) :
+  // une pause plus courte reste DANS la ligne. La réparation ne doit pas
+  // couper cette ligne en deux et marquer sa seconde moitié comme perdue
+  // (le rattrapage la recopierait : texte en double).
+  test('une ligne rangée à 0 s, parole 0–4 s, pause de 1,1 s, parole '
+      '5,1–9 s (même phrase du direct), puis silence : aucun repère de '
+      'perte', () async {
+    const String session = '1700000000000';
+    await _onMicWav(
+      session,
+      12000,
+      <_Said>[
+        (source: 'input', startMs: 0, endMs: 4000, text: 'début'),
+        (source: 'input', startMs: 5100, endMs: 9000, text: 'suite'),
+      ],
+      (String dir) async {
+        final InMemoryTranscriptRepository repo =
+            InMemoryTranscriptRepository();
+        final TranscriptSegmentEntity line = _micLine(session, 1, 0);
+        repo.store[line.id] = line;
+        await LaunchRepair(
+          sessions: _activeSession(session),
+          transcripts: repo,
+          recordingsDir: dir,
+        ).run();
+        expect(_gapMarkers(repo), isEmpty);
+      },
+    );
+  });
+
+  test('une ligne rangée à 0 s, parole 0–5 s, pause de 1,5 s (le direct '
+      'ferme la phrase), parole 6,5–10 s sans ligne rangée : un repère sur '
+      '~6,5–10 s', () async {
+    const String session = '1700000000000';
+    await _onMicWav(
+      session,
+      13000,
+      <_Said>[
+        (source: 'input', startMs: 0, endMs: 5000, text: 'début'),
+        (source: 'input', startMs: 6500, endMs: 10000, text: 'perdue'),
+      ],
+      (String dir) async {
+        final InMemoryTranscriptRepository repo =
+            InMemoryTranscriptRepository();
+        final TranscriptSegmentEntity line = _micLine(session, 1, 0);
+        repo.store[line.id] = line;
+        await LaunchRepair(
+          sessions: _activeSession(session),
+          transcripts: repo,
+          recordingsDir: dir,
+        ).run();
+        final List<({int startMs, int endMs})> marked =
+            <({int startMs, int endMs})>[
+              for (final TranscriptSegmentEntity m in repo.store.values)
+                if (m.text.startsWith(LiveTranscriptionService.gapMarkerPrefix))
+                  _range(m.text)!,
+            ];
+        expect(marked, hasLength(1), reason: _gapMarkers(repo).join(' | '));
+        // Heures des repères à la seconde : ±1 s.
+        expect(marked.single.startMs, closeTo(6500, 1000));
+        expect(marked.single.endMs, closeTo(10000, 1000));
+      },
+    );
+  });
+
   test('app tuée pendant la réparation du lancement : au lancement suivant, '
       'les mêmes repères qu une réparation sans accident (mêmes plages), '
       'aucun perdu, aucun en double', () async {
