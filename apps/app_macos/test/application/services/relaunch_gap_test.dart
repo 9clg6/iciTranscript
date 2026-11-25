@@ -217,12 +217,6 @@ const List<String> _distinct = <String>[
 AudioSource sourceOf(String s) =>
     s == 'input' ? AudioSource.input : AudioSource.output;
 
-/// Coupe d'une phrase du direct : une ligne rangée porte au plus cela.
-// ponytail: copie de `_maxUtteranceMs` (core_data,
-// transcription.remote.data_source.impl.dart:59) ; remplacer par
-// `TranscriptionRemoteDataSourceImpl.maxUtteranceMs` dès qu'il est public.
-const int _maxUtteranceMs = 30000;
-
 /// WAV micro de [ms] ms (parole aux heures de [said]) le temps de [body].
 Future<void> _onMicWav(
   String session,
@@ -469,7 +463,8 @@ void main() {
   // refusées par la base puis perdues à l'arrêt brutal.
   // Tolérance (décision du 2026-11-25) : une ligne du direct peut porter
   // jusqu'à la coupe du direct, 30 s ; elle couvre de 2 s avant son heure
-  // jusqu'à la ligne suivante, [_maxUtteranceMs] au plus. Donc ~30–53 s
+  // jusqu'à la ligne suivante,
+  // [TranscriptionRemoteDataSourceImpl.maxUtteranceMs] au plus. Donc ~30–53 s
   // doit être sous un repère.
   test('parole continue 60 s, lignes rangées à 0 s et 55 s seulement : '
       'chaque seconde de parole du WAV est près d une ligne rangée (de 2 s '
@@ -522,7 +517,7 @@ void main() {
           bool near = false;
           for (int i = 0; i < lines.length; i++) {
             final int end = math.min(
-              lines[i] + _maxUtteranceMs,
+              lines[i] + TranscriptionRemoteDataSourceImpl.maxUtteranceMs,
               i + 1 < lines.length ? lines[i + 1] : 1 << 40,
             );
             if (s >= lines[i] - 2000 && s < end) near = true;
