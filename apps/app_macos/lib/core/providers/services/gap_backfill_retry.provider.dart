@@ -31,8 +31,9 @@ GapBackfillRetry gapBackfillRetry(Ref ref) {
   final ApiKeyStore keys = ref.watch(apiKeyStoreProvider);
   final GapBackfillRetry retry = GapBackfillRetry(
     backfill: GapBackfillService(
-      // Le moteur utilisé au moment du rattrapage : voxmlx sur ce Mac, ou
-      // l'API batch de Mistral (même choix que la note).
+      // Le moteur choisi AU MOMENT du rattrapage (pas celui de la note) :
+      // voxmlx sur ce Mac, ou l'API batch de Mistral. Une ancienne note
+      // locale part chez Mistral après un changement de moteur.
       transcriber: EngineTranscriber(
         local: WebSocketPcmTranscriber(
           url: ref
