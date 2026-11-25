@@ -911,9 +911,11 @@ final class GapBackfillService {
     final RandomAccessFile raf = await file.open();
     try {
       final int start = _wavHeaderBytes + startMs * _bytesPerMs;
+      // Une plage au-delà de la fin du WAV ne rend rien (pas d'exception).
+      final int length = await raf.length();
       final int end = (_wavHeaderBytes + endMs * _bytesPerMs).clamp(
         start,
-        await raf.length(),
+        math.max(start, length),
       );
       await raf.setPosition(start);
       return await raf.read((end - start) & ~1);
