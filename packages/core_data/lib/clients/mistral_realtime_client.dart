@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:core_data/clients/websocket_client.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:web_socket_channel/io.dart';
 
 /// La clé Mistral est refusée (HTTP 401 ou `error` 401) : inutile de
 /// réessayer avant que l'utilisateur la change.
@@ -48,18 +49,30 @@ class MistralRealtimeClient extends WebSocketClient {
 
   /// Modèle temps réel.
   static const String model = 'voxtral-mini-transcribe-realtime-3-0';
+
   /// Adresse du service (l'URL locale passée à [connect] est ignorée).
   static const String url =
       'wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=$model';
+
   /// Délai de diffusion visé (ms) : le reste d'une phrase ~0,28 s après.
   static const int defaultStreamingDelayMs = 80;
+
   /// Silence envoyé au moins aussi souvent pendant une pause.
   static const Duration keepAliveEvery = Duration(seconds: 4);
+
   /// Calme après le dernier delta avant de rendre la phrase.
   static const Duration doneQuiet = Duration(milliseconds: 500);
+
   /// Au plus, après la fin d'énoncé.
   static const Duration doneAtMost = Duration(seconds: 3);
   static const Duration _endWait = Duration(seconds: 3);
+
+  /// Transport réel : socket TLS avec les en-têtes HTTP donnés.
+  static WebSocketClient defaultTransport(Map<String, String> headers) =>
+      WebSocketClient(
+        connectChannel: (Uri uri) =>
+            IOWebSocketChannel.connect(uri, headers: headers),
+      );
 
   /// Délai de diffusion demandé (ms).
   final int targetStreamingDelayMs;

@@ -11,4 +11,8 @@ enum TranscriptionHealth {
 
   /// Relances abandonnees : plus de texte en direct pour cette session.
   failed,
+
+  /// Moteur en ligne : la cle est refusee ; l'enregistrement continue, le
+  /// texte attend une cle valide (rattrapage).
+  keyRejected,
 }

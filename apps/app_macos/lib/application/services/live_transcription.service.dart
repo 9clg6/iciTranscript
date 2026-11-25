@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart';
+import 'package:core_data/clients/mistral_realtime_client.dart';
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
 import 'package:core_data/datasources/remote/transcription.remote.data_source.dart';
 import 'package:core_data/model/audio_chunk.dart' as data;
@@ -19,6 +20,7 @@ import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/enum/transcription_health.enum.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
 import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
@@ -262,6 +264,7 @@ final class LiveTranscriptionService {
     bool enablePostProcessing = false,
     bool liveDiarization = false,
     SessionCalendarLink? calendarLink,
+    TranscriptionEngine engine = TranscriptionEngine.local,
   }) {
     // Dès la demande : l'enregistrement a la priorité sur le serveur
     // (séquentiel). Le prédicat « enregistrement » lu par le rattrapage
@@ -276,9 +279,14 @@ final class LiveTranscriptionService {
         outputEnabled: outputEnabled,
         serverCommand: serverCommand,
         serverArgs: serverArgs,
-        webSocketUrl: webSocketUrl ?? '${_ports.transcriptionWebSocket}',
+        // Moteur en ligne : l'adresse Mistral (la source distante y route
+        // ses sockets) ; jamais le serveur local ni ses ports.
+        webSocketUrl: engine == TranscriptionEngine.mistral
+            ? MistralRealtimeClient.url
+            : webSocketUrl ?? '${_ports.transcriptionWebSocket}',
         liveDiarization: liveDiarization,
         calendarLink: calendarLink,
+        engine: engine,
       ),
     ).whenComplete(() => _startRequested = false);
   }
@@ -291,6 +299,7 @@ final class LiveTranscriptionService {
     required String webSocketUrl,
     required bool liveDiarization,
     SessionCalendarLink? calendarLink,
+    TranscriptionEngine engine = TranscriptionEngine.local,
   }) async {
     if (_running) {
       _log.warning('Une transcription est déjà en cours');
@@ -311,24 +320,31 @@ final class LiveTranscriptionService {
       _serverCommand = serverCommand;
       _serverArgs = serverArgs;
       _resetServerSupervision();
-      _supervising = true;
+      _keyRejected = false;
+      // Moteur en ligne : pas de serveur local (ni démarrage ni
+      // supervision) ; la source distante parle à Mistral.
+      final bool local = engine == TranscriptionEngine.local;
+      _supervising = local;
 
       // 1. Demarrer le serveur ML si pas deja en cours
-      final bool serverRunning = await _processManagerService.isServerRunning();
-      if (!serverRunning) {
-        _log.info('Demarrage du serveur ML: $serverCommand');
-        await _processManagerService.startServer(
-          command: serverCommand,
-          args: serverArgs,
-          readyPattern: _readyPattern,
+      if (local) {
+        final bool serverRunning = await _processManagerService
+            .isServerRunning();
+        if (!serverRunning) {
+          _log.info('Demarrage du serveur ML: $serverCommand');
+          await _processManagerService.startServer(
+            command: serverCommand,
+            args: serverArgs,
+            readyPattern: _readyPattern,
+          );
+          _log.info('Serveur ML demarre OK');
+        } else {
+          _log.info('Serveur ML deja en cours');
+        }
+        _serverStateSubscription = _processManagerService.stateStream.listen(
+          _onServerState,
         );
-        _log.info('Serveur ML demarre OK');
-      } else {
-        _log.info('Serveur ML deja en cours');
       }
-      _serverStateSubscription = _processManagerService.stateStream.listen(
-        _onServerState,
-      );
 
       // 2. Connexion WebSocket (la source distante se reconnecte seule).
       _connectionSubscription = _transcriptionRemoteDataSource.connectionState
@@ -337,10 +353,17 @@ final class LiveTranscriptionService {
             _updateHealth();
           });
       _log.info('Connexion WebSocket: $webSocketUrl');
-      await _transcriptionRemoteDataSource.connect(
-        url: webSocketUrl,
-        systemAudioEnabled: outputEnabled,
-      );
+      try {
+        await _transcriptionRemoteDataSource.connect(
+          url: webSocketUrl,
+          systemAudioEnabled: outputEnabled,
+        );
+      } on MistralKeyRejected {
+        // Visible tout de suite ; pas de nouvelle tentative avec la même clé.
+        _keyRejected = true;
+        _updateHealth();
+        rethrow;
+      }
       _log.info('WebSocket connecte OK');
 
       // 3. Demarrer la capture audio
@@ -946,11 +969,15 @@ final class LiveTranscriptionService {
     _updateHealth();
   }
 
+  // Moteur en ligne : la clé Mistral a été refusée.
+  bool _keyRejected = false;
+
   void _updateHealth() {
     // `error` de la source distante : serveur muet malgré les reprises, la
     // perte est signalée ; l'enregistrement continue.
-    final TranscriptionHealth next =
-        _restartsExhausted || _remoteState == domain.ConnectionState.error
+    final TranscriptionHealth next = _keyRejected
+        ? TranscriptionHealth.keyRejected
+        : _restartsExhausted || _remoteState == domain.ConnectionState.error
         ? TranscriptionHealth.failed
         : _restartPending || _remoteState != domain.ConnectionState.connected
         ? TranscriptionHealth.recovering
