@@ -20,11 +20,12 @@ class TranscriptBlock {
   final int? speaker;
 }
 
-/// Un repère (perte ou passage non transcrit) reste seul : il n'est la
-/// phrase de personne.
+/// Un repère (perte, passage non transcrit, pas de copie audio) reste
+/// seul : il n'est la phrase de personne.
 bool isTranscriptMarker(String text) =>
     text.startsWith(LiveTranscriptionService.gapMarkerPrefix) ||
-    LiveTranscriptionService.isUntranscribedMarker(text);
+    LiveTranscriptionService.isUntranscribedMarker(text) ||
+    LiveTranscriptionService.isNoAudioCopyMarker(text);
 
 final RegExp _sentenceEnd = RegExp(r'[.!?…]["»”’)]*$');
 
