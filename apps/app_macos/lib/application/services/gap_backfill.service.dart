@@ -527,7 +527,13 @@ final class GapBackfillService {
       int until = from + slice.inMilliseconds;
       if (gap.endMs - until < _minTail.inMilliseconds) until = gap.endMs;
       final Uint8List? read = await _readPcm(path, from, until);
-      if (read == null || read.isEmpty) break;
+      if (read == null || read.isEmpty) {
+        // Le WAV s'arrête avant la fin du repère : ce qui existe est rendu,
+        // le repère (rétréci) reste sur la partie sans audio.
+        return result == _Part.saved && lostEnd != null && from < lostEnd
+            ? _Part.failed
+            : result;
+      }
       final Uint8List pcm = until < gap.endMs ? _cutAtSilence(read) : read;
       final int to = from + pcm.length ~/ 32;
       final bool first = from == gap.startMs;
@@ -911,9 +917,12 @@ final class GapBackfillService {
     final RandomAccessFile raf = await file.open();
     try {
       final int start = _wavHeaderBytes + startMs * _bytesPerMs;
+      // Une plage au-delà de la fin du WAV ne rend rien (pas d'exception).
+      final int length = await raf.length();
+      if (start >= length) return Uint8List(0);
       final int end = (_wavHeaderBytes + endMs * _bytesPerMs).clamp(
         start,
-        await raf.length(),
+        length,
       );
       await raf.setPosition(start);
       return await raf.read((end - start) & ~1);

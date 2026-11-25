@@ -136,6 +136,10 @@ final class FakeAudioCaptureChannel extends AudioCaptureChannel {
   /// Levée (une fois) par le prochain [startCapture], ex. permission micro.
   Object? startError;
 
+  /// Durée d'un [startCapture] : la vraie capture rend son premier chunk
+  /// ~0,5 s après l'appel (journal du 2026-11-25 : 03.024 → 03.553).
+  Duration startDelay = Duration.zero;
+
   void emit(AudioChunk chunk) => _audio.add(chunk);
 
   @override
@@ -156,6 +160,7 @@ final class FakeAudioCaptureChannel extends AudioCaptureChannel {
     final Object? error = startError;
     startError = null;
     if (error != null) throw error;
+    if (startDelay > Duration.zero) await Future<void>.delayed(startDelay);
   }
 
   @override

@@ -109,6 +109,13 @@ final class LiveTranscriptionService {
   // micro = MOI, système = interlocuteurs (diarization).
   WavRecorder? _micRecorder;
   WavRecorder? _systemRecorder;
+
+  /// Début de la pause en cours, par piste : les WAV gardent leur place dans
+  /// le temps (heure murale, comme les repères) en sautant la pause au
+  /// premier chunk de la piste après la reprise (la capture met ~0,5 s à
+  /// livrer, le système plus tard que le micro).
+  DateTime? _micPausedAt;
+  DateTime? _systemPausedAt;
   String? _captureInputDeviceId;
   bool _captureOutputEnabled = false;
   bool _capturePaused = false;
@@ -458,6 +465,7 @@ final class LiveTranscriptionService {
   Future<void> _pauseTranscription() async {
     if (!isRecording || _capturePaused) return;
     _capturePaused = true;
+    _micPausedAt = _systemPausedAt = clock.now();
     _cancel(_audioSubscription);
     _audioSubscription = null;
     await _audioCaptureChannel.stopCapture();
@@ -481,6 +489,10 @@ final class LiveTranscriptionService {
       rethrow;
     }
   }
+
+  /// Saute la pause d'une piste, jusqu'à l'arrivée de son premier chunk.
+  Duration? _takePause(DateTime? since) =>
+      since == null ? null : clock.now().difference(since);
 
   Future<void> _stopTranscription() async {
     _log.info('Arret de la transcription en direct');
@@ -561,6 +573,7 @@ final class LiveTranscriptionService {
     _micRecorder = null;
     _systemRecorder = null;
     _capturePaused = false;
+    _micPausedAt = _systemPausedAt = null;
     _captureInputDeviceId = null;
     _captureOutputEnabled = false;
 
@@ -1419,9 +1432,15 @@ final class LiveTranscriptionService {
           );
         }
         if (chunk.source == AudioSource.input) {
+          final Duration? gap = _takePause(_micPausedAt);
+          if (gap != null) _micRecorder?.skip(gap);
+          _micPausedAt = null;
           _micRecorder?.append(chunk.data).then((_) => _afterWavWrite());
           _micAudioEndMs = chunk.timestampMs + chunk.data.length ~/ 32;
         } else {
+          final Duration? gap = _takePause(_systemPausedAt);
+          if (gap != null) _systemRecorder?.skip(gap);
+          _systemPausedAt = null;
           _systemRecorder?.append(chunk.data).then((_) => _afterWavWrite());
           _traceSystemLevel(chunk.data);
           if (_liveDiarizationEnabled) {

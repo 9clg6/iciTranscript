@@ -76,34 +76,52 @@ class WavRecorder {
     // The platform chunk is owned by the caller. Keep an immutable snapshot
     // until its turn in the write chain.
     final Uint8List pendingPcm = Uint8List.fromList(pcm);
-    _pendingWrites = _pendingWrites.then((_) async {
-      final int at = _dataBytes;
-      // Sa place est gardée, écrit ou non.
-      _dataBytes += pendingPcm.length;
-      try {
-        if (_seek) await raf.setPosition(_headerBytes + at);
-        _seek = false;
-        await raf.writeFrom(pendingPcm);
-        final int? failedAt = _failedAtBytes;
-        if (failedAt != null) {
-          _missing.add((startMs: _ms(failedAt), endMs: _ms(at)));
-          _failedAtBytes = null;
-        }
-        if (_dataBytes - _headerDataBytes >= _bytesPerSecond) {
-          await raf.setPosition(0);
-          await raf.writeFrom(_header(_dataBytes));
-          await raf.setPosition(_headerBytes + _dataBytes);
-          _headerDataBytes = _dataBytes;
-        }
-      } catch (error) {
-        _seek = true;
-        if (_failedAtBytes == null) {
-          _failedAtBytes = at;
-          _errors.add(error);
-        }
-      }
+    _pendingWrites = _pendingWrites.then((_) => _writeBlock(raf, pendingPcm));
+    return _pendingWrites;
+  }
+
+  /// Avance le WAV de [duration] sans rien écrire (pause) : le prochain
+  /// bloc se pose après un trou, que le disque lit comme des zéros. Ce n'est
+  /// pas une perte : rien n'est dit par [missing]. Le trou est toujours suivi
+  /// d'audio réel, donc la taille du fichier reste juste.
+  Future<void> skip(Duration duration) {
+    final int n = duration.inMicroseconds * _bytesPerSecond ~/ 1000000 & ~1;
+    if (_raf == null || !_acceptingWrites || n <= 0) {
+      return Future<void>.value();
+    }
+    _pendingWrites = _pendingWrites.then((_) {
+      _dataBytes += n;
+      _seek = true;
     });
     return _pendingWrites;
+  }
+
+  Future<void> _writeBlock(RandomAccessFile raf, Uint8List pcm) async {
+    final int at = _dataBytes;
+    // Sa place est gardée, écrit ou non.
+    _dataBytes += pcm.length;
+    try {
+      if (_seek) await raf.setPosition(_headerBytes + at);
+      _seek = false;
+      await raf.writeFrom(pcm);
+      final int? failedAt = _failedAtBytes;
+      if (failedAt != null) {
+        _missing.add((startMs: _ms(failedAt), endMs: _ms(at)));
+        _failedAtBytes = null;
+      }
+      if (_dataBytes - _headerDataBytes >= _bytesPerSecond) {
+        await raf.setPosition(0);
+        await raf.writeFrom(_header(_dataBytes));
+        await raf.setPosition(_headerBytes + _dataBytes);
+        _headerDataBytes = _dataBytes;
+      }
+    } catch (error) {
+      _seek = true;
+      if (_failedAtBytes == null) {
+        _failedAtBytes = at;
+        _errors.add(error);
+      }
+    }
   }
 
   /// Corrige l'en-tête (tailles réelles) et ferme le fichier.
