@@ -10,6 +10,7 @@ import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:ici_transcript/application/services/session_audio.dart';
 import 'package:ici_transcript/core/providers/services/gap_backfill_retry.provider.dart';
 import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
@@ -345,12 +346,6 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
   /// repère de perte, l'arrêt se termine.
   void skipFinalising() => _liveService?.skipFinalising();
 
-  /// Fin du traitement de la note : l'audio part, sauf si un rattrapage
-  /// l'attend encore (GapBackfillRetry le supprime alors en lâchant la
-  /// session ; un arrêt de l'app avant laisse le lancement suivant finir).
-  Future<void> _finishNote(String sessionId) =>
-      ref.read(gapBackfillRetryProvider).finish(sessionId);
-
   /// Arrete la session et sauvegarde la transcription.
   ///
   /// Renvoie l'ID de session (pour naviguer vers la fiche). Le post-traitement
@@ -367,10 +362,15 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
 
     // Traitement de la note en cours (durable) : l'audio de la session est
     // supprimé quand il finit, ou au lancement suivant si l'app s'arrête.
-    final SessionAudio audio = SessionAudio(
-      LiveTranscriptionService.recordingsDir,
-    );
-    if (sessionId != null) audio.markProcessing(sessionId);
+    // Fin de traitement : `retry.finish` supprime l'audio sauf rattrapage en
+    // attente. Le rattrapage est pris tout de suite : la fin du traitement peut
+    // arriver après la mort du provider.
+    final GapBackfillRetry retry = ref.read(gapBackfillRetryProvider);
+    if (sessionId != null) {
+      SessionAudio(
+        LiveTranscriptionService.recordingsDir,
+      ).markProcessing(sessionId);
+    }
 
     // Avant le rattrapage de l'arrêt : plus rien ne part pendant
     // « Finalisation… », la réponse en vol est abandonnée.
@@ -424,14 +424,14 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
                 _log.error('Post-traitement échoué: $error');
               })
               .whenComplete(() async {
-                await _finishNote(sessionId);
+                await retry.finish(sessionId);
                 if (identical(_postProcessTask, task)) _postProcessTask = null;
               });
       _postProcessTask = task;
       unawaited(task);
     } else if (sessionId != null) {
       // Pas de passe après l'appel : le traitement de la note est fini.
-      await _finishNote(sessionId);
+      await retry.finish(sessionId);
     }
     return sessionId;
   }
