@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -18,11 +19,30 @@ class WavRecorder {
   int _dataBytes = 0;
   int _headerDataBytes = 0;
   Future<void> _pendingWrites = Future<void>.value();
-  Object? _writeError;
-  StackTrace? _writeErrorStackTrace;
   bool _acceptingWrites = false;
 
+  // Disque plein : chaque chunk garde sa place dans le temps (le rattrapage
+  // lit par l'heure) ; l'écriture est retentée à chaque chunk, et
+  // l'intervalle sans copie est rendu par [missing].
+  final StreamController<Object> _errors = StreamController<Object>.broadcast();
+  int? _failedAtBytes;
+  bool _seek = false;
+  final List<({int startMs, int endMs})> _missing =
+      <({int startMs, int endMs})>[];
+
   bool get isOpen => _raf != null;
+
+  /// Une erreur à chaque début d'échec d'écriture (disque plein…), tout de
+  /// suite, pas à la fermeture.
+  Stream<Object> get writeErrors => _errors.stream;
+
+  /// L'écriture échoue en ce moment.
+  bool get failing => _failedAtBytes != null;
+
+  /// Intervalles (ms depuis le début du WAV) dont l'audio n'a pas été
+  /// écrit : ni rattrapables ni du silence vérifié.
+  List<({int startMs, int endMs})> get missing =>
+      List<({int startMs, int endMs})>.unmodifiable(_missing);
 
   /// Ouvre [path] et écrit un en-tête WAV provisoire (tailles = 0).
   Future<void> open(String path) async {
@@ -36,8 +56,9 @@ class WavRecorder {
     _dataBytes = 0;
     _headerDataBytes = 0;
     _pendingWrites = Future<void>.value();
-    _writeError = null;
-    _writeErrorStackTrace = null;
+    _failedAtBytes = null;
+    _seek = false;
+    _missing.clear();
     await _raf!.writeFrom(_header(0));
     _acceptingWrites = true;
   }
@@ -45,7 +66,7 @@ class WavRecorder {
   /// Ajoute un bloc PCM int16 little-endian.
   ///
   /// Les appels peuvent être lancés sans `await` : chaque écriture est chaînée
-  /// après la précédente et les erreurs sont reportées par [close].
+  /// après la précédente ; un échec est signalé par [writeErrors].
   Future<void> append(Uint8List pcm) {
     final RandomAccessFile? raf = _raf;
     if (raf == null || !_acceptingWrites || pcm.isEmpty) {
@@ -56,19 +77,30 @@ class WavRecorder {
     // until its turn in the write chain.
     final Uint8List pendingPcm = Uint8List.fromList(pcm);
     _pendingWrites = _pendingWrites.then((_) async {
-      if (_writeError != null) return;
+      final int at = _dataBytes;
+      // Sa place est gardée, écrit ou non.
+      _dataBytes += pendingPcm.length;
       try {
+        if (_seek) await raf.setPosition(_headerBytes + at);
+        _seek = false;
         await raf.writeFrom(pendingPcm);
-        _dataBytes += pendingPcm.length;
+        final int? failedAt = _failedAtBytes;
+        if (failedAt != null) {
+          _missing.add((startMs: _ms(failedAt), endMs: _ms(at)));
+          _failedAtBytes = null;
+        }
         if (_dataBytes - _headerDataBytes >= _bytesPerSecond) {
           await raf.setPosition(0);
           await raf.writeFrom(_header(_dataBytes));
           await raf.setPosition(_headerBytes + _dataBytes);
           _headerDataBytes = _dataBytes;
         }
-      } catch (error, stackTrace) {
-        _writeError ??= error;
-        _writeErrorStackTrace ??= stackTrace;
+      } catch (error) {
+        _seek = true;
+        if (_failedAtBytes == null) {
+          _failedAtBytes = at;
+          _errors.add(error);
+        }
       }
     });
     return _pendingWrites;
@@ -83,8 +115,13 @@ class WavRecorder {
     _acceptingWrites = false;
     await _pendingWrites;
 
-    Object? closeError = _writeError;
-    StackTrace? closeErrorStackTrace = _writeErrorStackTrace;
+    final int? failedAt = _failedAtBytes;
+    if (failedAt != null) {
+      _missing.add((startMs: _ms(failedAt), endMs: _ms(_dataBytes)));
+      _failedAtBytes = null;
+    }
+    Object? closeError;
+    StackTrace? closeErrorStackTrace;
     try {
       await raf.setPosition(0);
       await raf.writeFrom(_header(_dataBytes));
@@ -101,8 +138,6 @@ class WavRecorder {
     } finally {
       _raf = null;
       _pendingWrites = Future<void>.value();
-      _writeError = null;
-      _writeErrorStackTrace = null;
     }
 
     if (closeError != null) {
@@ -116,6 +151,8 @@ class WavRecorder {
   static const int _headerBytes = 44;
 
   int get _bytesPerSecond => sampleRate * 2;
+
+  int _ms(int bytes) => bytes * 1000 ~/ _bytesPerSecond;
 
   /// Recale les tailles d'un WAV dont l'en-tête n'a pas été finalisé (app
   /// arrêtée en pleine session) sur la taille réelle du fichier.
