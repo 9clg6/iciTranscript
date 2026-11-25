@@ -254,6 +254,7 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
 
     private static func icon(for status: String) -> NSImage? {
         if status == "recording" { return dot() }
+        if status == "idle", let glyph = glyph() { return glyph }
         let name: String
         switch status {
         case "paused": name = "pause.circle"
@@ -267,6 +268,19 @@ class StatusPanelPlugin: NSObject, FlutterPlugin, NSWindowDelegate {
             image = ring()
         }
         image?.isTemplate = true
+        return image
+    }
+
+    /// The logo (lowercase o on a note line), vector template from
+    /// Assets.xcassets/MenuBarGlyph, 18 pt high; nil if the asset is missing.
+    private static func glyph() -> NSImage? {
+        guard let source = NSImage(named: "MenuBarGlyph"),
+              let image = source.copy() as? NSImage,
+              image.size.height > 0 else { return nil }
+        let height: CGFloat = 18
+        image.size = NSSize(width: image.size.width * height / image.size.height, height: height)
+        image.isTemplate = true
+        image.accessibilityDescription = "Oats"
         return image
     }
 
