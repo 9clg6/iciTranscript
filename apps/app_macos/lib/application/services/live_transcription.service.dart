@@ -1261,7 +1261,16 @@ final class LiveTranscriptionService {
     bool show = true,
     Future<void> Function()? then,
   }) async {
-    final bool ok = await _transcriptionService.saveProvisional(segment);
+    bool ok;
+    try {
+      ok = await _transcriptionService.saveProvisional(segment);
+      // Une base fermée lève une Error (StateError), pas une Exception :
+      // réessayée comme les autres refus.
+      // ignore: avoid_catches_without_on_clauses
+    } catch (e) {
+      _log.error('Ligne non rangée', e);
+      ok = false;
+    }
     if (show && segment.sessionId == currentSessionStream.valueOrNull?.id) {
       _transcriptionService.segmentsStream.add(
         List<TranscriptSegmentEntity>.from(
