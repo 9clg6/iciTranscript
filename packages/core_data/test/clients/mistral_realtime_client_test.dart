@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:core_data/clients/mistral_realtime_client.dart';
@@ -15,77 +16,106 @@ import 'package:core_foundation/logging/logger.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 
-/// Moteur de transcription EN LIGNE : Mistral Voxtral temps réel, sous la
-/// couche de fiabilité existante (tampon non acquitté, fenêtres, pertes,
-/// reconnexion à borne adaptative, attente à l'arrêt) qui reste INCHANGÉE.
+import '../fixtures/mistral_probe.dart';
+
+/// Moteur EN LIGNE : Mistral Voxtral temps réel, sous la couche de
+/// fiabilité existante (tampon non acquitté, fenêtres, pertes, reconnexion
+/// à borne adaptative, attente à l'arrêt), INCHANGÉE. Rejoue la sonde réelle
+/// (test/fixtures/mistral_probe.dart, sans clé).
 ///
 /// API supposée : `MistralRealtimeClient extends WebSocketClient`
 /// (`package:core_data/clients/mistral_realtime_client.dart`) :
 /// `MistralRealtimeClient({required apiKey, required transport,
-/// int targetStreamingDelayMs, String? language})` : `apiKey` rend la clé
-/// (lue à chaque connexion, peut être nulle) ; `transport` crée la socket
-/// brute à partir des en-têtes HTTP à envoyer ;
-/// `static const String model` (temps réel : `voxtral-mini-transcribe-
-/// realtime-3-0`, listé par le compte ; 2602 aussi) et `static const String
-/// url` ; `MistralKeyRejected implements Exception`. La clé est au
-/// trousseau, compte `mistral` (`LlmProviderId.mistral`).
-/// Le client parle notre protocole (celui de voxmlx) à
-/// `TranscriptionRemoteDataSourceImpl` et le protocole Mistral au
-/// transport.
+/// int targetStreamingDelayMs = defaultStreamingDelayMs, String?
+/// language})` ; `apiKey` rend la clé (lue à chaque connexion, peut être
+/// nulle) ; `transport` crée la socket brute à partir des en-têtes HTTP ;
+/// constantes `model` (`voxtral-mini-transcribe-realtime-3-0`), `url`,
+/// `defaultStreamingDelayMs` (80), `keepAliveEvery` ; exception
+/// `MistralKeyRejected`.
 ///
-/// CORRESPONDANCE CHOISIE (protocole mistralai/client-python, main) :
+/// CORRESPONDANCE (d'après la sonde réelle) :
 /// - `connect(url)` ignore l'URL locale : ouvre [MistralRealtimeClient.url]
-///   (`wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=` +
-///   modèle) avec l'en-tête `Authorization: Bearer` + clé (lue à chaque
-///   connexion) ; premier message `session.update`
-///   (`audio_format` pcm_s16le / 16000, `target_streaming_delay_ms`) avant
-///   tout audio ; connecté une fois `session.updated` reçu (la poignée de
-///   main reste sous la borne adaptative du client) ;
-/// - `input_audio_buffer.append` → `input_audio.append`, même base64 (nos
-///   chunks de 100 ms font 3 200 octets, bien sous 262 144) ;
-/// - commit final d'une phrase (`input_audio_buffer.commit` final) →
-///   `input_audio.flush` ; jamais de commit façon OpenAI ;
-/// - `transcription.text.delta` {text} → `response.audio_transcript.delta`
-///   {delta} ;
-/// - `transcription.segment` {text, start, end} : rangés ; UN
-///   `response.audio_transcript.done` par flush, texte = segments de ce
-///   flush mis bout à bout, émis dès qu'un segment finit à 1,5 s près de la
-///   fin de l'audio vidé (temps du flux : octets envoyés depuis la
-///   connexion / 32 000) ou qu'un segment commence après elle (flush sans
-///   parole : `done` vide) ; `transcription.done` ferme tous les flushs en
-///   attente ;
-/// - `error` → coupure (socket fermée, `onClosed`) : la couche de fiabilité
-///   reconnecte et renvoie ; socket fermée → idem ;
-/// - clé refusée (poignée de main HTTP 401, ou `error` 401 / clé invalide)
-///   → `MistralKeyRejected` : pas de tempête de reconnexions.
+///   avec l'en-tête `Authorization: Bearer` + clé ; premier message
+///   `session.update` (`audio_format` pcm_s16le / 16000,
+///   `target_streaming_delay_ms` 80) avant tout audio ; connecté une fois
+///   `session.updated` reçu ;
+/// - `input_audio_buffer.append` → `input_audio.append`, même base64 ;
+/// - le serveur n'envoie QUE des `transcription.text.delta` (pas de
+///   segment, pas de tour) : ils deviennent nos
+///   `response.audio_transcript.delta` ;
+/// - LES PHRASES SONT FAITES PAR OATS : règle — un `done` par fin d'énoncé
+///   de notre porte de silence (commit final, 1,2 s après la dernière
+///   parole) ; son texte = deltas reçus depuis le `done` précédent ; il
+///   part 500 ms après le dernier delta qui suit la fin d'énoncé (au plus
+///   3 s après elle) : le reste de la phrase arrive ~0,28 s après sa fin
+///   (délai 80 ms). Le commit OpenAI n'est jamais envoyé ;
+/// - PAUSES : sans audio pendant 30 s le serveur répond `error` 3804 puis
+///   ferme (1011) ; le client envoie donc du silence (`input_audio.append`
+///   de zéros) pendant les pauses, au moins toutes les
+///   [MistralRealtimeClient.keepAliveEvery] (5 s au plus) ;
+/// - ARRÊT : `disconnect()` envoie `input_audio.end` ; `transcription.done`
+///   (texte entier, `segments: []`) arrive ~0,8 s plus tard, puis la socket
+///   se ferme sans trame de fermeture (1006) ~2 s après : FIN NORMALE — ni
+///   coupure, ni perte, ni reconnexion ; le texte de ce `done` ne refait
+///   pas les phrases déjà rendues ;
+/// - `error` (3804, autre) ou socket fermée en cours de réunion → coupure :
+///   la couche de fiabilité reconnecte et renvoie ;
+/// - clé refusée (HTTP 401 à la poignée de main, ou `error` 401) →
+///   `MistralKeyRejected`, pas de tempête de reconnexions.
 const String _key = 'mistral-test-SECRET-0123456789';
 
-final class _Sent {
-  _Sent(this.type, this.json);
-  final String type;
-  final Map<String, dynamic> json;
-}
+/// Delta enregistré, rattaché au chunk d'audio qui l'a produit (au plus
+/// tard la fin de sa phrase) : le faux serveur l'envoie 300 ms après avoir
+/// reçu ce chunk, comme le vrai (~0,28 s).
+final List<({int anchorId, String text})> _deltas =
+    <({int anchorId, String text})>[
+      for (final ({int atMs, String text}) d in mistralProbeDeltas)
+        () {
+          final ({int startMs, int endMs, String text}) s =
+              mistralProbeSentences.lastWhere(
+                (({int startMs, int endMs, String text}) s) =>
+                    s.startMs <= d.atMs,
+                orElse: () => mistralProbeSentences.first,
+              );
+          final int anchorMs = math.max(
+            s.startMs,
+            math.min(d.atMs - 300, s.endMs - 100),
+          );
+          return (anchorId: anchorMs ~/ 100, text: d.text);
+        }(),
+    ];
 
-/// Serveur Mistral factice (une connexion par transport créé).
 final class _MistralServer {
   _MistralServer(this.async);
 
   final FakeAsync async;
   final List<Map<String, String>> headers = <Map<String, String>>[];
   final List<String> urls = <String>[];
-  final List<List<_Sent>> sessions = <List<_Sent>>[];
-  final Set<int> transcribedIds = <int>{};
+  final List<_Conn> connections = <_Conn>[];
   final List<Duration> connectAttempts = <Duration>[];
   bool refuseKey = false;
   bool accepting = true;
-  int segmentsPerFlush = 1;
-  Duration answerAfter = const Duration(milliseconds: 400);
-  _MistralSocket? live;
+  int timeouts3804 = 0;
+  _Conn? get live => connections.isEmpty ? null : connections.last;
+
+  final List<_MistralSocket> sockets = <_MistralSocket>[];
 
   WebSocketClient transport(Map<String, String> h) {
     headers.add(Map<String, String>.of(h));
-    return _MistralSocket(this);
+    final _MistralSocket s = _MistralSocket(this);
+    sockets.add(s);
+    return s;
   }
+}
+
+/// Une connexion vue du serveur.
+final class _Conn {
+  final List<({String type, Map<String, dynamic> json})> sent =
+      <({String type, Map<String, dynamic> json})>[];
+  final List<Duration> appendTimes = <Duration>[];
+  final Set<int> ids = <int>{};
+  final Set<int> deltasSent = <int>{};
+  final StringBuffer text = StringBuffer();
 }
 
 final class _MistralSocket extends WebSocketClient {
@@ -96,10 +126,8 @@ final class _MistralSocket extends WebSocketClient {
       StreamController<String>.broadcast();
   final StreamController<void> _closed = StreamController<void>.broadcast();
   bool _connected = false;
-  late List<_Sent> _log;
-  int _bytes = 0;
-  int _flushedBytes = 0;
-  List<int> _ids = <int>[];
+  late _Conn _conn;
+  Timer? _silence;
 
   @override
   bool get isConnected => _connected;
@@ -114,10 +142,29 @@ final class _MistralSocket extends WebSocketClient {
     if (_connected) _messages.add(jsonEncode(event));
   }
 
-  void drop() {
+  /// Coupure réseau, ou fermeture du serveur (1006, 1011).
+  void close() {
     if (!_connected) return;
     _connected = false;
+    _silence?.cancel();
     _closed.add(null);
+  }
+
+  void fail3804() {
+    push(<String, Object?>{
+      'type': 'error',
+      'error': <String, Object?>{
+        'code': 3804,
+        'message': 'Timeout waiting for response from streaming transcription.',
+      },
+    });
+    _server.timeouts3804++;
+    close(); // 1011
+  }
+
+  void _armSilence() {
+    _silence?.cancel();
+    _silence = Timer(const Duration(seconds: 30), fail3804);
   }
 
   @override
@@ -130,13 +177,11 @@ final class _MistralSocket extends WebSocketClient {
         'code: 401',
       );
     }
-    if (!_server.accepting) {
-      throw const SocketException('Connection refused');
-    }
+    if (!_server.accepting) throw const SocketException('Connection refused');
     _connected = true;
-    _log = <_Sent>[];
-    _server.sessions.add(_log);
-    _server.live = this;
+    _conn = _Conn();
+    _server.connections.add(_conn);
+    _armSilence();
     scheduleMicrotask(
       () => push(<String, Object?>{
         'type': 'session.created',
@@ -151,7 +196,7 @@ final class _MistralSocket extends WebSocketClient {
     final Map<String, dynamic> json =
         jsonDecode(message) as Map<String, dynamic>;
     final String type = json['type'] as String;
-    _log.add(_Sent(type, json));
+    _conn.sent.add((type: type, json: json));
     switch (type) {
       case 'session.update':
         scheduleMicrotask(
@@ -161,36 +206,44 @@ final class _MistralSocket extends WebSocketClient {
           }),
         );
       case 'input_audio.append':
+        _conn.appendTimes.add(_server.async.elapsed);
+        _armSilence();
         final Uint8List audio = base64Decode(json['audio'] as String);
+        if (audio.every((int b) => b == 0)) return; // silence de maintien
         final ByteData d = ByteData.sublistView(audio);
-        _ids.add(
-          d.getInt16(0, Endian.little) + (d.getInt16(2, Endian.little) << 15),
-        );
-        _bytes += audio.length;
-      case 'input_audio.flush':
-        final List<int> ids = _ids;
-        _ids = <int>[];
-        final double start = _flushedBytes / 32000;
-        final double end = _bytes / 32000;
-        _flushedBytes = _bytes;
-        final int n = _server.segmentsPerFlush;
-        Timer(_server.answerAfter, () {
-          if (!_connected) return;
-          push(<String, Object?>{
-            'type': 'transcription.text.delta',
-            'text': 'phrase ',
-          });
-          for (int k = 0; k < n; k++) {
-            final double a = start + (end - start - 1.2) * k / n;
-            final double b = start + (end - start - 1.2) * (k + 1) / n;
-            push(<String, Object?>{
-              'type': 'transcription.segment',
-              'text': 'Morceau ${ids.first}-$k.',
-              'start': a,
-              'end': b,
-            });
+        final int id =
+            d.getInt16(0, Endian.little) + (d.getInt16(2, Endian.little) << 15);
+        _conn.ids.add(id);
+        final _Conn conn = _conn;
+        for (int k = 0; k < _deltas.length; k++) {
+          if (_deltas[k].anchorId != id || conn.deltasSent.contains(k)) {
+            continue;
           }
-          _server.transcribedIds.addAll(ids);
+          conn.deltasSent.add(k);
+          Timer(const Duration(milliseconds: 300), () {
+            if (!_connected || !identical(conn, _conn)) return;
+            conn.text.write(_deltas[k].text);
+            push(<String, Object?>{
+              'type': 'transcription.text.delta',
+              'text': _deltas[k].text,
+            });
+          });
+        }
+      case 'input_audio.end':
+        _silence?.cancel();
+        final _Conn conn = _conn;
+        Timer(const Duration(milliseconds: mistralProbeDoneAfterEndMs), () {
+          push(<String, Object?>{
+            'type': 'transcription.done',
+            'model': mistralProbeModel,
+            'text': conn.text.toString(),
+            'segments': <Object>[],
+            'language': null,
+          });
+          Timer(
+            const Duration(milliseconds: mistralProbeCloseAfterDoneMs),
+            close, // 1006, sans trame de fermeture
+          );
         });
     }
   }
@@ -198,44 +251,29 @@ final class _MistralSocket extends WebSocketClient {
   @override
   Future<void> disconnect() async {
     _connected = false;
+    _silence?.cancel();
   }
 
   @override
-  Future<void> dispose() async {
-    _connected = false;
-  }
-}
-
-AudioChunk _chunk(AudioSource source, int id, int t0, {required bool voiced}) {
-  final Uint8List data = Uint8List(3200);
-  final ByteData d = ByteData.sublistView(data);
-  if (voiced) {
-    for (int o = 4; o < data.length; o += 2) {
-      d.setInt16(o, 1200, Endian.little);
-    }
-  }
-  d
-    ..setInt16(0, id & 0x7FFF, Endian.little)
-    ..setInt16(2, id >> 15, Endian.little);
-  return AudioChunk(source: source, data: data, timestampMs: t0 + id * 100);
+  Future<void> dispose() async => disconnect();
 }
 
 final class _Bench {
-  _Bench(this.async) {
-    mic = _MistralServer(async);
-    sys = _MistralServer(async);
+  _Bench(this.async, {List<({int startMs, int endMs, String text})>? said})
+    : said = said ?? mistralProbeSentences {
+    server = _MistralServer(async);
     dataSource = TranscriptionRemoteDataSourceImpl(
       micClient: MistralRealtimeClient(
         apiKey: () async => _key,
-        transport: mic.transport,
+        transport: server.transport,
       ),
       systemClient: MistralRealtimeClient(
         apiKey: () async => _key,
-        transport: sys.transport,
+        transport: _MistralServer(async).transport,
       ),
     );
     dataSource.audioGaps.listen(gaps.add);
-    dataSource.transcriptionStream.listen(micEvents.add);
+    dataSource.transcriptionStream.listen(events.add);
     unawaited(
       dataSource.connect(systemAudioEnabled: false).catchError((Object _) {}),
     );
@@ -244,169 +282,222 @@ final class _Bench {
 
   static const int t0 = 1700000000000;
   final FakeAsync async;
-  late final _MistralServer mic;
-  late final _MistralServer sys;
+  final List<({int startMs, int endMs, String text})> said;
+  late final _MistralServer server;
   late final TranscriptionRemoteDataSourceImpl dataSource;
   final List<AudioGap> gaps = <AudioGap>[];
-  final List<TranscriptEventRemoteModel> micEvents =
+  final List<TranscriptEventRemoteModel> events =
       <TranscriptEventRemoteModel>[];
-  final List<int> voicedIds = <int>[];
 
-  /// Phrases de 7,5 s, 2,5 s de pause, [seconds] s à partir de [fromId].
-  int speak(int fromId, int seconds, {void Function(int id)? at}) {
-    int id = fromId;
-    for (; id < fromId + seconds * 10; id++) {
-      at?.call(id);
-      final bool v = id % 100 < 75;
-      if (v) voicedIds.add(id);
-      dataSource.sendAudio(_chunk(AudioSource.input, id, t0, voiced: v));
-      async.elapse(const Duration(milliseconds: 100));
-    }
-    return id;
-  }
-
-  bool inGap(int id) => gaps.any(
-    (AudioGap g) =>
-        g.source == AudioSource.input &&
-        t0 + id * 100 >= g.startMs &&
-        t0 + id * 100 < g.endMs,
+  bool voiced(int id) => said.any(
+    (({int startMs, int endMs, String text}) s) =>
+        id * 100 >= s.startMs && id * 100 < s.endMs,
   );
 
-  List<TranscriptEventRemoteModel> get dones => micEvents
+  /// Capture micro de [toMs] (silence compris, comme la vraie capture) ;
+  /// [at] agit avant chaque chunk.
+  void play(int toMs, {void Function(int id)? at}) {
+    for (int id = 0; id * 100 < toMs; id++) {
+      at?.call(id);
+      final Uint8List data = Uint8List(3200);
+      final ByteData d = ByteData.sublistView(data);
+      if (voiced(id)) {
+        for (int o = 4; o < data.length; o += 2) {
+          d.setInt16(o, 1200, Endian.little);
+        }
+      }
+      d
+        ..setInt16(0, id & 0x7FFF, Endian.little)
+        ..setInt16(2, id >> 15, Endian.little);
+      dataSource.sendAudio(
+        AudioChunk(
+          source: AudioSource.input,
+          data: data,
+          timestampMs: t0 + id * 100,
+        ),
+      );
+      async.elapse(const Duration(milliseconds: 100));
+    }
+  }
+
+  /// Arrêt : `disconnect`, puis l'attente de la fin normale.
+  void stop() {
+    unawaited(dataSource.disconnect());
+    async.elapse(const Duration(seconds: 10));
+  }
+
+  List<TranscriptEventRemoteModel> get dones => events
       .where(
         (TranscriptEventRemoteModel e) =>
             e.type == 'response.audio_transcript.done',
       )
       .toList();
+
+  /// Phrases ni dans un `done`, ni dans une perte signalée.
+  List<String> neither() => <String>[
+    for (final ({int startMs, int endMs, String text}) s in said)
+      if (!dones.any(
+            (TranscriptEventRemoteModel e) => (e.text ?? '').contains(s.text),
+          ) &&
+          !gaps.any(
+            (AudioGap g) =>
+                g.startMs <= t0 + s.startMs + 1000 &&
+                g.endMs + 1000 >= t0 + s.endMs,
+          ))
+        '${s.startMs} ms « ${s.text} »',
+  ];
 }
 
 void main() {
-  test('ouvre l URL Mistral avec la clé en Bearer ; session.update '
-      '(pcm_s16le, 16 kHz, délai) avant tout audio', () {
+  test('ouvre l URL Mistral (modèle constant) avec la clé en Bearer ; '
+      'session.update (pcm_s16le, 16 kHz, délai 80 ms) avant tout audio', () {
     fakeAsync((FakeAsync async) {
       final _Bench b = _Bench(async);
-      b.speak(0, 10);
-
-      expect(b.mic.urls.first, MistralRealtimeClient.url);
-      // Un seul modèle temps réel, en constante (compte vérifié : listé).
-      expect(
-        MistralRealtimeClient.model,
-        'voxtral-mini-transcribe-realtime-3-0',
-      );
+      b.play(5000);
+      expect(MistralRealtimeClient.model, mistralProbeModel);
       expect(
         MistralRealtimeClient.url,
         'wss://api.mistral.ai/v1/audio/transcriptions/realtime'
         '?model=${MistralRealtimeClient.model}',
       );
-      expect(b.mic.headers.first['Authorization'], 'Bearer $_key');
-      final List<_Sent> sent = b.mic.sessions.first;
-      expect(sent.first.type, 'session.update');
+      expect(b.server.urls.first, MistralRealtimeClient.url);
+      expect(b.server.headers.first['Authorization'], 'Bearer $_key');
+      final ({String type, Map<String, dynamic> json}) first =
+          b.server.connections.first.sent.first;
+      expect(first.type, 'session.update');
       final Map<String, dynamic> session =
-          sent.first.json['session'] as Map<String, dynamic>;
+          first.json['session'] as Map<String, dynamic>;
       expect(session['audio_format'], <String, Object>{
         'encoding': 'pcm_s16le',
         'sample_rate': 16000,
       });
-      expect(session['target_streaming_delay_ms'], isA<int>());
-    });
-  });
-
-  test('audio → input_audio.append (même PCM, ≤ 262 144 octets), fin de '
-      'phrase → input_audio.flush, jamais de commit OpenAI', () {
-    fakeAsync((FakeAsync async) {
-      final _Bench b = _Bench(async);
-      b.speak(0, 30);
-      final List<_Sent> sent = b.mic.sessions.first;
-      final Iterable<String> types = sent.map((_Sent s) => s.type);
-      expect(types, isNot(contains('input_audio_buffer.append')));
-      expect(types, isNot(contains('input_audio_buffer.commit')));
-      expect(types.where((String t) => t == 'input_audio.flush').length, 3);
-      for (final _Sent s in sent.where(
-        (_Sent s) => s.type == 'input_audio.append',
-      )) {
-        expect(
-          base64Decode(s.json['audio'] as String).length,
-          lessThanOrEqualTo(262144),
-        );
-      }
-      // Chaque chunk voisé est arrivé tel quel, dans l'ordre.
-      expect(b.mic.transcribedIds.toList()..sort(), b.voicedIds);
-    });
-  });
-
-  test('un transcription.segment par phrase : un done par fenêtre, à la '
-      'fenêtre de sa phrase ; les deltas restent des deltas', () {
-    fakeAsync((FakeAsync async) {
-      final _Bench b = _Bench(async);
-      b.speak(0, 30);
-      async.elapse(const Duration(seconds: 5));
-      final List<TranscriptEventRemoteModel> dones = b.dones;
-      expect(dones.map((TranscriptEventRemoteModel e) => e.text), <String>[
-        'Morceau 0-0.',
-        'Morceau 100-0.',
-        'Morceau 200-0.',
-      ]);
-      for (int i = 0; i < 3; i++) {
-        final UtteranceWindow? w = b.dataSource.windowOf(dones[i]);
-        expect(w, isNotNull);
-        expect(w!.startMs, _Bench.t0 + i * 10000);
-      }
+      expect(MistralRealtimeClient.defaultStreamingDelayMs, 80);
+      expect(session['target_streaming_delay_ms'], 80);
       expect(
-        b.micEvents.where(
-          (TranscriptEventRemoteModel e) =>
-              e.type == 'response.audio_transcript.delta',
+        b.server.connections.first.sent.map(
+          (({String type, Map<String, dynamic> json}) s) => s.type,
         ),
-        isNotEmpty,
+        isNot(contains('input_audio_buffer.commit')),
       );
     });
   });
 
-  test('deux segments pour une phrase : un seul done, texte des deux', () {
+  test('rejeu de la sonde : Oats fait une phrase par énoncé à partir des '
+      'deltas, à sa fenêtre ; les deltas restent des deltas', () {
     fakeAsync((FakeAsync async) {
       final _Bench b = _Bench(async);
-      b.mic.segmentsPerFlush = 2;
-      b.speak(0, 20);
+      b.play(mistralProbeAudioEndMs);
       async.elapse(const Duration(seconds: 5));
-      expect(b.dones.map((TranscriptEventRemoteModel e) => e.text), <String>[
-        'Morceau 0-0. Morceau 0-1.',
-        'Morceau 100-0. Morceau 100-1.',
-      ]);
+      expect(
+        b.dones.map((TranscriptEventRemoteModel e) => e.text?.trim()),
+        <String?>[
+          for (final ({int startMs, int endMs, String text}) s
+              in mistralProbeSentences)
+            s.text,
+        ],
+      );
+      for (int i = 0; i < b.dones.length; i++) {
+        final UtteranceWindow? w = b.dataSource.windowOf(b.dones[i]);
+        expect(w, isNotNull);
+        expect(
+          (w!.startMs - _Bench.t0 - mistralProbeSentences[i].startMs).abs(),
+          lessThanOrEqualTo(1500),
+          reason: 'phrase $i',
+        );
+      }
+      expect(
+        b.events.where(
+          (TranscriptEventRemoteModel e) =>
+              e.type == 'response.audio_transcript.delta',
+        ),
+        hasLength(mistralProbeDeltas.length),
+      );
     });
   });
 
-  for (final String how in <String>['error', 'socket fermée']) {
-    test('$how en pleine phrase : coupure, reconnexion, renvoi ; chaque '
-        'chunk voisé transcrit ou sous une perte signalée', () {
+  test('arrêt : input_audio.end, done puis fermeture 1006 = fin normale : '
+      'ni perte, ni reconnexion, la dernière phrase une seule fois', () {
+    fakeAsync((FakeAsync async) {
+      final _Bench b = _Bench(async);
+      b.play(mistralProbeAudioEndMs);
+      b.stop();
+      expect(
+        b.server.connections.single.sent.map(
+          (({String type, Map<String, dynamic> json}) s) => s.type,
+        ),
+        contains('input_audio.end'),
+      );
+      expect(b.server.connectAttempts, hasLength(1));
+      expect(b.gaps, isEmpty);
+      final String last = mistralProbeSentences.last.text;
+      expect(
+        b.dones
+            .where(
+              (TranscriptEventRemoteModel e) => (e.text ?? '').contains(last),
+            )
+            .length,
+        1,
+      );
+    });
+  });
+
+  for (final int pauseS in <int>[22, 40]) {
+    test('pause de $pauseS s : du silence part au moins toutes les 5 s, '
+        'jamais d erreur 3804', () {
+      fakeAsync((FakeAsync async) {
+        // La pause réelle (58,0–80,6 s), allongée au besoin.
+        final int shift = (pauseS - 22) * 1000;
+        final _Bench b = _Bench(
+          async,
+          said: <({int startMs, int endMs, String text})>[
+            for (final ({int startMs, int endMs, String text}) s
+                in mistralProbeSentences)
+              s.startMs > 60000
+                  ? (
+                      startMs: s.startMs + shift,
+                      endMs: s.endMs + shift,
+                      text: s.text,
+                    )
+                  : s,
+          ],
+        );
+        b.play(mistralProbeAudioEndMs + shift);
+        expect(b.server.timeouts3804, 0);
+        final List<Duration> at = b.server.connections.single.appendTimes;
+        Duration worst = Duration.zero;
+        for (int i = 1; i < at.length; i++) {
+          if (at[i] - at[i - 1] > worst) worst = at[i] - at[i - 1];
+        }
+        expect(worst, lessThanOrEqualTo(const Duration(seconds: 5)));
+        expect(
+          MistralRealtimeClient.keepAliveEvery,
+          lessThanOrEqualTo(const Duration(seconds: 5)),
+        );
+      });
+    });
+  }
+
+  for (final String how in <String>['error 3804 puis 1011', 'réseau coupé']) {
+    test('$how en pleine phrase : reconnexion ; chaque phrase dans un done ou '
+        'sous une perte signalée', () {
       fakeAsync((FakeAsync async) {
         final _Bench b = _Bench(async);
-        b.speak(
-          0,
-          60,
+        b.play(
+          mistralProbeAudioEndMs,
           at: (int id) {
-            if (id == 230 || id == 410) {
-              if (how == 'error') {
-                b.mic.live!.push(<String, Object?>{
-                  'type': 'error',
-                  'error': <String, Object?>{
-                    'message': 'internal error',
-                    'code': 500,
-                  },
-                });
+            if (id == 330 || id == 450) {
+              final _MistralSocket? s = _liveSocket(b);
+              if (how.startsWith('error')) {
+                s?.fail3804();
               } else {
-                b.mic.live!.drop();
+                s?.close();
               }
             }
           },
         );
-        unawaited(b.dataSource.disconnect());
-        async.elapse(const Duration(minutes: 2));
-
-        expect(b.mic.sessions.length, greaterThanOrEqualTo(3));
-        final List<int> silent = <int>[
-          for (final int id in b.voicedIds)
-            if (!b.mic.transcribedIds.contains(id) && !b.inGap(id)) id,
-        ];
-        expect(silent, isEmpty, reason: '${silent.length} chunks perdus');
+        b.stop();
+        expect(b.server.connectAttempts.length, greaterThanOrEqualTo(2));
+        expect(b.neither(), isEmpty, reason: b.neither().join('\n'));
       });
     });
   }
@@ -414,51 +505,14 @@ void main() {
   test('clé refusée (401) : pas de tempête de reconnexions', () {
     fakeAsync((FakeAsync async) {
       final _Bench b = _Bench(async);
-      b.mic.refuseKey = true;
-      b.mic.live!.drop();
-      b.speak(0, 600); // 10 min
+      b.server.refuseKey = true;
+      _liveSocket(b)?.close();
+      b.play(600000); // 10 min
       expect(
-        b.mic.connectAttempts.length,
+        b.server.connectAttempts.length,
         lessThanOrEqualTo(3),
-        reason: 'tentatives à ${b.mic.connectAttempts}',
+        reason: 'tentatives à ${b.server.connectAttempts}',
       );
-    });
-  });
-
-  test('`error` clé invalide en cours de séance : pas de tempête non plus', () {
-    fakeAsync((FakeAsync async) {
-      final _Bench b = _Bench(async);
-      b.speak(0, 5);
-      b.mic.refuseKey = true;
-      b.mic.live!.push(<String, Object?>{
-        'type': 'error',
-        'error': <String, Object?>{'message': 'Unauthorized', 'code': 401},
-      });
-      b.speak(50, 600);
-      expect(b.mic.connectAttempts.length, lessThanOrEqualTo(4));
-    });
-  });
-
-  test('propriété : coupures répétées pendant 10 min, rien perdu en '
-      'silence, rien transcrit deux fois', () {
-    fakeAsync((FakeAsync async) {
-      final _Bench b = _Bench(async);
-      b.speak(
-        0,
-        600,
-        at: (int id) {
-          if (id % 1300 == 700) b.mic.live?.drop();
-          if (id % 1300 == 710) b.mic.accepting = false;
-          if (id % 1300 == 1000) b.mic.accepting = true;
-        },
-      );
-      unawaited(b.dataSource.disconnect());
-      async.elapse(const Duration(minutes: 3));
-      final List<int> silent = <int>[
-        for (final int id in b.voicedIds)
-          if (!b.mic.transcribedIds.contains(id) && !b.inGap(id)) id,
-      ];
-      expect(silent, isEmpty, reason: '${silent.length} chunks perdus');
     });
   });
 
@@ -466,10 +520,13 @@ void main() {
     final Directory dir = await Directory.systemTemp.createTemp('oats_log_');
     final String path = '${dir.path}/oats.log';
     Log.writeToFile(path);
-    final _Echo echo = _Echo();
+    bool sawKey = false;
     final MistralRealtimeClient client = MistralRealtimeClient(
       apiKey: () async => _key,
-      transport: echo.transport,
+      transport: (Map<String, String> headers) {
+        sawKey = headers.values.any((String v) => v.contains(_key));
+        return _EchoSocket(headers);
+      },
     );
     await client
         .connect('ws://localhost:8000/v1/realtime')
@@ -480,22 +537,15 @@ void main() {
         : '';
     await dir.delete(recursive: true);
     expect(log.contains(_key), isFalse);
-    expect(echo.sawKey, isTrue, reason: 'le transport a bien reçu la clé');
+    expect(sawKey, isTrue, reason: 'le transport a bien reçu la clé');
   });
 }
 
+/// Socket vivante du micro (la dernière créée par le transport).
+_MistralSocket? _liveSocket(_Bench b) => b.server.sockets.lastOrNull;
+
 /// Transport dont l'échec recopie ses en-têtes dans le message d'erreur
-/// (comme une trace HTTP verbeuse) : le client ne doit pas le journaliser
-/// tel quel.
-final class _Echo {
-  bool sawKey = false;
-
-  WebSocketClient transport(Map<String, String> headers) {
-    sawKey = headers.values.any((String v) => v.contains(_key));
-    return _EchoSocket(headers);
-  }
-}
-
+/// (trace HTTP verbeuse) : le client ne doit pas le journaliser tel quel.
 final class _EchoSocket extends WebSocketClient {
   _EchoSocket(this._headers);
 
