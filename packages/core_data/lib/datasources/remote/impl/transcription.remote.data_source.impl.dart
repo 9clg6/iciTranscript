@@ -55,7 +55,8 @@ final class TranscriptionRemoteDataSourceImpl
   static const double _voiceContinueRms = 180;
   // Une respiration au milieu d'une phrase dépasse souvent 0,7 s : en dessous
   // de ~1,2 s, une même phrase était coupée en plusieurs lignes.
-  static const int _silenceToFinalizeMs = 1200;
+  /// Silence qui clôt une phrase du direct ; `LaunchRepair` s'en sert aussi.
+  static const int silenceToFinalizeMs = 1200;
   /// Longueur maximale d'une phrase du direct avant coupe forcée.
   static const int maxUtteranceMs = 30000;
   // Une phrase restée moins longtemps au-dessus du seuil de parole est
@@ -211,7 +212,7 @@ final class TranscriptionRemoteDataSourceImpl
     }
 
     // Conserver une courte queue de silence pour ne pas couper la fin du mot.
-    if (now - _lastVoicedMs[source]! <= _silenceToFinalizeMs) {
+    if (now - _lastVoicedMs[source]! <= silenceToFinalizeMs) {
       _sendChunk(chunk);
       return;
     }

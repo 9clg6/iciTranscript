@@ -101,8 +101,6 @@ final class LaunchRepair {
 
   // Parole plus courte : ignorée (une respiration, un bruit).
   static const int _minSpeechMs = 1000;
-  // Pause qui sépare deux phrases ; plus courte, c'est la même.
-  static const int _pauseMs = 1000;
   // Deux passages sans ligne plus proches que cela : un seul repère.
   static const int _mergeMs = 5000;
   // Une ligne porte l'heure du début de sa phrase, à peu près.
@@ -128,7 +126,7 @@ final class LaunchRepair {
         if (chunk.length < step) break;
         if (!TranscriptionRemoteDataSourceImpl.isSpeechChunk(chunk)) continue;
         final int at = c * 100;
-        if (start != null && at - lastSpeech > _pauseMs) {
+        if (start != null && at - lastSpeech > TranscriptionRemoteDataSourceImpl.silenceToFinalizeMs) {
           runs.add((start, lastSpeech + 100));
           start = null;
         }
@@ -141,7 +139,7 @@ final class LaunchRepair {
     }
 
     // Heures couvertes : une ligne, de 2 s avant son heure jusqu'à la ligne
-    // suivante ou à sa durée estimée (mesurée sur l'audio, au plus `maxUtteranceMs`) ; un repère,
+    // suivante ou à la fin de sa phrase parlée (au plus `maxUtteranceMs`) ; un repère,
     // sa plage écrite.
     final List<TranscriptSegmentEntity> stored =
         lines
