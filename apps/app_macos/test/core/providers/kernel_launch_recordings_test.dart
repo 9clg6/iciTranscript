@@ -16,9 +16,13 @@ import 'package:ici_transcript/core/providers/kernel.provider.dart';
 
 /// Tour 3 de T1 : ce que le lancement fait aux enregistrements.
 ///
-/// 1. Rien n'est jamais supprimé automatiquement au lancement : les WAV d'un
-///    utilisateur existant ont des mois ; la purge de 14 jours reste une
-///    bibliothèque, déclenchée plus tard par un geste explicite.
+/// 1. No blanket purge at launch (decision 2026-11-25, "temporary audio
+///    only", existing WAVs sorted by the user himself): launch deletes the
+///    audio of a note only when it finishes that note's processing itself
+///    (a session killed while `active`, or a note recorded as "processing
+///    in progress"; see no_meeting_audio_test.dart). The WAVs of notes
+///    finished before, with no such record, are never touched, whatever
+///    their age or their session's state.
 /// 2. La réparation des WAV ne touche qu'aux en-têtes non finalisés.
 ///
 /// Base en mémoire ; dossier d'enregistrements = dossier temporaire de test
@@ -94,26 +98,29 @@ void main() {
     }
   }
 
-  test('le lancement ne supprime aucun enregistrement, quel que soit son '
-      'âge ou l état de sa session', () async {
-    await session('1500000000000', SessionStatus.completed);
-    await session('1400000000000', SessionStatus.interrupted);
-    for (final (String id, Duration age) in <(String, Duration)>[
-      ('1500000000000', const Duration(days: 730)), // terminée, 2 ans
-      ('1400000000000', const Duration(days: 365)), // interrompue, 1 an
-      ('1300000000000', const Duration(days: 90)), // absente de la base
-      ('1200000000000', const Duration(days: 20)),
-    ]) {
-      await healthyWav('${id}_mic.wav', age);
-      await healthyWav('${id}_system.wav', age);
-    }
-    final Map<String, (Uint8List, DateTime)> before = await snapshot();
-    expect(before, hasLength(8));
+  test(
+    'launch leaves untouched the recordings of notes finished before '
+    '(no processing in progress), whatever their age or session state',
+    () async {
+      await session('1500000000000', SessionStatus.completed);
+      await session('1400000000000', SessionStatus.interrupted);
+      for (final (String id, Duration age) in <(String, Duration)>[
+        ('1500000000000', const Duration(days: 730)), // terminée, 2 ans
+        ('1400000000000', const Duration(days: 365)), // interrompue, 1 an
+        ('1300000000000', const Duration(days: 90)), // absente de la base
+        ('1200000000000', const Duration(days: 20)),
+      ]) {
+        await healthyWav('${id}_mic.wav', age);
+        await healthyWav('${id}_system.wav', age);
+      }
+      final Map<String, (Uint8List, DateTime)> before = await snapshot();
+      expect(before, hasLength(8));
 
-    await container.read(kernelProvider.future);
+      await container.read(kernelProvider.future);
 
-    expectUnchanged(before, await snapshot());
-  });
+      expectUnchanged(before, await snapshot());
+    },
+  );
 
   test('la réparation au lancement laisse intacts un WAV sain, un fichier '
       'non WAV, un faux WAV et un fichier plus court qu un en-tête', () async {

@@ -237,6 +237,28 @@ void main() {
       recordings.path,
     ).add(id, const DictatedInterval(startMs: 9000, endMs: 10000));
     expect(filesOf(id), <String>['${id}_dictations.json', '${id}_mic.wav']);
+    // A note finished before this change: its audio is the user's to sort.
+    const String old = '1500000000000';
+    await app.container
+        .read(sessionRepositoryProvider)
+        .create(
+          SessionEntity(
+            id: old,
+            title: 'Old meeting',
+            createdAt: DateTime(2017, 7, 14),
+            updatedAt: DateTime(2017, 7, 14),
+            status: SessionStatus.completed,
+          ),
+        );
+    for (final String track in <String>['mic', 'system']) {
+      final WavRecorder w = WavRecorder();
+      await w.open('${recordings.path}/${old}_$track.wav');
+      await w.append(voicedPcm(2 * 32000));
+      await w.close();
+    }
+    final Uint8List oldMic = File(
+      '${recordings.path}/${old}_mic.wav',
+    ).readAsBytesSync();
 
     await app.launch();
 
@@ -248,6 +270,91 @@ void main() {
       () async => expect(await app.lines(id), contains('Retrouvé.')),
       timeout: const Duration(seconds: 5),
     );
+    await expectNoAudioLeft(id);
+    expect(filesOf(old), <String>['${old}_mic.wav', '${old}_system.wav']);
+    expect(
+      File('${recordings.path}/${old}_mic.wav').readAsBytesSync(),
+      oldMic,
+      reason: 'an old finished note is never touched at launch',
+    );
+  });
+
+  test('app killed during the post-call pass, with a marker the stop could '
+      'not backfill: at next launch the processing is finished, then its '
+      'audio is gone, transcript intact, marker kept', () async {
+    final _App first = _App(pass: _PassOutcome.succeeds);
+    addTearDown(first.kill);
+    await first.writePrefs();
+    await first.launch();
+    first.http.transcriberDown = true;
+    first.pass.gate = Completer<void>(); // the pass never ends: killed
+
+    final String id = await first.recordNote(gap: true);
+    await first.stop();
+    await eventually(() => expect(first.pass.started, <String>[id]));
+    first.kill();
+
+    // Next launch, same database and folder; the transcriber is still down.
+    final _App next = _App(pass: _PassOutcome.succeeds, db: first.db);
+    addTearDown(next.dispose);
+    next.http.transcriberDown = true;
+    await next.launch();
+
+    await eventually(
+      () => expect(next.http.transcriptions, isNotEmpty),
+      timeout: const Duration(seconds: 5),
+    );
+    expect(await next.lines(id), contains(_App.spoken), reason: 'transcript');
+    expect(await next.markers(id), hasLength(1), reason: 'marker kept');
+    await expectNoAudioLeft(id);
+    expect(await next.lines(id), contains(_App.spoken), reason: 'transcript');
+    expect(await next.markers(id), hasLength(1), reason: 'marker kept');
+  });
+
+  test('app killed during the post-call pass of a note without marker: at '
+      'next launch its audio is gone, transcript intact', () async {
+    final _App first = _App(pass: _PassOutcome.succeeds);
+    addTearDown(first.kill);
+    await first.writePrefs();
+    await first.launch();
+    first.pass.gate = Completer<void>(); // the pass never ends: killed
+
+    final String id = await first.recordNote();
+    await first.stop();
+    await eventually(() => expect(first.pass.started, <String>[id]));
+    first.kill();
+    expect(filesOf(id), contains('${id}_mic.wav'), reason: 'precondition');
+
+    final _App next = _App(pass: _PassOutcome.succeeds, db: first.db);
+    addTearDown(next.dispose);
+    await next.launch();
+
+    expect(await next.lines(id), contains(_App.spoken), reason: 'transcript');
+    await expectNoAudioLeft(id);
+    expect(await next.lines(id), contains(_App.spoken), reason: 'transcript');
+  });
+
+  test('a very short note (under half a second, the real post-call pass has '
+      'nothing to process): no audio file remains', () async {
+    // The REAL DiarizationService: it returns before any process when the
+    // WAVs hold under ~0.5 s (checked below before the stop).
+    final _App app = _App(pass: _PassOutcome.succeeds, realPass: true);
+    addTearDown(app.dispose);
+    await app.writePrefs();
+    await app.launch();
+
+    final String id = await app.recordNote(chunks: 3);
+    for (final String name in filesOf(id)) {
+      expect(
+        File('${recordings.path}/$name').lengthSync(),
+        lessThan(16000),
+        reason: 'precondition: too short for the pass, no uv process',
+      );
+    }
+    expect(filesOf(id), contains('${id}_mic.wav'), reason: 'precondition');
+    await app.stop();
+
+    expect(await app.lines(id), contains(_App.spoken), reason: 'transcript');
     await expectNoAudioLeft(id);
   });
 
@@ -306,10 +413,15 @@ final class _FakePostCallPass extends DiarizationService {
   /// Whether the session's mic WAV was there when each pass started.
   final List<bool> sawAudio = <bool>[];
 
+  /// Holds the pass until completed; never completed = the app is killed
+  /// during the pass.
+  Completer<void>? gate;
+
   @override
   Future<DiarizationResult?> processSession(String sessionId) async {
     started.add(sessionId);
     sawAudio.add(File(micWavPath(sessionId)).existsSync());
+    await gate?.future;
     try {
       // What the real pass feeds the script: the mic without dictated words.
       final String input = await micInputWithoutDictation(sessionId);
@@ -371,11 +483,14 @@ final class _MistralHttp implements HttpClientAdapter {
 }
 
 final class _App {
-  _App({required _PassOutcome pass}) : pass = _FakePostCallPass(pass) {
-    db = memoryDatabase();
+  /// [db]: the database of a previous run (a relaunch). [realPass]: the
+  /// real [DiarizationService] instead of the fake pass.
+  _App({required _PassOutcome pass, AppDatabase? db, bool realPass = false})
+    : pass = _FakePostCallPass(pass) {
+    this.db = db ?? memoryDatabase();
     container = ProviderContainer(
       overrides: <Override>[
-        ...localModelOverrides(db, InstantOllamaService(installed: false)),
+        ...localModelOverrides(this.db, InstantOllamaService(installed: false)),
         processManagerChannelProvider.overrideWithValue(process),
         audioCaptureChannelProvider.overrideWithValue(audio),
         globalShortcutChannelProvider.overrideWithValue(shortcuts),
@@ -387,7 +502,9 @@ final class _App {
         ),
         llmDioProvider.overrideWithValue(Dio()..httpClientAdapter = http),
         transcriptionRemoteDataSourceProvider.overrideWithValue(remote),
-        diarizationServiceProvider.overrideWithValue(this.pass),
+        diarizationServiceProvider.overrideWithValue(
+          realPass ? DiarizationService() : this.pass,
+        ),
       ],
     );
   }
@@ -405,8 +522,18 @@ final class _App {
       FakeTranscriptionRemoteDataSource();
   final _MistralHttp http = _MistralHttp();
 
-  Future<void> dispose() async {
+  bool _killed = false;
+
+  /// The app is killed: nothing more runs, the disk and the database stay
+  /// as they are for the next launch.
+  void kill() {
+    if (_killed) return;
+    _killed = true;
     container.dispose();
+  }
+
+  Future<void> dispose() async {
+    kill();
     await db.close();
   }
 
@@ -440,10 +567,14 @@ final class _App {
 
   String get currentSessionId => live.currentSessionStream.value!.id;
 
-  /// A meeting: 3 s of speech and one transcribed sentence; with [gap], a
-  /// lost passage (its marker); with [dictation], a held shortcut in the
-  /// middle. Still recording when it returns.
-  Future<String> recordNote({bool gap = false, bool dictation = false}) async {
+  /// A meeting: [chunks] × 100 ms of speech and one transcribed sentence;
+  /// with [gap], a lost passage (its marker); with [dictation], a held
+  /// shortcut in the middle. Still recording when it returns.
+  Future<String> recordNote({
+    bool gap = false,
+    bool dictation = false,
+    int chunks = 30,
+  }) async {
     vm;
     await Future<void>.delayed(const Duration(milliseconds: 100));
     await vm.startSession();
@@ -451,7 +582,7 @@ final class _App {
     final int t0 =
         live.currentSessionStream.value!.createdAt.millisecondsSinceEpoch;
     MeetingDictation? held;
-    for (int n = 0; n < 30; n++) {
+    for (int n = 0; n < chunks; n++) {
       if (dictation && n == 10) held = live.beginDictation();
       if (dictation && n == 20) held?.release();
       audio.emit(chunk(AudioSource.input, n, timestampMs: t0 + n * 100));
