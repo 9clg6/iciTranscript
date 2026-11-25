@@ -516,6 +516,88 @@ void main() {
     });
   });
 
+  // Revue PR #33 : un delta qui arrive APRÈS le `done` de sa phrase (rendu
+  // 500 ms après le delta précédent) ne doit pas disparaître en silence.
+  test('delta tardif après le done de la phrase, puis arrêt : ses mots sont '
+      'dans un done ou sous une perte signalée', () {
+    fakeAsync((FakeAsync async) {
+      final ({int startMs, int endMs, String text}) s0 =
+          mistralProbeSentences.first;
+      final _Bench b = _Bench(
+        async,
+        said: <({int startMs, int endMs, String text})>[s0],
+      );
+      b.play(9000);
+      expect(b.dones, hasLength(1), reason: 'le done de la phrase est parti');
+      expect(b.dones.single.text, isNot(contains('TARDIF')));
+
+      _liveSocket(b)!.push(<String, Object?>{
+        'type': 'transcription.text.delta',
+        'text': ' TARDIF',
+      });
+      async.elapse(const Duration(seconds: 1));
+      b.stop();
+
+      final bool inDone = b.dones.any(
+        (TranscriptEventRemoteModel e) => (e.text ?? '').contains('TARDIF'),
+      );
+      final bool underGap = b.gaps.any(
+        (AudioGap g) =>
+            g.startMs <= _Bench.t0 + s0.startMs + 1000 &&
+            g.endMs + 1000 >= _Bench.t0 + s0.endMs,
+      );
+      expect(
+        inDone || underGap,
+        isTrue,
+        reason:
+            'dones ${b.dones.map((TranscriptEventRemoteModel e) => e.text)}, '
+            'pertes ${b.gaps.length}',
+      );
+    });
+  });
+
+  test('delta tardif de la phrase 1, puis la phrase 2 : chaque done garde la '
+      'fenêtre de sa propre phrase', () {
+    fakeAsync((FakeAsync async) {
+      final List<({int startMs, int endMs, String text})> said =
+          mistralProbeSentences.take(2).toList();
+      final _Bench b = _Bench(async, said: said);
+      b.play(
+        17000,
+        at: (int id) {
+          // 8,6 s : le done de la phrase 1 est parti, la phrase 2 (8,71 s)
+          // pas encore commencée.
+          if (id != 86) return;
+          expect(b.dones, hasLength(1));
+          _liveSocket(b)!.push(<String, Object?>{
+            'type': 'transcription.text.delta',
+            'text': ' TARDIF',
+          });
+        },
+      );
+      async.elapse(const Duration(seconds: 5));
+
+      for (final ({int startMs, int endMs, String text}) s in said) {
+        final TranscriptEventRemoteModel done = b.dones.singleWhere(
+          (TranscriptEventRemoteModel e) => (e.text ?? '').contains(s.text),
+        );
+        final UtteranceWindow? w = b.dataSource.windowOf(done);
+        expect(w, isNotNull, reason: s.text);
+        expect(
+          (w!.startMs - _Bench.t0 - s.startMs).abs(),
+          lessThanOrEqualTo(1500),
+          reason: 'fenêtre de « ${s.text} »',
+        );
+      }
+      expect(
+        b.dones.any(
+          (TranscriptEventRemoteModel e) => (e.text ?? '').contains('TARDIF'),
+        ),
+        isTrue,
+      );
+    });
+  });
+
   test('la clé n apparaît jamais dans les journaux', () async {
     final Directory dir = await Directory.systemTemp.createTemp('oats_log_');
     final String path = '${dir.path}/oats.log';
