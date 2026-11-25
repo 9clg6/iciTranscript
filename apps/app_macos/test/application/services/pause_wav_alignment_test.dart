@@ -304,7 +304,131 @@ void _expectSpeechAt30Recovered(_Run r) {
   }
 }
 
+/// Position (ms dans le WAV) du début du chunk parlé numéro [id], ou null.
+int? _chunkAtMs(Uint8List wav, int id) {
+  final ByteData d = ByteData.sublistView(wav);
+  for (int p = 44; p + 8 <= wav.length; p += 2) {
+    if (d.getInt16(p, Endian.little) == (id & 0x7FFF) &&
+        d.getInt16(p + 2, Endian.little) == id >> 15 &&
+        d.getInt16(p + 4, Endian.little) == 1200) {
+      return (p - 44) ~/ 32;
+    }
+  }
+  return null;
+}
+
+typedef _Cycles = ({
+  int wallMs,
+  int afterSecondResumeMs,
+  Map<String, Duration?> durations,
+  Map<String, int?> positions,
+});
+
+/// Revue de la PR #34 : la vraie capture rend son premier chunk ~0,5 s
+/// après `startCapture`. Réunion micro + système, chaque chunk numéroté par
+/// son heure murale (× 100 ms) : 5 s de parole, pause 10 s, reprise, 5 s,
+/// pause 10 s, reprise, 5 s, arrêt.
+_Cycles _twoPauseCycles() {
+  final _Disk disk = _Disk();
+  late _Cycles out;
+  disk.run(() {
+    fakeAsync((FakeAsync async) {
+      final LiveServiceHarness h = LiveServiceHarness(
+        async,
+        createWavRecorder: WavRecorder.new,
+      );
+      h.audio.startDelay = const Duration(milliseconds: 500);
+      unawaited(
+        h.service.startTranscription(
+          outputEnabled: true,
+          serverCommand: LiveServiceHarness.command,
+          serverArgs: LiveServiceHarness.args,
+        ),
+      );
+      async.elapse(const Duration(milliseconds: 500));
+      // Heure murale depuis l'ouverture de la session (horloge factice ;
+      // `createdAt` vient de DateTime.now, d'où t0 pour les horodatages).
+      final int t0 = h.t0;
+      final Duration opened = async.elapsed;
+      int wall() => (async.elapsed - opened).inMilliseconds;
+      void speak(int ms) {
+        for (int i = 0; i < ms ~/ 100; i++) {
+          final int id = wall() ~/ 100;
+          for (final AudioSource source in AudioSource.values) {
+            h.audio.emit(chunk(source, id, timestampMs: t0 + id * 100));
+          }
+          async.elapse(const Duration(milliseconds: 100));
+        }
+      }
+
+      void pauseThenResume() {
+        unawaited(h.service.pauseTranscription());
+        async.elapse(const Duration(seconds: 10));
+        unawaited(h.service.resumeTranscription());
+        // Premier chunk de la capture relancée : 0,5 s après l'appel.
+        async.elapse(const Duration(milliseconds: 500));
+      }
+
+      speak(5000);
+      pauseThenResume();
+      speak(5000);
+      pauseThenResume();
+      final int afterSecondResumeMs = wall();
+      speak(5000);
+      final int wallMs = wall();
+      unawaited(h.service.stopTranscription());
+      async.elapse(const Duration(seconds: 10));
+      final String dir = LiveTranscriptionService.recordingsDir;
+      final Map<String, Duration?> durations = <String, Duration?>{};
+      final Map<String, int?> positions = <String, int?>{};
+      for (final String track in <String>['mic', 'system']) {
+        final String path = '$dir/${h.session.id}_$track.wav';
+        WavRecorder.recordedDuration(path).then((Duration? d) {
+          durations[track] = d;
+        });
+        async.flushMicrotasks();
+        final Uint8List? bytes = disk.bytes[path];
+        positions[track] = bytes == null
+            ? null
+            : _chunkAtMs(bytes, afterSecondResumeMs ~/ 100);
+      }
+      out = (
+        wallMs: wallMs,
+        afterSecondResumeMs: afterSecondResumeMs,
+        durations: durations,
+        positions: positions,
+      );
+    });
+  });
+  return out;
+}
+
 void main() {
+  test('deux pauses, capture qui reprend en 0,5 s : chaque WAV dure le temps '
+      'mural de la réunion, et la parole d après la 2e reprise est à son heure '
+      'murale dans le WAV', () {
+    final _Cycles r = _twoPauseCycles();
+    final String why =
+        'réunion ${r.wallMs} ms ; WAV ${r.durations} ; parole dite à '
+        '${r.afterSecondResumeMs} ms trouvée à ${r.positions} ms';
+    for (final String track in <String>['mic', 'system']) {
+      final Duration? d = r.durations[track];
+      expect(d, isNotNull, reason: '$track : $why');
+      expect(
+        (d!.inMilliseconds - r.wallMs).abs(),
+        lessThanOrEqualTo(100),
+        reason: 'durée du WAV $track ; $why',
+      );
+      final int? at = r.positions[track];
+      expect(at, isNotNull, reason: '$track : $why');
+      expect(
+        (at! - r.afterSecondResumeMs).abs(),
+        lessThanOrEqualTo(100),
+        reason: 'place de la parole dans le WAV $track ; $why',
+      );
+    }
+  });
+
   test('témoin sans pause : la parole perdue à 30 s revient du WAV au '
       'rattrapage', () async {
     _expectSpeechAt30Recovered(await _meeting(pause: false));
