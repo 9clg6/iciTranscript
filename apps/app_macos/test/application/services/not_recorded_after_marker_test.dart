@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
