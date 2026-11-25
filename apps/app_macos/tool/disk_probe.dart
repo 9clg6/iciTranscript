@@ -85,6 +85,27 @@ void main() {
     final int? viaDf = await dfFree(recordingsDir);
     log('free_check', <String, Object?>{'freeBytesAt': viaApp, 'df_k': viaDf});
 
+    // Fill the volume from here, after the test was compiled (the Flutter
+    // tooling also writes under TMPDIR): a real file, not a sparse one.
+    final int? leaveMb = int.tryParse(env['FILL_LEAVE_MB'] ?? '');
+    if (leaveMb != null) {
+      final RandomAccessFile f = File(
+        env['DUMMY']!,
+      ).openSync(mode: FileMode.write);
+      final Uint8List mb = Uint8List(1 << 20);
+      for (int i = 0; i < mb.length; i++) {
+        mb[i] = (i * 2654435761) & 0xFF;
+      }
+      while (((await dfFree(recordingsDir)) ?? 0) > (leaveMb + 1) << 20) {
+        f.writeFromSync(mb);
+        f.flushSync();
+      }
+      f.closeSync();
+      log('dummy_filled', <String, Object?>{
+        'free_bytes': await dfFree(recordingsDir),
+        'freeBytesAt': await RecordingStorage.freeBytesAt(recordingsDir),
+      });
+    }
     final AppDatabase db = AppDatabase(NativeDatabase(File(dbPath)));
     final SessionRepositoryImpl sessions = SessionRepositoryImpl(
       sessionLocalDataSource: SessionLocalDataSourceImpl(
