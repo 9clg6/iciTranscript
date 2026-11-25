@@ -2,12 +2,16 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:core_data/datasources/remote/impl/transcription.remote.data_source.impl.dart';
+import 'package:core_domain/domain/entities/session.entity.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
+import 'package:core_domain/domain/enum/session_status.enum.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/gap_backfill.service.dart';
+import 'package:ici_transcript/application/services/launch_repair.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
+import 'package:ici_transcript/application/services/transcript_grouping.dart';
 import 'package:ici_transcript/application/services/wav_recorder.dart';
 
 import '../../helpers/live_service_fakes.dart';
@@ -26,6 +30,21 @@ import '../../helpers/live_service_fakes.dart';
 // (plus rien ne tourne) ; relancement avec de la place : la base et le WAV
 // tels que laissés, rattrapage avec un transcripteur sain qui ne rend que
 // ce qui est parlé dans l'audio lu (rien pour des zéros).
+//
+// Décision (coordinateur) : une fois le disque à zéro, rien ne peut
+// s'écrire ; ce qui manque est donc écrit au RELANCEMENT, par la
+// réparation qui passe la session restée active à `interrupted` : pour
+// chaque source enregistrée, un repère OUVERT à son dernier point durable
+// (le plus tardif entre son dernier segment rangé et la fin de son WAV),
+// « Rien n'a pu être enregistré après hh:mm:ss (app arrêtée ou disque
+// plein) » — une sorte de repère à part (même prédicat partagé
+// `isTranscriptMarker`), jamais retirée par le rattrapage, jamais prise
+// pour du silence. API : `LaunchRepair` (lib/application/services/
+// launch_repair.dart) ; `LiveTranscriptionService
+// .notRecordedAfterMarkerText(int startMs)` /
+// `isNotRecordedAfterMarker(String)` ; `WavRecorder.recordedDuration(String
+// path)` (longueur du fichier − 44 octets, à 32 o/ms ; null sans fichier) ;
+// voir not_recorded_after_marker_test.dart.
 //
 // Attendu, après le relancement et le rattrapage : chaque phrase dite plus
 // de 5 s avant l'arrêt est dans la note OU sous un repère (perte ou « pas
@@ -73,6 +92,12 @@ final class _File implements File {
 
   @override
   bool existsSync() => _disk.bytes.containsKey(path);
+
+  @override
+  int lengthSync() => _disk.bytes[path]!.length;
+
+  @override
+  Future<int> length() async => lengthSync();
 
   @override
   Future<bool> exists() async => existsSync();
@@ -218,6 +243,7 @@ final class _Healthy implements PcmTranscriber {
 typedef _Left = ({
   String session,
   List<TranscriptSegmentEntity> store,
+  List<SessionEntity> sessions,
   int killMs,
 });
 
@@ -271,6 +297,7 @@ _Left _play(
         store: db.store.values
             .where((TranscriptSegmentEntity s) => s.sessionId == h.session.id)
             .toList(),
+        sessions: h.sessions.store.values.toList(),
         killMs: killId * 100,
       );
     });
@@ -278,10 +305,7 @@ _Left _play(
   return left;
 }
 
-bool _isMarker(TranscriptSegmentEntity s) =>
-    s.text.startsWith(LiveTranscriptionService.gapMarkerPrefix) ||
-    LiveTranscriptionService.isNoAudioCopyMarker(s.text) ||
-    LiveTranscriptionService.isUntranscribedMarker(s.text);
+bool _isMarker(TranscriptSegmentEntity s) => isTranscriptMarker(s.text);
 
 ({int startMs, int endMs})? _range(String text) {
   final List<int> t = <int>[
@@ -292,17 +316,41 @@ bool _isMarker(TranscriptSegmentEntity s) =>
               int.parse(m.group(3)!)) *
           1000,
   ];
+  // Repère ouvert « Rien n'a pu être enregistré après … » : une seule
+  // heure, il couvre tout ce qui suit sur sa source.
+  if (LiveTranscriptionService.isNotRecordedAfterMarker(text) && t.isNotEmpty) {
+    return (startMs: t.first, endMs: 1 << 40);
+  }
   return t.length < 2 ? null : (startMs: t[0], endMs: t[1]);
 }
 
-/// Relance avec de la place : rattrapage sur la base et le WAV laissés ;
-/// rend les phrases ni dans la note ni sous un repère.
+/// Relance avec de la place, comme le lancement : la vraie réparation des
+/// sessions restées actives ([LaunchRepair] : session `interrupted`, repère
+/// ouvert par source à son dernier point durable, fin du WAV lue par
+/// `WavRecorder.recordedDuration`), puis le rattrapage sur la base et le WAV
+/// laissés ; rend les phrases ni dans la note ni sous un repère.
 Future<List<String>> _relaunch(_Disk disk, _Left left) async {
   disk.full = false;
   final InMemoryTranscriptRepository repo = InMemoryTranscriptRepository();
   for (final TranscriptSegmentEntity s in left.store) {
     await repo.save(s);
   }
+  final InMemorySessionRepository sessions = InMemorySessionRepository();
+  for (final SessionEntity s in left.sessions) {
+    sessions.store[s.id] = s;
+  }
+  await disk.run(
+    () => LaunchRepair(
+      sessions: sessions,
+      transcripts: repo,
+      recordingsDir: LiveTranscriptionService.recordingsDir,
+    ).run(),
+  );
+  expect(
+    sessions.store[left.session]!.status,
+    SessionStatus.interrupted,
+    reason: 'la réparation du lancement a tourné',
+  );
   await disk.run(
     () =>
         GapBackfillService(
@@ -334,6 +382,8 @@ Future<List<String>> _relaunch(_Disk disk, _Left left) async {
           r.startMs <= start + 1000 &&
           r.endMs + 1000 >= start + 7500;
     });
+    // Un repère ouvert retiré par le rattrapage serait du silence supposé.
+    if (said || covered) continue;
     if (!said && !covered) neither.add('phrase $k (${start ~/ 1000} s)');
   }
   return neither;
