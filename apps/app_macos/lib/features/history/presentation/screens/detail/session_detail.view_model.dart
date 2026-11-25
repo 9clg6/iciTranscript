@@ -237,14 +237,13 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
           if (ids.contains(x.id)) x,
       ];
     },
-    (EnglishFeedbackEntity? old, EnglishFeedbackEntity found) =>
-        found.copyWith(
-          overall: old?.overall ?? found.overall,
-          corrections: mergeCorrections(
-            old?.corrections ?? const <EnglishCorrectionEntity>[],
-            found.corrections,
-          ),
-        ),
+    (EnglishFeedbackEntity? old, EnglishFeedbackEntity found) => found.copyWith(
+      overall: old?.overall ?? found.overall,
+      corrections: mergeCorrections(
+        old?.corrections ?? const <EnglishCorrectionEntity>[],
+        found.corrections,
+      ),
+    ),
   );
 
   /// Coach sur les segments choisis par [pick] ; le résultat, combiné à
@@ -365,7 +364,9 @@ class SessionDetailViewModel extends _$SessionDetailViewModel {
   String _transcript(SessionDetailState s) => s.segments
       .where(
         (TranscriptSegmentEntity x) =>
-            !LiveTranscriptionService.isUntranscribedMarker(x.text),
+            !LiveTranscriptionService.isUntranscribedMarker(x.text) &&
+            !LiveTranscriptionService.isNoAudioCopyMarker(x.text) &&
+            !LiveTranscriptionService.isNotRecordedAfterMarker(x.text),
       )
       .map(TranscriptFormatter.plainLine)
       .join('\n');

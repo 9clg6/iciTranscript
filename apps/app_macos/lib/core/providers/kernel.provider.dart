@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:core_data/database/app_database.dart';
-import 'package:core_domain/domain/usecases/repair_interrupted_sessions.use_case.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/launch_repair.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
@@ -76,10 +76,13 @@ Future<void> _startDictation(Ref ref, Log log) async {
 /// rien. Un échec est journalisé et ne bloque pas le lancement.
 Future<void> _repairAfterCrash(Ref ref, Log log) async {
   try {
-    await RepairInterruptedSessionsUseCase(
-      sessionRepository: ref.read(sessionRepositoryProvider),
-      transcriptRepository: ref.read(transcriptRepositoryProvider),
-    ).invoke();
+    // Sessions restées actives : `interrupted`, et un repère ouvert par
+    // source à son dernier point durable (rien gardé après).
+    await LaunchRepair(
+      sessions: ref.read(sessionRepositoryProvider),
+      transcripts: ref.read(transcriptRepositoryProvider),
+      recordingsDir: LiveTranscriptionService.recordingsDir,
+    ).run();
   } catch (e) {
     log.warning('Réparation des sessions interrompues échouée: $e');
   }

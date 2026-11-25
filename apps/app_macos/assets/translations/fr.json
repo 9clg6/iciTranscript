@@ -154,10 +154,15 @@
       "system_audio_error": "Son du Mac non capté : {}",
       "ollama_binary": "Téléchargement du moteur IA ({} %)…",
       "ollama_server": "Démarrage du moteur IA…",
-      "ollama_model": "Téléchargement du modèle Mistral ({} %, ~4 Go, une seule fois)…"
+      "ollama_model": "Téléchargement du modèle Mistral ({} %, ~4 Go, une seule fois)…",
+      "storage_low": "Peu de place sur le disque : environ {} d'enregistrement possible ({} min).",
+      "storage_critical": "Disque presque plein (moins de 200 Mo) : libérez de la place, l'enregistrement va échouer.",
+      "storage_audio_copy": "L'audio ne s'enregistre plus (disque plein) : ce passage ne pourra pas être rattrapé.",
+      "storage_unsaved": "{} ligne(s) pas encore enregistrée(s) : elles restent affichées et seront rangées dès que possible."
     },
     "gap": {
-      "untranscribed": "Passage non transcrit ({} – {})"
+      "untranscribed": "Passage non transcrit ({} – {})",
+      "not_recorded_after": "Rien n'a pu être enregistré après {} (app arrêtée ou disque plein)"
     },
     "status_bar": {
       "level": "Niveau",

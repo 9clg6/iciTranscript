@@ -1,4 +1,5 @@
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
+import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/live_answers/live_question.dart';
 import 'package:ici_transcript/application/services/transcript_grouping.dart';
 import 'package:ici_transcript/application/services/meeting/meeting_rules.dart';
@@ -38,8 +39,18 @@ Map<String, Object?> statusPanelSnapshot({
     'dictating': dictating,
     // Un seul « Démarrer la note » : celui de la suggestion s'il y en a une.
     'showStart': status == 'idle' && suggestion == null,
+    // Seulement s'il y a quelque chose à dire (contrat du panneau inchangé).
+    if (!live.storage.isFine) 'storage': _storage(live.storage),
   };
 }
+
+/// Place disque telle que le panneau l'affiche.
+Map<String, Object?> _storage(RecordingStorage s) => <String, Object?>{
+  'level': s.level.name,
+  'minutesLeft': s.recordingTimeLeft?.inMinutes,
+  'audioCopyFailing': s.audioCopyFailing,
+  'unsavedLines': s.unsavedLines,
+};
 
 /// Suggestion telle que le panneau l'affiche (`suggestion`, `suggest`).
 Map<String, Object?> statusPanelSuggestion(MeetingSuggestion s) =>

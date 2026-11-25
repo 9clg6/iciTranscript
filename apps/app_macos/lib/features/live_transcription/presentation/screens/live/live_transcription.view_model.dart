@@ -9,6 +9,7 @@ import 'package:core_domain/domain/entities/session_calendar_link.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_foundation/logging/logger.dart';
+import 'package:ici_transcript/application/services/recording_storage.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_event.dart';
 import 'package:ici_transcript/application/services/calendar/calendar_rules.dart';
 import 'package:ici_transcript/application/services/diarization.service.dart';
@@ -171,6 +172,11 @@ class LiveTranscriptionViewModel extends _$LiveTranscriptionViewModel {
       state = state.copyWith(
         finalisingRemaining: remaining > Duration.zero ? remaining : null,
       );
+    });
+
+    // Place disque, copie audio (WAV) et lignes non rangées.
+    _liveService?.storageStream.listen((RecordingStorage storage) {
+      state = state.copyWith(storage: storage);
     });
 
     // Interlocuteurs identifiés en direct sur l'audio système.
