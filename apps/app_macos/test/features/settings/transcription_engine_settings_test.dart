@@ -35,6 +35,11 @@ import '../../helpers/settings_fakes.dart';
 /// - prefs.json : `transcription_engine` = `local` | `mistral`.
 const String _mistralKey = 'mistral-test-SECRET-0123456789';
 
+/// Libellés des deux choix, lus dans fr.json (marqués ⟦…⟧ par
+/// localized_app.dart) : un libellé écrit en dur ne correspond à rien.
+String _local() => 'settings.audio.engine_local'.tr();
+String _mistral() => 'settings.audio.engine_mistral'.tr();
+
 void main() {
   late InMemoryApiKeyStore store;
 
@@ -140,27 +145,31 @@ void main() {
     await open(tester);
     expect(row(), findsOneWidget);
     expect(
-      find.descendant(of: row(), matching: find.text('Sur ce Mac')),
+      find.descendant(of: row(), matching: find.text(_local())),
       findsOneWidget,
     );
     await tester.ensureVisible(menu());
     await tester.tap(menu());
     await tester.pump();
     await io(tester);
-    expect(find.text('Mistral (en ligne)'), findsWidgets);
+    expect(find.text(_mistral()), findsWidgets);
   });
 
   testWidgets('Mistral sans envoi en ligne permis : refusé, raison visible, '
       'le moteur reste sur ce Mac', (WidgetTester tester) async {
     await store.write(LlmProviderId.mistral, _mistralKey);
     await open(tester);
-    await choose(tester, 'Mistral (en ligne)');
+    await choose(tester, _mistral());
     expect(refusal(), findsOneWidget);
+    // prefs.json absent : rien n'a été rangé, c'est attendu.
+    final Object? stored = prefsFile.existsSync()
+        ? readPrefs()[TranscriptionEngineSettings.engineKey]
+        : null;
+    expect(stored, isNot('mistral'), reason: 'le choix refusé n est pas rangé');
     expect(
-      (readPrefs()[TranscriptionEngineSettings.engineKey] ?? 'local') ==
-          'mistral',
-      isFalse,
-      reason: 'le choix refusé n est pas rangé',
+      tester.widget<DropdownButton<TranscriptionEngine>>(menu()).value,
+      TranscriptionEngine.local,
+      reason: 'le menu reste sur ce Mac',
     );
   });
 
@@ -169,7 +178,7 @@ void main() {
   ) async {
     await open(tester);
     await allowCloud(tester);
-    await choose(tester, 'Mistral (en ligne)');
+    await choose(tester, _mistral());
     expect(refusal(), findsOneWidget);
   });
 
@@ -178,7 +187,7 @@ void main() {
     await open(tester);
     await allowCloud(tester);
     await saveMistralKey(tester);
-    await choose(tester, 'Mistral (en ligne)');
+    await choose(tester, _mistral());
     expect(refusal(), findsNothing);
     expect(readPrefs()[TranscriptionEngineSettings.engineKey], 'mistral');
     expect(await store.read(LlmProviderId.mistral), _mistralKey);

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/application/services/llm/anthropic_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/gemini_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/llm_provider.dart';
+import 'package:ici_transcript/application/services/llm/mistral_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/ollama_llm_provider.dart';
 import 'package:ici_transcript/application/services/llm/openai_llm_provider.dart';
 
@@ -26,6 +27,7 @@ LlmProvider _provider(LlmProviderId id, Dio dio) => switch (id) {
   LlmProviderId.anthropic => AnthropicLlmProvider(dio: dio, apiKey: _key),
   LlmProviderId.openai => OpenAiLlmProvider(dio: dio, apiKey: _key),
   LlmProviderId.gemini => GeminiLlmProvider(dio: dio, apiKey: _key),
+  LlmProviderId.mistral => MistralLlmProvider(dio: dio, apiKey: _key),
   LlmProviderId.ollama => OllamaLlmProvider(dio: dio),
 };
 
