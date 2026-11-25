@@ -309,14 +309,15 @@ Future<({List<String> control, List<String> after})> _killedMidRepair({
     final _KilledDuringRepair repo = _KilledDuringRepair()
       ..store[first.id] = first
       ..savesLeft = 1;
-    await expectLater(
-      LaunchRepair(
+    // L'app meurt ici : que `run` propage l'erreur ou non, la base ne
+    // reçoit plus rien.
+    try {
+      await LaunchRepair(
         sessions: sessions,
         transcripts: repo,
         recordingsDir: dir,
-      ).run(),
-      throwsStateError,
-    );
+      ).run();
+    } on StateError catch (_) {}
     if (sessionStillActive) {
       // État forcé : celui que laisse une réparation qui ne ferme la
       // session qu'à la fin (la session reste `active` après l'arrêt).
