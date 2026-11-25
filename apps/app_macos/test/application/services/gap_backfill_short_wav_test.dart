@@ -9,6 +9,7 @@ import 'package:ici_transcript/application/services/live_transcription.service.d
 
 import '../../helpers/live_service_fakes.dart';
 import '../../helpers/memory_fs.dart';
+import '../../helpers/recorded_backfill.dart' show markerRange;
 
 // Revue de oats-wav-pause (2026-11-25) : un WAV plus court que l'intervalle
 // d'un repère de perte (le WAV s'est arrêté, disque plein par exemple) fait
@@ -154,6 +155,65 @@ void main() {
       ),
       isEmpty,
       reason: 'aucun texte inventé après la fin du WAV micro ; $why',
+    );
+  });
+
+  // Décision (coordinateur, 2026-11-25) : un repère en partie après la fin
+  // du WAV est rattrapé sur ce qui existe ; un repère reste sur le reste
+  // (chaque phrase dans la note ou sous un repère).
+  test('un repère à cheval sur la fin du WAV : la partie enregistrée est '
+      'rattrapée, un repère reste sur la partie sans audio', () async {
+    final MemoryFs fs = MemoryFs()..wav('$_dir/${_session}_mic.wav', _pcm(150));
+    final InMemoryTranscriptRepository repo = InMemoryTranscriptRepository();
+    await repo.save(_marker('m_straddle', AudioSource.input, 12000, 20000));
+
+    Object? error;
+    try {
+      await fs.run(
+        () => GapBackfillService(
+          transcriber: _Listener(),
+          transcripts: repo,
+          isRecording: () => false,
+        ).backfill(_session, recordingsDirectory: _dir),
+      );
+    } catch (e) {
+      error = e;
+    }
+
+    final List<TranscriptSegmentEntity> lines = repo.store.values.toList()
+      ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+    final String note = lines
+        .map((TranscriptSegmentEntity s) => '${s.timestampMs} ${s.text}')
+        .join(' | ');
+    final String why =
+        'note « $note »${error == null ? '' : ' ; erreur : $error'}';
+
+    expect(error, isNull, reason: why);
+    expect(
+      note,
+      allOf(
+        contains('Micro 12 s.'),
+        contains('Micro 13 s.'),
+        contains('Micro 14 s.'),
+      ),
+      reason: 'la partie enregistrée est rattrapée ; $why',
+    );
+    final bool remainderCovered = lines.any((TranscriptSegmentEntity s) {
+      final ({int startMs, int endMs})? r = markerRange(s.text);
+      return r != null && r.startMs <= 16000 && r.endMs >= 20000;
+    });
+    expect(
+      remainderCovered,
+      isTrue,
+      reason: 'un repère couvre encore 15–20 s (sans audio) ; $why',
+    );
+    expect(
+      lines.where(
+        (TranscriptSegmentEntity s) =>
+            markerRange(s.text) == null && s.timestampMs >= 15000,
+      ),
+      isEmpty,
+      reason: 'aucun texte inventé après la fin du WAV ; $why',
     );
   });
 }
