@@ -10,8 +10,9 @@ part of 'transcription.remote.data_source.provider.dart';
 // ignore_for_file: type=lint, type=warning
 /// Provider pour [TranscriptionRemoteDataSource].
 ///
-/// Fournit l'implementation WebSocket (deux flux : micro + système) pour la
-/// communication avec voxmlx-serve (transcription temps réel).
+/// Deux flux (micro + système), chacun routé vers voxmlx-serve sur ce Mac
+/// ou vers Mistral en ligne selon l'adresse que passe le service (moteur
+/// choisi) ; la couche de fiabilité est la même.
 
 @ProviderFor(transcriptionRemoteDataSource)
 const transcriptionRemoteDataSourceProvider =
@@ -19,8 +20,9 @@ const transcriptionRemoteDataSourceProvider =
 
 /// Provider pour [TranscriptionRemoteDataSource].
 ///
-/// Fournit l'implementation WebSocket (deux flux : micro + système) pour la
-/// communication avec voxmlx-serve (transcription temps réel).
+/// Deux flux (micro + système), chacun routé vers voxmlx-serve sur ce Mac
+/// ou vers Mistral en ligne selon l'adresse que passe le service (moteur
+/// choisi) ; la couche de fiabilité est la même.
 
 final class TranscriptionRemoteDataSourceProvider
     extends
@@ -32,8 +34,9 @@ final class TranscriptionRemoteDataSourceProvider
     with $Provider<TranscriptionRemoteDataSource> {
   /// Provider pour [TranscriptionRemoteDataSource].
   ///
-  /// Fournit l'implementation WebSocket (deux flux : micro + système) pour la
-  /// communication avec voxmlx-serve (transcription temps réel).
+  /// Deux flux (micro + système), chacun routé vers voxmlx-serve sur ce Mac
+  /// ou vers Mistral en ligne selon l'adresse que passe le service (moteur
+  /// choisi) ; la couche de fiabilité est la même.
   const TranscriptionRemoteDataSourceProvider._()
     : super(
         from: null,
@@ -71,4 +74,4 @@ final class TranscriptionRemoteDataSourceProvider
 }
 
 String _$transcriptionRemoteDataSourceHash() =>
-    r'f097adb5cf224ba70c2a5835a446c0255f4e57c0';
+    r'bc991374a93216e32cb1062f93e11e333a2251c1';

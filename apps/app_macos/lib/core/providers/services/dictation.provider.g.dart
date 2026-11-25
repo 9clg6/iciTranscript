@@ -303,7 +303,7 @@ final class DictationControllerProvider
 }
 
 String _$dictationControllerHash() =>
-    r'6111af1915feb99f293c8b00f37707006f9c5b99';
+    r'2bdafee42efb485365b015c1c07650bc91dbfcc5';
 
 /// État du raccourci global (Réglages : raccourci déjà pris).
 
