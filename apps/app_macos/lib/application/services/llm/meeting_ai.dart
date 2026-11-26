@@ -364,25 +364,43 @@ Future<EnglishFeedbackEntity> coachMeeting(
   Object? lastError;
   int failed = 0;
   int sent = 0;
-  for (final List<CoachLine> batch in batches) {
+  // Un lot dont la réponse est illisible (coupée) est coupé en deux, récursivement :
+  // une phrase seule en échec reste non analysée. Les autres erreurs ne coupent pas.
+  Future<void> run(List<CoachLine> batch) async {
     if (shouldStop?.call() ?? false) {
       unanalyzed.addAll(batch.map((CoachLine l) => l.id));
-      continue;
+      return;
     }
-    sent++;
     try {
       final EnglishFeedbackEntity part = parseFeedback(
         await llm.streamChat(coachRequest(batch)).join(),
       );
+      sent++;
       corrections.addAll(timedCorrections(part, batch));
       if (overall == null && (part.overall ?? '').isNotEmpty) {
         overall = part.overall;
       }
+    } on LlmMalformedAnswerException catch (e) {
+      if (batch.length > 1) {
+        final int mid = batch.length ~/ 2;
+        await run(batch.sublist(0, mid));
+        await run(batch.sublist(mid));
+        return;
+      }
+      sent++;
+      lastError = e;
+      failed++;
+      unanalyzed.addAll(batch.map((CoachLine l) => l.id));
     } on Object catch (e) {
+      sent++;
       lastError = e;
       failed++;
       unanalyzed.addAll(batch.map((CoachLine l) => l.id));
     }
+  }
+
+  for (final List<CoachLine> batch in batches) {
+    await run(batch);
   }
   if (sent > 0 && failed == sent) throw lastError!;
   return EnglishFeedbackEntity(
