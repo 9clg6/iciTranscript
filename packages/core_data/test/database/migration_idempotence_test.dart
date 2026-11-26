@@ -1,10 +1,11 @@
 import 'package:core_data/database/app_database.dart';
 import 'package:core_data/database/dao/document.dao.dart';
-import 'package:drift/drift.dart' show QueryRow;
+import 'package:drift/drift.dart' show QueryExecutor, QueryRow;
 import 'package:drift/native.dart';
 import 'package:test/test.dart';
 
 import 'v1_database.dart';
+import 'v2_database.dart';
 
 /// La migration 1 -> 2 doit etre rejouable : une vraie base s'est retrouvee
 /// avec tous les objets v2 deja presents (colonnes, tables, FTS5, triggers)
@@ -304,4 +305,160 @@ void main() {
       expect(hit.documentTitle, 'Budget 2027');
     });
   });
+
+  // Schéma v4 (prix de la transcription en ligne, 2026-11-26) : `sessions`
+  // gagne `cloud_realtime_ms` et `cloud_batch_ms` (INTEGER non nuls, défaut
+  // 0) : ms d'audio facturées par Mistral (temps réel, rattrapage batch).
+  // Migration 3 -> 4 rejouable comme les autres : une base peut déjà avoir
+  // tout ou partie des colonnes avec `user_version = 3`.
+  group('v3 -> v4 : usage Mistral par session', () {
+    const List<String> cloudColumns = <String>[
+      'cloud_realtime_ms',
+      'cloud_batch_ms',
+    ];
+
+    Future<Map<String, Object?>> sessionRow(AppDatabase db) async =>
+        (await db
+                .customSelect("SELECT * FROM sessions WHERE id = 'session-1'")
+                .getSingle())
+            .data;
+
+    Future<void> expectV4(AppDatabase db) async {
+      expect(await _userVersion(db), 4);
+      final List<String> cols = await _columns(db, 'sessions');
+      for (final String c in cloudColumns) {
+        expect(
+          cols.where((String n) => n == c),
+          hasLength(1),
+          reason: '$c une fois dans sessions',
+        );
+      }
+      final AppDatabase fresh = AppDatabase(NativeDatabase.memory());
+      final Set<String> freshCols = (await _columns(fresh, 'sessions')).toSet();
+      await fresh.close();
+      expect(cols.toSet(), freshCols, reason: 'colonnes d une v4 neuve');
+    }
+
+    Future<void> expectRowsKept(AppDatabase db) async {
+      expect(await _count(db, 'sessions'), 1);
+      expect(await _count(db, 'transcript_segments'), 2);
+      expect(await _count(db, 'detected_questions'), 2);
+      expect(await _count(db, 'documents'), 1);
+      expect((await sessionRow(db))['title'], 'Point client');
+    }
+
+    Future<void> expectDefaultZero(AppDatabase db) async {
+      await db.customStatement(
+        'INSERT INTO sessions (id, title, created_at, updated_at, status) '
+        "VALUES ('session-new', 'Nouvelle', '2026-11-26T10:00:00.000', "
+        "'2026-11-26T10:00:00.000', 'completed')",
+      );
+      final Map<String, Object?> row =
+          (await db
+                  .customSelect(
+                    "SELECT * FROM sessions WHERE id = 'session-new'",
+                  )
+                  .getSingle())
+              .data;
+      expect(row['cloud_realtime_ms'], 0);
+      expect(row['cloud_batch_ms'], 0);
+    }
+
+    test('une base v4 neuve a les deux colonnes, à 0 par défaut', () async {
+      final AppDatabase db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      expect(await _columns(db, 'sessions'), containsAll(cloudColumns));
+      await db.customStatement(
+        'INSERT INTO sessions (id, title, created_at, updated_at, status) '
+        "VALUES ('session-1', 'Point client', '2026-11-26T10:00:00.000', "
+        "'2026-11-26T10:00:00.000', 'completed')",
+      );
+      expect((await sessionRow(db))['cloud_realtime_ms'], 0);
+      expect((await sessionRow(db))['cloud_batch_ms'], 0);
+    });
+
+    test('v3 propre : schéma v4, lignes gardées, usage à 0', () async {
+      final AppDatabase db = AppDatabase(_v3DatabaseWithData());
+      addTearDown(db.close);
+      await expectV4(db);
+      await expectRowsKept(db);
+      final Map<String, Object?> row = await sessionRow(db);
+      expect(row['cloud_realtime_ms'], 0);
+      expect(row['cloud_batch_ms'], 0);
+      await expectDefaultZero(db);
+    });
+
+    test('colonnes v4 déjà là (usage rangé) mais user_version = 3 : '
+        's ouvre, chaque colonne une fois, l usage est gardé', () async {
+      final AppDatabase db = AppDatabase(
+        _v3DatabaseWithData(
+          extraStatements: <String>[
+            'ALTER TABLE "sessions" ADD COLUMN "cloud_realtime_ms" INTEGER '
+                'NOT NULL DEFAULT 0',
+            'ALTER TABLE "sessions" ADD COLUMN "cloud_batch_ms" INTEGER '
+                'NOT NULL DEFAULT 0',
+            'UPDATE sessions SET cloud_realtime_ms = 90000, '
+                "cloud_batch_ms = 60000 WHERE id = 'session-1'",
+          ],
+        ),
+      );
+      addTearDown(db.close);
+      await expectV4(db);
+      await expectRowsKept(db);
+      final Map<String, Object?> row = await sessionRow(db);
+      expect(row['cloud_realtime_ms'], 90000);
+      expect(row['cloud_batch_ms'], 60000);
+    });
+
+    test('migration 3 -> 4 interrompue (une colonne seulement) : complétée, '
+        'la valeur déjà rangée gardée', () async {
+      final AppDatabase db = AppDatabase(
+        _v3DatabaseWithData(
+          extraStatements: <String>[
+            'ALTER TABLE "sessions" ADD COLUMN "cloud_realtime_ms" INTEGER '
+                'NOT NULL DEFAULT 0',
+            'UPDATE sessions SET cloud_realtime_ms = 1234 '
+                "WHERE id = 'session-1'",
+          ],
+        ),
+      );
+      addTearDown(db.close);
+      await expectV4(db);
+      await expectRowsKept(db);
+      final Map<String, Object?> row = await sessionRow(db);
+      expect(row['cloud_realtime_ms'], 1234);
+      expect(row['cloud_batch_ms'], 0);
+      await expectDefaultZero(db);
+    });
+
+    test('garde : une base v1 va jusqu à la v4, usage à 0', () async {
+      final AppDatabase db = AppDatabase(v1DatabaseWithData());
+      addTearDown(db.close);
+      expect(await _userVersion(db), 4);
+      expect(await _columns(db, 'sessions'), containsAll(cloudColumns));
+      expect(await _count(db, 'sessions'), 1);
+      await expectDefaultZero(db);
+    });
+  });
 }
+
+/// Base v3 figée (v2 + les trois colonnes v3 de `detected_questions`),
+/// `user_version = 3`. Ne pas la dériver du code courant (v4).
+QueryExecutor _v3DatabaseWithData({
+  List<String> extraStatements = const <String>[],
+}) => NativeDatabase.memory(
+  // ponytail: type `Database` de package:sqlite3, non dépendance directe.
+  // ignore: always_specify_types
+  setup: (raw) {
+    kV2Schema.forEach(raw.execute);
+    <String>[
+      'ALTER TABLE "detected_questions" ADD COLUMN "status" TEXT NOT NULL '
+          "DEFAULT 'unanswered'",
+      'ALTER TABLE "detected_questions" ADD COLUMN "speaker" TEXT NULL',
+      'ALTER TABLE "detected_questions" ADD COLUMN "source" TEXT NULL',
+    ].forEach(raw.execute);
+    kV2Rows.forEach(raw.execute);
+    extraStatements.forEach(raw.execute);
+    raw.execute('PRAGMA user_version = 3');
+  },
+);

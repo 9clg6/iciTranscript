@@ -72,6 +72,12 @@ final class _GatedSessions implements SessionRepository {
   Future<SessionEntity> update(SessionEntity session) async => session;
   @override
   Future<void> delete(String id) async {}
+  @override
+  Future<void> addCloudUsage(
+    String sessionId, {
+    int realtimeMs = 0,
+    int batchMs = 0,
+  }) async {}
 }
 
 void main() {

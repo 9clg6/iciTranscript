@@ -168,10 +168,11 @@ final class _App {
 
   /// Une note : 3 s de parole, un repère de perte (rattrapé à l'arrêt, en
   /// ligne seulement), arrêt, passe post-session finie.
-  Future<void> recordNote() async {
+  Future<void> recordNote({void Function()? whileRecording}) async {
     vm;
     await Future<void>.delayed(const Duration(milliseconds: 100));
     await vm.startSession();
+    whileRecording?.call();
     final int t0 = container
         .read(liveTranscriptionServiceProvider)
         .currentSessionStream
@@ -243,6 +244,32 @@ void main() {
     expect(app.output.copies, <String>['Retrouvé.'], reason: 'dictée en ligne');
 
     expect(app.process.starts, isEmpty);
+  });
+
+  // Prix de la transcription en ligne (2026-11-26), branchement des
+  // providers : à l'arrêt, l'audio temps réel rendu par la source distante
+  // (`takeSentAudioMs`) est rangé dans la note, et le rattrapage du repère
+  // par Mistral batch y ajoute son audio (réponse sans `usage` : la
+  // longueur du PCM envoyé). Lu en SQL brut (colonnes du schéma v4).
+  test('moteur Mistral : la note arrêtée garde son audio temps réel et celui '
+      'du rattrapage (branchement des providers)', () async {
+    final _App app = _App(mistral: true);
+    addTearDown(app.dispose);
+    await app.writePrefs();
+    await app.launch();
+
+    await app.recordNote(whileRecording: () => app.remote.sentAudioMs = 5000);
+    expect(app.http.transcriptions, isNotEmpty, reason: 'rattrapage en ligne');
+
+    final Map<String, Object?> row =
+        (await app.db
+                .customSelect(
+                  'SELECT cloud_realtime_ms, cloud_batch_ms FROM sessions',
+                )
+                .getSingle())
+            .data;
+    expect(row['cloud_realtime_ms'], 5000);
+    expect(row['cloud_batch_ms'], greaterThan(0));
   });
 
   test('garde : même chaîne avec le moteur local, la passe post-session '

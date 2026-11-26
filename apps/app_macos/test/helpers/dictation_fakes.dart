@@ -270,6 +270,10 @@ final class ScriptedTranscriptionRemote
 
   @override
   Stream<domain.ConnectionState> get connectionState => _states.stream;
+
+  /// Flux local (voxmlx) : jamais facturé.
+  @override
+  int takeSentAudioMs() => 0;
 }
 
 /// Monte le vrai [DictationController] sur les faux, à côté du vrai

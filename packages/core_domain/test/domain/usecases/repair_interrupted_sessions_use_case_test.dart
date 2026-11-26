@@ -129,6 +129,13 @@ final class _InMemorySessionRepository implements SessionRepository {
   @override
   Stream<List<SessionEntity>> watchAll() =>
       Stream<List<SessionEntity>>.value(store.values.toList());
+
+  @override
+  Future<void> addCloudUsage(
+    String sessionId, {
+    int realtimeMs = 0,
+    int batchMs = 0,
+  }) async {}
 }
 
 final class _InMemoryTranscriptRepository implements TranscriptRepository {
