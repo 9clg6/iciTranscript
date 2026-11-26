@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:core_data/clients/engine_routing_client.dart';
 import 'package:core_data/clients/mistral_realtime_client.dart';
 import 'package:core_data/clients/websocket_client.dart';
@@ -52,13 +53,14 @@ final class _Meeting {
         transcriptRepository: segments,
       ),
     );
+    remote = TranscriptionRemoteDataSourceImpl(
+      micClient: socket(mic),
+      systemClient: socket(system),
+    );
     service = LiveTranscriptionService(
       processManagerService: ProcessManagerService(channel: process),
       audioCaptureChannel: audio,
-      transcriptionRemoteDataSource: TranscriptionRemoteDataSourceImpl(
-        micClient: socket(mic),
-        systemClient: socket(system),
-      ),
+      transcriptionRemoteDataSource: remote,
       transcriptionService: transcription,
       createWavRecorder: FakeWavRecorder.new,
       sessions: sessions,
@@ -75,6 +77,7 @@ final class _Meeting {
   final FakeAudioCaptureChannel audio = FakeAudioCaptureChannel();
   final InMemorySessionRepository sessions = InMemorySessionRepository();
   final InMemoryTranscriptRepository segments = InMemoryTranscriptRepository();
+  late final TranscriptionRemoteDataSourceImpl remote;
   late final LiveTranscriptionService service;
   int _id = 0;
 
@@ -188,6 +191,49 @@ void main() {
       expect(m.sessions.cloudUsage[first]?.realtimeMs, firstWire);
       expect(m.sessions.cloudUsage[second]?.realtimeMs, m.wireMs - firstWire);
       expect(m.wireMs - firstWire, greaterThan(0));
+    });
+  });
+
+  // Audio compté par les sockets hors de toute réunion terminée (aucun arrêt
+  // ne l'a lu) : il ne doit jamais aller à la note suivante. Le service vide
+  // le compte en ouvrant une session. Aucun chemin du service seul ne laisse
+  // de reste aujourd'hui (un démarrage raté passe par l'arrêt, qui vide) :
+  // le reste est donc envoyé directement sur la source partagée.
+  test('audio envoyé à Mistral avant la réunion : pas compté dans sa note', () {
+    fakeAsync((FakeAsync async) {
+      final _Meeting m = _Meeting(async);
+      unawaited(
+        m.remote.connect(
+          url: MistralRealtimeClient.url,
+          systemAudioEnabled: false,
+        ),
+      );
+      async.elapse(const Duration(seconds: 1));
+      final int t0 = clock.now().millisecondsSinceEpoch;
+      for (int i = 0; i < 20; i++) {
+        m.remote.sendAudio(
+          chunk(AudioSource.input, 10000 + i, timestampMs: t0 + i * 100),
+        );
+        async.elapse(const Duration(milliseconds: 100));
+      }
+      unawaited(m.remote.disconnect());
+      async.elapse(const Duration(minutes: 3));
+      final int leftover = m.wireMs;
+      expect(leftover, greaterThan(0), reason: 'audio reçu par Mistral');
+
+      m.start(TranscriptionEngine.mistral);
+      final String id = m.sessionId;
+      m.talk(15);
+      m.stop();
+      final int meeting = m.wireMs - leftover;
+
+      expect(m.sessions.store[id]?.status, SessionStatus.completed);
+      expect(meeting, greaterThan(0));
+      expect(
+        m.sessions.cloudUsage[id]?.realtimeMs,
+        meeting,
+        reason: 'audio d avant la réunion ($leftover ms) compté dans sa note',
+      );
     });
   });
 }
