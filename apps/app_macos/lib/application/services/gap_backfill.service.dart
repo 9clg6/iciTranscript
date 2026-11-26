@@ -6,6 +6,7 @@ import 'package:core_data/datasources/remote/impl/transcription.remote.data_sour
 import 'package:clock/clock.dart';
 import 'package:core_domain/domain/entities/transcript_segment.entity.dart';
 import 'package:core_domain/domain/enum/audio_source.enum.dart';
+import 'package:core_domain/domain/repositories/session.repository.dart';
 import 'package:core_domain/domain/repositories/transcript.repository.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/dictation/dictated_intervals.dart';
@@ -49,6 +50,14 @@ abstract interface class PcmTranscriber {
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm);
 }
 
+/// [PcmTranscriber] qui dit aussi combien d'audio il a facturé (ms) :
+/// Mistral oui, un moteur local 0.
+abstract interface class BilledPcmTranscriber implements PcmTranscriber {
+  /// Comme [transcribe], avec l'audio facturé pour cet appel.
+  Future<({List<({int offsetMs, String text})> pieces, int billedMs})>
+  transcribeBilled(Uint8List pcm);
+}
+
 /// Après la réunion, retranscrit chaque repère « transcription
 /// interrompue » depuis le WAV de sa source et le remplace par les phrases
 /// retrouvées. Le repère reste si rien n'est retrouvé ou en cas d'échec.
@@ -60,15 +69,18 @@ final class GapBackfillService {
     required TranscriptRepository transcripts,
     required bool Function() isRecording,
     DictatedIntervalsStore? dictatedIntervals,
+    SessionRepository? sessions,
   }) : _transcriber = transcriber,
        _transcripts = transcripts,
        _isRecording = isRecording,
-       _dictated = dictatedIntervals;
+       _dictated = dictatedIntervals,
+       _sessions = sessions;
 
   final PcmTranscriber _transcriber;
   final TranscriptRepository _transcripts;
   final bool Function() _isRecording;
   final DictatedIntervalsStore? _dictated;
+  final SessionRepository? _sessions;
   // Phrases du bord de fin reconnues intactes pendant ce rattrapage.
   final Set<String> _intactEdges = <String>{};
   final Log _log = Log.named('GapBackfillService');
@@ -539,8 +551,16 @@ final class GapBackfillService {
       final bool first = from == gap.startMs;
       final bool last = to >= gap.endMs;
       List<({int offsetMs, String text})> pieces;
+      int billedMs = 0;
       try {
-        pieces = await _transcriber.transcribe(pcm);
+        final PcmTranscriber t = _transcriber;
+        if (t is BilledPcmTranscriber) {
+          final r = await t.transcribeBilled(pcm);
+          pieces = r.pieces;
+          billedMs = r.billedMs;
+        } else {
+          pieces = await t.transcribe(pcm);
+        }
       } on TranscriberUnavailable catch (e) {
         _log.info('Rattrapage de ${gap.markerId} reporté: $e');
         return result == _Part.saved ? _Part.cut : _Part.unavailable;
@@ -550,6 +570,15 @@ final class GapBackfillService {
       } catch (e) {
         _log.warning('Rattrapage de ${gap.markerId} échoué, repère gardé: $e');
         return result == _Part.saved ? _Part.cut : _Part.failed;
+      }
+      // Mistral a facturé cet appel, même si rien n'est rangé ensuite.
+      final SessionRepository? sessions = _sessions;
+      if (sessions != null && billedMs > 0) {
+        try {
+          await sessions.addCloudUsage(sessionId, batchMs: billedMs);
+        } catch (e) {
+          _log.warning('Coût du rattrapage non enregistré: $e');
+        }
       }
       // Porte de parole, comme en direct : un morceau dont l'audio n'a pas de
       // parole est une hallucination du silence (« Merci. »), jamais rangé.

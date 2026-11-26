@@ -86,6 +86,23 @@ class MockSessionRepository extends _i1.Mock implements _i4.SessionRepository {
           as _i5.Future<_i2.SessionEntity>);
 
   @override
+  _i5.Future<void> addCloudUsage(
+    String? sessionId, {
+    int? realtimeMs = 0,
+    int? batchMs = 0,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #addCloudUsage,
+              [sessionId],
+              {#realtimeMs: realtimeMs, #batchMs: batchMs},
+            ),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
   _i5.Future<void> delete(String? id) =>
       (super.noSuchMethod(
             Invocation.method(#delete, [id]),

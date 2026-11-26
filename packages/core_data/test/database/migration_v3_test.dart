@@ -55,8 +55,10 @@ void main() {
     await fresh.close();
   });
 
+  // Schéma v4 (2026-11-26, prix de la transcription en ligne) : la base
+  // migrée est à la version courante, plus 3.
   Future<void> expectV3(AppDatabase db) async {
-    expect(await _userVersion(db), 3);
+    expect(await _userVersion(db), db.schemaVersion);
     final Map<String, ({int notNull})> cols = await _columns(db);
     expect(cols.keys, containsAll(<String>['status', 'speaker', 'source']));
     expect(cols.keys.toSet(), freshColumns, reason: 'colonnes d\'une v3 neuve');

@@ -23,6 +23,13 @@ final class FakeMistralServer {
 
   final List<FakeMistralSocket> sockets = <FakeMistralSocket>[];
 
+  /// Octets d'audio reçus par `input_audio.append` (maintien compris), sur
+  /// toutes les sockets : ce que Mistral facture.
+  int appendedBytes = 0;
+
+  /// [appendedBytes] en ms (PCM16 mono 16 kHz).
+  int get appendedMs => appendedBytes ~/ 32;
+
   /// Dernière socket créée (celle du micro quand le son du Mac est coupé).
   FakeMistralSocket get live => sockets.last;
 
@@ -104,6 +111,8 @@ final class FakeMistralSocket extends WebSocketClient {
             'session': json['session'],
           }),
         );
+      case 'input_audio.append':
+        _server.appendedBytes += base64Decode(json['audio'] as String).length;
       case 'input_audio.end':
         _server.onEnd?.call(this);
         Timer(const Duration(milliseconds: 793), () {

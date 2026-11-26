@@ -14,6 +14,9 @@ abstract interface class SessionLocalDataSource {
   /// Met a jour une session existante.
   Future<void> update(SessionLocalModel session);
 
+  /// Ajoute de l'audio en ligne aux compteurs de la session (additif).
+  Future<void> addCloudUsage(String id, {int realtimeMs = 0, int batchMs = 0});
+
   /// Supprime une session par son identifiant.
   Future<void> delete(String id);
 

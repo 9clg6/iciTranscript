@@ -17,6 +17,8 @@ _SessionLocalModel _$SessionLocalModelFromJson(Map<String, dynamic> json) =>
       calendarEventId: json['calendarEventId'] as String?,
       calendarEventTitle: json['calendarEventTitle'] as String?,
       attendees: json['attendees'] as String?,
+      cloudRealtimeMs: (json['cloudRealtimeMs'] as num?)?.toInt() ?? 0,
+      cloudBatchMs: (json['cloudBatchMs'] as num?)?.toInt() ?? 0,
     );
 
 Map<String, dynamic> _$SessionLocalModelToJson(_SessionLocalModel instance) =>
@@ -30,4 +32,6 @@ Map<String, dynamic> _$SessionLocalModelToJson(_SessionLocalModel instance) =>
       'calendarEventId': instance.calendarEventId,
       'calendarEventTitle': instance.calendarEventTitle,
       'attendees': instance.attendees,
+      'cloudRealtimeMs': instance.cloudRealtimeMs,
+      'cloudBatchMs': instance.cloudBatchMs,
     };

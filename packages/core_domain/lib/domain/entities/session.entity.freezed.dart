@@ -23,7 +23,9 @@ mixin _$SessionEntity {
  SessionStatus get status;/// Identifiant de l'evenement d'agenda lie (occurrence), ou null.
  String? get calendarEventId;/// Titre de l'evenement d'agenda lie, ou null.
  String? get calendarEventTitle;/// Noms des participants de l'evenement lie (jamais d'adresse e-mail).
- List<String> get attendees;
+ List<String> get attendees;/// Audio envoye a la transcription en ligne en temps reel (ms).
+ int get cloudRealtimeMs;/// Audio envoye a la transcription en ligne par lot, rattrapage (ms).
+ int get cloudBatchMs;
 /// Create a copy of SessionEntity
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -34,16 +36,16 @@ $SessionEntityCopyWith<SessionEntity> get copyWith => _$SessionEntityCopyWithImp
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&const DeepCollectionEquality().equals(other.attendees, attendees));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&const DeepCollectionEquality().equals(other.attendees, attendees)&&(identical(other.cloudRealtimeMs, cloudRealtimeMs) || other.cloudRealtimeMs == cloudRealtimeMs)&&(identical(other.cloudBatchMs, cloudBatchMs) || other.cloudBatchMs == cloudBatchMs));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,const DeepCollectionEquality().hash(attendees));
+int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,const DeepCollectionEquality().hash(attendees),cloudRealtimeMs,cloudBatchMs);
 
 @override
 String toString() {
-  return 'SessionEntity(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees)';
+  return 'SessionEntity(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees, cloudRealtimeMs: $cloudRealtimeMs, cloudBatchMs: $cloudBatchMs)';
 }
 
 
@@ -54,7 +56,7 @@ abstract mixin class $SessionEntityCopyWith<$Res>  {
   factory $SessionEntityCopyWith(SessionEntity value, $Res Function(SessionEntity) _then) = _$SessionEntityCopyWithImpl;
 @useResult
 $Res call({
- String id, String title, DateTime createdAt, DateTime updatedAt, int? durationSeconds, SessionStatus status, String? calendarEventId, String? calendarEventTitle, List<String> attendees
+ String id, String title, DateTime createdAt, DateTime updatedAt, int? durationSeconds, SessionStatus status, String? calendarEventId, String? calendarEventTitle, List<String> attendees, int cloudRealtimeMs, int cloudBatchMs
 });
 
 
@@ -71,7 +73,7 @@ class _$SessionEntityCopyWithImpl<$Res>
 
 /// Create a copy of SessionEntity
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = null,Object? cloudRealtimeMs = null,Object? cloudBatchMs = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
@@ -82,7 +84,9 @@ as int?,status: null == status ? _self.status : status // ignore: cast_nullable_
 as SessionStatus,calendarEventId: freezed == calendarEventId ? _self.calendarEventId : calendarEventId // ignore: cast_nullable_to_non_nullable
 as String?,calendarEventTitle: freezed == calendarEventTitle ? _self.calendarEventTitle : calendarEventTitle // ignore: cast_nullable_to_non_nullable
 as String?,attendees: null == attendees ? _self.attendees : attendees // ignore: cast_nullable_to_non_nullable
-as List<String>,
+as List<String>,cloudRealtimeMs: null == cloudRealtimeMs ? _self.cloudRealtimeMs : cloudRealtimeMs // ignore: cast_nullable_to_non_nullable
+as int,cloudBatchMs: null == cloudBatchMs ? _self.cloudBatchMs : cloudBatchMs // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 
@@ -167,10 +171,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title,  DateTime createdAt,  DateTime updatedAt,  int? durationSeconds,  SessionStatus status,  String? calendarEventId,  String? calendarEventTitle,  List<String> attendees)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title,  DateTime createdAt,  DateTime updatedAt,  int? durationSeconds,  SessionStatus status,  String? calendarEventId,  String? calendarEventTitle,  List<String> attendees,  int cloudRealtimeMs,  int cloudBatchMs)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _SessionEntity() when $default != null:
-return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees);case _:
+return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees,_that.cloudRealtimeMs,_that.cloudBatchMs);case _:
   return orElse();
 
 }
@@ -188,10 +192,10 @@ return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durat
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title,  DateTime createdAt,  DateTime updatedAt,  int? durationSeconds,  SessionStatus status,  String? calendarEventId,  String? calendarEventTitle,  List<String> attendees)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title,  DateTime createdAt,  DateTime updatedAt,  int? durationSeconds,  SessionStatus status,  String? calendarEventId,  String? calendarEventTitle,  List<String> attendees,  int cloudRealtimeMs,  int cloudBatchMs)  $default,) {final _that = this;
 switch (_that) {
 case _SessionEntity():
-return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees);case _:
+return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees,_that.cloudRealtimeMs,_that.cloudBatchMs);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -208,10 +212,10 @@ return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durat
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title,  DateTime createdAt,  DateTime updatedAt,  int? durationSeconds,  SessionStatus status,  String? calendarEventId,  String? calendarEventTitle,  List<String> attendees)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title,  DateTime createdAt,  DateTime updatedAt,  int? durationSeconds,  SessionStatus status,  String? calendarEventId,  String? calendarEventTitle,  List<String> attendees,  int cloudRealtimeMs,  int cloudBatchMs)?  $default,) {final _that = this;
 switch (_that) {
 case _SessionEntity() when $default != null:
-return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees);case _:
+return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees,_that.cloudRealtimeMs,_that.cloudBatchMs);case _:
   return null;
 
 }
@@ -223,7 +227,7 @@ return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durat
 
 
 class _SessionEntity implements SessionEntity {
-  const _SessionEntity({required this.id, required this.title, required this.createdAt, required this.updatedAt, this.durationSeconds, required this.status, this.calendarEventId, this.calendarEventTitle, final  List<String> attendees = const <String>[]}): _attendees = attendees;
+  const _SessionEntity({required this.id, required this.title, required this.createdAt, required this.updatedAt, this.durationSeconds, required this.status, this.calendarEventId, this.calendarEventTitle, final  List<String> attendees = const <String>[], this.cloudRealtimeMs = 0, this.cloudBatchMs = 0}): _attendees = attendees;
   
 
 /// Identifiant unique de la session.
@@ -251,6 +255,10 @@ class _SessionEntity implements SessionEntity {
   return EqualUnmodifiableListView(_attendees);
 }
 
+/// Audio envoye a la transcription en ligne en temps reel (ms).
+@override@JsonKey() final  int cloudRealtimeMs;
+/// Audio envoye a la transcription en ligne par lot, rattrapage (ms).
+@override@JsonKey() final  int cloudBatchMs;
 
 /// Create a copy of SessionEntity
 /// with the given fields replaced by the non-null parameter values.
@@ -262,16 +270,16 @@ _$SessionEntityCopyWith<_SessionEntity> get copyWith => __$SessionEntityCopyWith
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&const DeepCollectionEquality().equals(other._attendees, _attendees));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionEntity&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&const DeepCollectionEquality().equals(other._attendees, _attendees)&&(identical(other.cloudRealtimeMs, cloudRealtimeMs) || other.cloudRealtimeMs == cloudRealtimeMs)&&(identical(other.cloudBatchMs, cloudBatchMs) || other.cloudBatchMs == cloudBatchMs));
 }
 
 
 @override
-int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,const DeepCollectionEquality().hash(_attendees));
+int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,const DeepCollectionEquality().hash(_attendees),cloudRealtimeMs,cloudBatchMs);
 
 @override
 String toString() {
-  return 'SessionEntity(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees)';
+  return 'SessionEntity(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees, cloudRealtimeMs: $cloudRealtimeMs, cloudBatchMs: $cloudBatchMs)';
 }
 
 
@@ -282,7 +290,7 @@ abstract mixin class _$SessionEntityCopyWith<$Res> implements $SessionEntityCopy
   factory _$SessionEntityCopyWith(_SessionEntity value, $Res Function(_SessionEntity) _then) = __$SessionEntityCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String title, DateTime createdAt, DateTime updatedAt, int? durationSeconds, SessionStatus status, String? calendarEventId, String? calendarEventTitle, List<String> attendees
+ String id, String title, DateTime createdAt, DateTime updatedAt, int? durationSeconds, SessionStatus status, String? calendarEventId, String? calendarEventTitle, List<String> attendees, int cloudRealtimeMs, int cloudBatchMs
 });
 
 
@@ -299,7 +307,7 @@ class __$SessionEntityCopyWithImpl<$Res>
 
 /// Create a copy of SessionEntity
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = null,Object? cloudRealtimeMs = null,Object? cloudBatchMs = null,}) {
   return _then(_SessionEntity(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
@@ -310,7 +318,9 @@ as int?,status: null == status ? _self.status : status // ignore: cast_nullable_
 as SessionStatus,calendarEventId: freezed == calendarEventId ? _self.calendarEventId : calendarEventId // ignore: cast_nullable_to_non_nullable
 as String?,calendarEventTitle: freezed == calendarEventTitle ? _self.calendarEventTitle : calendarEventTitle // ignore: cast_nullable_to_non_nullable
 as String?,attendees: null == attendees ? _self._attendees : attendees // ignore: cast_nullable_to_non_nullable
-as List<String>,
+as List<String>,cloudRealtimeMs: null == cloudRealtimeMs ? _self.cloudRealtimeMs : cloudRealtimeMs // ignore: cast_nullable_to_non_nullable
+as int,cloudBatchMs: null == cloudBatchMs ? _self.cloudBatchMs : cloudBatchMs // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

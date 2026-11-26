@@ -14,6 +14,14 @@ abstract interface class SessionRepository {
   /// Met a jour une session existante.
   Future<SessionEntity> update(SessionEntity session);
 
+  /// Ajoute de l'audio en ligne aux compteurs de la session (additif ;
+  /// [update] ne les reecrit jamais). Session absente : rien.
+  Future<void> addCloudUsage(
+    String sessionId, {
+    int realtimeMs = 0,
+    int batchMs = 0,
+  });
+
   /// Supprime une session par son identifiant.
   Future<void> delete(String id);
 

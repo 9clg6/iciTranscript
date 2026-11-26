@@ -34,5 +34,11 @@ abstract class SessionEntity with _$SessionEntity {
 
     /// Noms des participants de l'evenement lie (jamais d'adresse e-mail).
     @Default(<String>[]) List<String> attendees,
+
+    /// Audio envoye a la transcription en ligne en temps reel (ms).
+    @Default(0) int cloudRealtimeMs,
+
+    /// Audio envoye a la transcription en ligne par lot, rattrapage (ms).
+    @Default(0) int cloudBatchMs,
   }) = _SessionEntity;
 }

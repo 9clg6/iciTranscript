@@ -14,7 +14,7 @@ Oats (formerly **iciTranscript**) captures your microphone and your Mac's system
 
 - **Real-time transcription, two engines** — choose in **Réglages › Moteur de transcription**:
   - **Sur ce Mac** (default): [voxmlx](https://github.com/T0mSIlver/voxmlx) on Apple Silicon MLX, nothing leaves your Mac
-  - **Mistral (en ligne)**: [Voxtral](https://docs.mistral.ai/) realtime, no local transcription model, lighter on the Mac; needs a Mistral API key and online sending turned on (diarization stays on your Mac)
+  - **Mistral (en ligne)**: [Voxtral](https://docs.mistral.ai/) realtime, no local transcription model, lighter on the Mac; needs a Mistral API key and online sending turned on (diarization stays on your Mac). Each note shows the estimated price of its Mistral transcription ("≈ 0,55 $"), from the audio actually sent
 - **Two audio sources, kept separate** — your microphone and the system audio (calls, videos) are two streams, so the note knows who said what ("Vous" vs. the other side)
 - **No silent loss** — a passage that could not be transcribed live is marked in the note and transcribed again after the meeting; a full disk, a lost connection or a crash is shown, never hidden. Every sentence is in the note or under a visible marker
 - **Notes by day** — every meeting is listed on the home page, grouped by day, with search

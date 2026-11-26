@@ -46,6 +46,10 @@ abstract interface class TranscriptionRemoteDataSource {
   /// [event], ou null si le serveur l'a terminée de lui-même.
   UtteranceWindow? windowOf(TranscriptEventRemoteModel event);
 
+  /// Audio envoyé à un moteur en ligne (ms, micro + système) depuis le dernier
+  /// appel, puis remise à zéro des deux sockets. 0 pour un moteur local.
+  int takeSentAudioMs();
+
   /// Deconnecte du serveur WebSocket.
   Future<void> disconnect();
 

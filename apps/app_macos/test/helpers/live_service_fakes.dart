@@ -295,6 +295,17 @@ final class FakeTranscriptionRemoteDataSource
 
   @override
   Stream<domain.ConnectionState> get connectionState => _states.stream;
+
+  /// Audio facturé à rendre au prochain [takeSentAudioMs] (faux : 0, comme
+  /// voxmlx local).
+  int sentAudioMs = 0;
+
+  @override
+  int takeSentAudioMs() {
+    final int ms = sentAudioMs;
+    sentAudioMs = 0;
+    return ms;
+  }
 }
 
 final class InMemorySessionRepository implements SessionRepository {
@@ -320,6 +331,26 @@ final class InMemorySessionRepository implements SessionRepository {
   @override
   Stream<List<SessionEntity>> watchAll() =>
       Stream<List<SessionEntity>>.value(store.values.toList());
+
+  /// Audio facturé par Mistral, par note (ms), au contrat du port :
+  /// chaque ajout s'additionne ; note absente : rien.
+  final Map<String, ({int realtimeMs, int batchMs})> cloudUsage =
+      <String, ({int realtimeMs, int batchMs})>{};
+
+  @override
+  Future<void> addCloudUsage(
+    String sessionId, {
+    int realtimeMs = 0,
+    int batchMs = 0,
+  }) async {
+    if (!store.containsKey(sessionId)) return;
+    final ({int realtimeMs, int batchMs}) was =
+        cloudUsage[sessionId] ?? (realtimeMs: 0, batchMs: 0);
+    cloudUsage[sessionId] = (
+      realtimeMs: was.realtimeMs + realtimeMs,
+      batchMs: was.batchMs + batchMs,
+    );
+  }
 }
 
 /// Dépôt en mémoire au contrat du port : `save` remplace un segment de même

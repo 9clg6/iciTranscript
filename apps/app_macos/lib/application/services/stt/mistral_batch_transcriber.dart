@@ -8,7 +8,7 @@ import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 /// PCM est envoyé en WAV 16 kHz mono, les segments horodatés reviennent en
 /// morceaux. Ce qui est rendu passe ensuite par les portes habituelles du
 /// rattrapage (porte de parole, doublons, repère qui rétrécit).
-final class MistralBatchTranscriber implements PcmTranscriber {
+final class MistralBatchTranscriber implements BilledPcmTranscriber {
   /// Cree une instance de [MistralBatchTranscriber]. [apiKey] est lue à
   /// chaque appel (trousseau) ; jamais journalisée.
   MistralBatchTranscriber({
@@ -29,7 +29,14 @@ final class MistralBatchTranscriber implements PcmTranscriber {
   final Log _log = Log.named('MistralBatchTranscriber');
 
   @override
-  Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async {
+  Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async =>
+      (await transcribeBilled(pcm)).pieces;
+
+  /// Audio facturé : `usage.prompt_audio_seconds` de la réponse (peut être
+  /// fractionnaire), sinon la longueur du PCM.
+  @override
+  Future<({List<({int offsetMs, String text})> pieces, int billedMs})>
+  transcribeBilled(Uint8List pcm) async {
     final String? key = await _apiKey();
     if (key == null || key.isEmpty) {
       throw const TranscriberUnavailable('pas de clé Mistral');
@@ -64,19 +71,31 @@ final class MistralBatchTranscriber implements PcmTranscriber {
     final Object? segments = body is Map<String, dynamic>
         ? body['segments']
         : null;
+    final Object? usage = body is Map<String, dynamic> ? body['usage'] : null;
+    final Object? seconds = usage is Map<String, dynamic>
+        ? usage['prompt_audio_seconds']
+        : null;
+    final int billedMs = seconds is num
+        ? (seconds * 1000).round()
+        : pcm.length ~/ 32;
     if (segments is! List<dynamic>) {
-      return const <({int offsetMs, String text})>[];
+      return (
+        pieces: const <({int offsetMs, String text})>[],
+        billedMs: billedMs,
+      );
     }
-    return <({int offsetMs, String text})>[
-      for (final Object? s in segments)
-        if (s is Map<String, dynamic> &&
-            s['start'] is num &&
-            (s['text'] as String? ?? '').trim().isNotEmpty)
-          (
-            offsetMs: ((s['start'] as num) * 1000).round(),
-            text: (s['text'] as String).trim(),
-          ),
-    ];
+    final List<({int offsetMs, String text})> pieces =
+        <({int offsetMs, String text})>[
+          for (final Object? s in segments)
+            if (s is Map<String, dynamic> &&
+                s['start'] is num &&
+                (s['text'] as String? ?? '').trim().isNotEmpty)
+              (
+                offsetMs: ((s['start'] as num) * 1000).round(),
+                text: (s['text'] as String).trim(),
+              ),
+        ];
+    return (pieces: pieces, billedMs: billedMs);
   }
 
   /// [pcm] (PCM16 mono 16 kHz) dans un fichier WAV.

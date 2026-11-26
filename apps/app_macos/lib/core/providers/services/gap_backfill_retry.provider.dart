@@ -11,6 +11,7 @@ import 'package:ici_transcript/application/services/gap_backfill.service.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:ici_transcript/application/services/live_transcription.service.dart';
 import 'package:ici_transcript/application/services/websocket_pcm_transcriber.dart';
+import 'package:ici_transcript/core/providers/core/repositories/session.repository.provider.dart';
 import 'package:ici_transcript/core/providers/core/repositories/transcript.repository.provider.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -53,6 +54,7 @@ GapBackfillRetry gapBackfillRetry(Ref ref) {
         ).fromPrefs(await ref.read(prefsStoreProvider).read()),
       ),
       transcripts: ref.watch(transcriptRepositoryProvider),
+      sessions: ref.watch(sessionRepositoryProvider),
       isRecording: mustYield,
       dictatedIntervals: DictatedIntervalsStore(
         LiveTranscriptionService.recordingsDir,

@@ -38,6 +38,8 @@ final class SessionLocalDataSourceImpl implements SessionLocalDataSource {
         calendarEventId: Value<String?>(session.calendarEventId),
         calendarEventTitle: Value<String?>(session.calendarEventTitle),
         attendees: Value<String?>(session.attendees),
+        cloudRealtimeMs: Value<int>(session.cloudRealtimeMs),
+        cloudBatchMs: Value<int>(session.cloudBatchMs),
       ),
     );
   }
@@ -55,7 +57,17 @@ final class SessionLocalDataSourceImpl implements SessionLocalDataSource {
         calendarEventId: Value<String?>(session.calendarEventId),
         calendarEventTitle: Value<String?>(session.calendarEventTitle),
         attendees: Value<String?>(session.attendees),
+        // cloudRealtimeMs / cloudBatchMs : jamais reecrits (addCloudUsage).
       ),
+    );
+  }
+
+  @override
+  Future<void> addCloudUsage(String id, {int realtimeMs = 0, int batchMs = 0}) {
+    return _sessionDao.addCloudUsage(
+      id,
+      realtimeMs: realtimeMs,
+      batchMs: batchMs,
     );
   }
 
@@ -81,5 +93,7 @@ final class SessionLocalDataSourceImpl implements SessionLocalDataSource {
     calendarEventId: row.calendarEventId,
     calendarEventTitle: row.calendarEventTitle,
     attendees: row.attendees,
+    cloudRealtimeMs: row.cloudRealtimeMs,
+    cloudBatchMs: row.cloudBatchMs,
   );
 }

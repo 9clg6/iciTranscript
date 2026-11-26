@@ -18,6 +18,7 @@ import 'package:core_domain/domain/enum/audio_source.enum.dart';
 import 'package:core_domain/domain/enum/connection_state.enum.dart' as domain;
 import 'package:core_domain/domain/enum/server_state.enum.dart';
 import 'package:core_domain/domain/enum/transcription_health.enum.dart';
+import 'package:core_domain/domain/repositories/session.repository.dart';
 import 'package:core_domain/domain/services/transcription.service.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/stt/transcription_engine.dart';
@@ -60,11 +61,13 @@ final class LiveTranscriptionService {
     WavRecorder Function()? createWavRecorder,
     GapBackfillService? gapBackfill,
     GapBackfillRetry? gapBackfillRetry,
+    SessionRepository? sessions,
     ServerPorts? ports,
     Future<int?> Function()? freeBytes,
   }) : _freeBytes = freeBytes,
        _gapBackfill = gapBackfill,
        _gapBackfillRetry = gapBackfillRetry,
+       _sessions = sessions,
        _ports = ports ?? serverPorts(),
        _processManagerService = processManagerService,
        _audioCaptureChannel = audioCaptureChannel,
@@ -86,6 +89,8 @@ final class LiveTranscriptionService {
   // Si présent, la première tentative passe par lui : un serveur absent
   // laisse la session en attente de reprise.
   final GapBackfillRetry? _gapBackfillRetry;
+  // Reçoit l'audio envoyé à Mistral pendant la réunion (prix de la note).
+  final SessionRepository? _sessions;
 
   // Interlocuteurs en direct : id de segment système -> index (0, 1, …).
   final BehaviorSubject<Map<String, int>> _speakerLabels =
@@ -365,6 +370,9 @@ final class LiveTranscriptionService {
         rethrow;
       }
       _log.info('WebSocket connecte OK');
+      // Le reste d'audio d'avant cette réunion (dictée, session précédente)
+      // n'est pas à sa charge : on vide le compteur avant tout envoi.
+      _transcriptionRemoteDataSource.takeSentAudioMs();
 
       // 3. Demarrer la capture audio
       _log.info('Demarrage capture audio...');
@@ -566,6 +574,7 @@ final class LiveTranscriptionService {
     // ponytail: un tour de boucle suffit à livrer la perte (PublishSubject
     // asynchrone). Faire rendre les pertes par disconnect() si cela change.
     await Future<void>.delayed(Duration.zero);
+    await _recordCloudUsage();
 
     // Plus aucun événement distant après ce point : cela évite qu'un `done`
     // tardif duplique le fallback local.
@@ -648,6 +657,20 @@ final class LiveTranscriptionService {
     _skipStop = null;
 
     _log.info('Transcription en direct arretee');
+  }
+
+  /// Audio envoyé à Mistral pendant la réunion, ajouté à la note (une
+  /// dictée faite par la socket de la réunion y compte : Mistral la facture).
+  Future<void> _recordCloudUsage() async {
+    final int ms = _transcriptionRemoteDataSource.takeSentAudioMs();
+    final String? id = currentSessionStream.valueOrNull?.id;
+    final SessionRepository? sessions = _sessions;
+    if (ms <= 0 || id == null || sessions == null) return;
+    try {
+      await sessions.addCloudUsage(id, realtimeMs: ms);
+    } catch (e) {
+      _log.warning('Coût temps réel non enregistré: $e');
+    }
   }
 
   // Borne du rattrapage à l'arrêt ; au-delà, les repères restent (journal).

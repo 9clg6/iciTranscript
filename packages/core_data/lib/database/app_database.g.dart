@@ -101,6 +101,30 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _cloudRealtimeMsMeta = const VerificationMeta(
+    'cloudRealtimeMs',
+  );
+  @override
+  late final GeneratedColumn<int> cloudRealtimeMs = GeneratedColumn<int>(
+    'cloud_realtime_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant<int>(0),
+  );
+  static const VerificationMeta _cloudBatchMsMeta = const VerificationMeta(
+    'cloudBatchMs',
+  );
+  @override
+  late final GeneratedColumn<int> cloudBatchMs = GeneratedColumn<int>(
+    'cloud_batch_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant<int>(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -112,6 +136,8 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     calendarEventId,
     calendarEventTitle,
     attendees,
+    cloudRealtimeMs,
+    cloudBatchMs,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -195,6 +221,24 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         attendees.isAcceptableOrUnknown(data['attendees']!, _attendeesMeta),
       );
     }
+    if (data.containsKey('cloud_realtime_ms')) {
+      context.handle(
+        _cloudRealtimeMsMeta,
+        cloudRealtimeMs.isAcceptableOrUnknown(
+          data['cloud_realtime_ms']!,
+          _cloudRealtimeMsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cloud_batch_ms')) {
+      context.handle(
+        _cloudBatchMsMeta,
+        cloudBatchMs.isAcceptableOrUnknown(
+          data['cloud_batch_ms']!,
+          _cloudBatchMsMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -240,6 +284,14 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.string,
         data['${effectivePrefix}attendees'],
       ),
+      cloudRealtimeMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cloud_realtime_ms'],
+      )!,
+      cloudBatchMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cloud_batch_ms'],
+      )!,
     );
   }
 
@@ -276,6 +328,13 @@ class Session extends DataClass implements Insertable<Session> {
 
   /// Participants, liste JSON de noms (schema v2).
   final String? attendees;
+
+  /// Audio envoye a la transcription en ligne en temps reel, ms (schema v4).
+  final int cloudRealtimeMs;
+
+  /// Audio envoye a la transcription en ligne par lot (rattrapage), ms
+  /// (schema v4).
+  final int cloudBatchMs;
   const Session({
     required this.id,
     required this.title,
@@ -286,6 +345,8 @@ class Session extends DataClass implements Insertable<Session> {
     this.calendarEventId,
     this.calendarEventTitle,
     this.attendees,
+    required this.cloudRealtimeMs,
+    required this.cloudBatchMs,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -307,6 +368,8 @@ class Session extends DataClass implements Insertable<Session> {
     if (!nullToAbsent || attendees != null) {
       map['attendees'] = Variable<String>(attendees);
     }
+    map['cloud_realtime_ms'] = Variable<int>(cloudRealtimeMs);
+    map['cloud_batch_ms'] = Variable<int>(cloudBatchMs);
     return map;
   }
 
@@ -329,6 +392,8 @@ class Session extends DataClass implements Insertable<Session> {
       attendees: attendees == null && nullToAbsent
           ? const Value.absent()
           : Value(attendees),
+      cloudRealtimeMs: Value(cloudRealtimeMs),
+      cloudBatchMs: Value(cloudBatchMs),
     );
   }
 
@@ -349,6 +414,8 @@ class Session extends DataClass implements Insertable<Session> {
         json['calendarEventTitle'],
       ),
       attendees: serializer.fromJson<String?>(json['attendees']),
+      cloudRealtimeMs: serializer.fromJson<int>(json['cloudRealtimeMs']),
+      cloudBatchMs: serializer.fromJson<int>(json['cloudBatchMs']),
     );
   }
   @override
@@ -364,6 +431,8 @@ class Session extends DataClass implements Insertable<Session> {
       'calendarEventId': serializer.toJson<String?>(calendarEventId),
       'calendarEventTitle': serializer.toJson<String?>(calendarEventTitle),
       'attendees': serializer.toJson<String?>(attendees),
+      'cloudRealtimeMs': serializer.toJson<int>(cloudRealtimeMs),
+      'cloudBatchMs': serializer.toJson<int>(cloudBatchMs),
     };
   }
 
@@ -377,6 +446,8 @@ class Session extends DataClass implements Insertable<Session> {
     Value<String?> calendarEventId = const Value.absent(),
     Value<String?> calendarEventTitle = const Value.absent(),
     Value<String?> attendees = const Value.absent(),
+    int? cloudRealtimeMs,
+    int? cloudBatchMs,
   }) => Session(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -393,6 +464,8 @@ class Session extends DataClass implements Insertable<Session> {
         ? calendarEventTitle.value
         : this.calendarEventTitle,
     attendees: attendees.present ? attendees.value : this.attendees,
+    cloudRealtimeMs: cloudRealtimeMs ?? this.cloudRealtimeMs,
+    cloudBatchMs: cloudBatchMs ?? this.cloudBatchMs,
   );
   Session copyWithCompanion(SessionsCompanion data) {
     return Session(
@@ -411,6 +484,12 @@ class Session extends DataClass implements Insertable<Session> {
           ? data.calendarEventTitle.value
           : this.calendarEventTitle,
       attendees: data.attendees.present ? data.attendees.value : this.attendees,
+      cloudRealtimeMs: data.cloudRealtimeMs.present
+          ? data.cloudRealtimeMs.value
+          : this.cloudRealtimeMs,
+      cloudBatchMs: data.cloudBatchMs.present
+          ? data.cloudBatchMs.value
+          : this.cloudBatchMs,
     );
   }
 
@@ -425,7 +504,9 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('status: $status, ')
           ..write('calendarEventId: $calendarEventId, ')
           ..write('calendarEventTitle: $calendarEventTitle, ')
-          ..write('attendees: $attendees')
+          ..write('attendees: $attendees, ')
+          ..write('cloudRealtimeMs: $cloudRealtimeMs, ')
+          ..write('cloudBatchMs: $cloudBatchMs')
           ..write(')'))
         .toString();
   }
@@ -441,6 +522,8 @@ class Session extends DataClass implements Insertable<Session> {
     calendarEventId,
     calendarEventTitle,
     attendees,
+    cloudRealtimeMs,
+    cloudBatchMs,
   );
   @override
   bool operator ==(Object other) =>
@@ -454,7 +537,9 @@ class Session extends DataClass implements Insertable<Session> {
           other.status == this.status &&
           other.calendarEventId == this.calendarEventId &&
           other.calendarEventTitle == this.calendarEventTitle &&
-          other.attendees == this.attendees);
+          other.attendees == this.attendees &&
+          other.cloudRealtimeMs == this.cloudRealtimeMs &&
+          other.cloudBatchMs == this.cloudBatchMs);
 }
 
 class SessionsCompanion extends UpdateCompanion<Session> {
@@ -467,6 +552,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<String?> calendarEventId;
   final Value<String?> calendarEventTitle;
   final Value<String?> attendees;
+  final Value<int> cloudRealtimeMs;
+  final Value<int> cloudBatchMs;
   final Value<int> rowid;
   const SessionsCompanion({
     this.id = const Value.absent(),
@@ -478,6 +565,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.calendarEventId = const Value.absent(),
     this.calendarEventTitle = const Value.absent(),
     this.attendees = const Value.absent(),
+    this.cloudRealtimeMs = const Value.absent(),
+    this.cloudBatchMs = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SessionsCompanion.insert({
@@ -490,6 +579,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.calendarEventId = const Value.absent(),
     this.calendarEventTitle = const Value.absent(),
     this.attendees = const Value.absent(),
+    this.cloudRealtimeMs = const Value.absent(),
+    this.cloudBatchMs = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -506,6 +597,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<String>? calendarEventId,
     Expression<String>? calendarEventTitle,
     Expression<String>? attendees,
+    Expression<int>? cloudRealtimeMs,
+    Expression<int>? cloudBatchMs,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -519,6 +612,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (calendarEventTitle != null)
         'calendar_event_title': calendarEventTitle,
       if (attendees != null) 'attendees': attendees,
+      if (cloudRealtimeMs != null) 'cloud_realtime_ms': cloudRealtimeMs,
+      if (cloudBatchMs != null) 'cloud_batch_ms': cloudBatchMs,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -533,6 +628,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<String?>? calendarEventId,
     Value<String?>? calendarEventTitle,
     Value<String?>? attendees,
+    Value<int>? cloudRealtimeMs,
+    Value<int>? cloudBatchMs,
     Value<int>? rowid,
   }) {
     return SessionsCompanion(
@@ -545,6 +642,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       calendarEventId: calendarEventId ?? this.calendarEventId,
       calendarEventTitle: calendarEventTitle ?? this.calendarEventTitle,
       attendees: attendees ?? this.attendees,
+      cloudRealtimeMs: cloudRealtimeMs ?? this.cloudRealtimeMs,
+      cloudBatchMs: cloudBatchMs ?? this.cloudBatchMs,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -579,6 +678,12 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     if (attendees.present) {
       map['attendees'] = Variable<String>(attendees.value);
     }
+    if (cloudRealtimeMs.present) {
+      map['cloud_realtime_ms'] = Variable<int>(cloudRealtimeMs.value);
+    }
+    if (cloudBatchMs.present) {
+      map['cloud_batch_ms'] = Variable<int>(cloudBatchMs.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -597,6 +702,8 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('calendarEventId: $calendarEventId, ')
           ..write('calendarEventTitle: $calendarEventTitle, ')
           ..write('attendees: $attendees, ')
+          ..write('cloudRealtimeMs: $cloudRealtimeMs, ')
+          ..write('cloudBatchMs: $cloudBatchMs, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2876,6 +2983,8 @@ typedef $$SessionsTableCreateCompanionBuilder =
       Value<String?> calendarEventId,
       Value<String?> calendarEventTitle,
       Value<String?> attendees,
+      Value<int> cloudRealtimeMs,
+      Value<int> cloudBatchMs,
       Value<int> rowid,
     });
 typedef $$SessionsTableUpdateCompanionBuilder =
@@ -2889,6 +2998,8 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<String?> calendarEventId,
       Value<String?> calendarEventTitle,
       Value<String?> attendees,
+      Value<int> cloudRealtimeMs,
+      Value<int> cloudBatchMs,
       Value<int> rowid,
     });
 
@@ -3014,6 +3125,16 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<String> get attendees => $composableBuilder(
     column: $table.attendees,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cloudRealtimeMs => $composableBuilder(
+    column: $table.cloudRealtimeMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cloudBatchMs => $composableBuilder(
+    column: $table.cloudBatchMs,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3146,6 +3267,16 @@ class $$SessionsTableOrderingComposer
     column: $table.attendees,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get cloudRealtimeMs => $composableBuilder(
+    column: $table.cloudRealtimeMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cloudBatchMs => $composableBuilder(
+    column: $table.cloudBatchMs,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SessionsTableAnnotationComposer
@@ -3189,6 +3320,16 @@ class $$SessionsTableAnnotationComposer
 
   GeneratedColumn<String> get attendees =>
       $composableBuilder(column: $table.attendees, builder: (column) => column);
+
+  GeneratedColumn<int> get cloudRealtimeMs => $composableBuilder(
+    column: $table.cloudRealtimeMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cloudBatchMs => $composableBuilder(
+    column: $table.cloudBatchMs,
+    builder: (column) => column,
+  );
 
   Expression<T> transcriptSegmentsRefs<T extends Object>(
     Expression<T> Function($$TranscriptSegmentsTableAnnotationComposer a) f,
@@ -3309,6 +3450,8 @@ class $$SessionsTableTableManager
                 Value<String?> calendarEventId = const Value.absent(),
                 Value<String?> calendarEventTitle = const Value.absent(),
                 Value<String?> attendees = const Value.absent(),
+                Value<int> cloudRealtimeMs = const Value.absent(),
+                Value<int> cloudBatchMs = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SessionsCompanion(
                 id: id,
@@ -3320,6 +3463,8 @@ class $$SessionsTableTableManager
                 calendarEventId: calendarEventId,
                 calendarEventTitle: calendarEventTitle,
                 attendees: attendees,
+                cloudRealtimeMs: cloudRealtimeMs,
+                cloudBatchMs: cloudBatchMs,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3333,6 +3478,8 @@ class $$SessionsTableTableManager
                 Value<String?> calendarEventId = const Value.absent(),
                 Value<String?> calendarEventTitle = const Value.absent(),
                 Value<String?> attendees = const Value.absent(),
+                Value<int> cloudRealtimeMs = const Value.absent(),
+                Value<int> cloudBatchMs = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SessionsCompanion.insert(
                 id: id,
@@ -3344,6 +3491,8 @@ class $$SessionsTableTableManager
                 calendarEventId: calendarEventId,
                 calendarEventTitle: calendarEventTitle,
                 attendees: attendees,
+                cloudRealtimeMs: cloudRealtimeMs,
+                cloudBatchMs: cloudBatchMs,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

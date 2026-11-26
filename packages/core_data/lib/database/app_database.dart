@@ -31,6 +31,14 @@ class Sessions extends Table {
   /// Participants, liste JSON de noms (schema v2).
   TextColumn get attendees => text().nullable()();
 
+  /// Audio envoye a la transcription en ligne en temps reel, ms (schema v4).
+  IntColumn get cloudRealtimeMs =>
+      integer().withDefault(const Constant<int>(0))();
+
+  /// Audio envoye a la transcription en ligne par lot (rattrapage), ms
+  /// (schema v4).
+  IntColumn get cloudBatchMs => integer().withDefault(const Constant<int>(0))();
+
   @override
   Set<Column<Object>> get primaryKey => <Column<Object>>{id};
 }
@@ -209,7 +217,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -241,6 +249,11 @@ class AppDatabase extends _$AppDatabase {
         );
       }
       if (from < 3) await _migrateDetectedQuestionsToV3(m);
+      if (from < 4) {
+        // Rejouable, comme la v2.
+        await _addColumnIfMissing(m, sessions, sessions.cloudRealtimeMs);
+        await _addColumnIfMissing(m, sessions, sessions.cloudBatchMs);
+      }
     },
   );
 

@@ -125,6 +125,21 @@ final class FileStore implements SessionRepository, TranscriptRepository {
   @override
   Future<SessionEntity> update(SessionEntity s) => create(s);
   @override
+  Future<void> addCloudUsage(
+    String sessionId, {
+    int realtimeMs = 0,
+    int batchMs = 0,
+  }) async {
+    final SessionEntity? s = sessions[sessionId];
+    if (s == null) return;
+    sessions[sessionId] = s.copyWith(
+      cloudRealtimeMs: s.cloudRealtimeMs + realtimeMs,
+      cloudBatchMs: s.cloudBatchMs + batchMs,
+    );
+    _flush();
+  }
+
+  @override
   Future<void> delete(String id) async {
     sessions.remove(id);
     _flush();

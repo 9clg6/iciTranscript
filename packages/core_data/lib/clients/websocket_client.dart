@@ -89,6 +89,10 @@ class WebSocketClient {
     );
   }
 
+  /// Audio envoyé (ms) depuis le dernier appel, puis remise à zéro. Rien
+  /// n'est facturé en local : la base rend 0, seul un moteur en ligne compte.
+  int takeSentAudioMs() => 0;
+
   /// Envoie un message au serveur WebSocket.
   void send(String message) {
     _channel?.sink.add(message);
