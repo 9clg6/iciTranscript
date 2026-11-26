@@ -25,6 +25,7 @@ import 'package:ici_transcript/core/providers/data/database.provider.dart';
 import 'package:ici_transcript/core/providers/platform/audio_capture.provider.dart';
 import 'package:ici_transcript/core/providers/platform/owned_processes.provider.dart';
 import 'package:ici_transcript/core/providers/services/api_key_store.provider.dart';
+import 'package:ici_transcript/core/providers/services/gap_backfill_retry.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_answers.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/live_transcription.service.provider.dart';
 import 'package:ici_transcript/core/providers/services/process_manager.service.provider.dart';
@@ -118,6 +119,9 @@ void main() {
     final ProviderContainer c = ProviderContainer(
       overrides: <Override>[
         liveTranscriptionServiceProvider.overrideWithValue(rig.service),
+        // One retry, as in the app (keepAlive provider): the view model and
+        // the live service share its queue.
+        gapBackfillRetryProvider.overrideWithValue(rig.retry),
         processManagerServiceProvider.overrideWithValue(
           ProcessManagerService(channel: rig.process),
         ),
