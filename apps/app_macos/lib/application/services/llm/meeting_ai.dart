@@ -20,10 +20,11 @@ const int kLlmAnswerMaxTokens = 4096;
 const int kCoachMaxCorrections = 30;
 
 /// Transcription au plus par requête du coach : c'est la place de la RÉPONSE
-/// qui limite, pas celle de la requête. Sonde réelle : 9 397 caractères
-/// donnent plus de 4096 jetons de réponse (JSON coupé) ; ~2,5 caractères de
-/// réponse par caractère de transcription.
-const int kCoachBatchChars = 3000;
+/// qui limite, pas celle de la requête. Sondes réelles : 9 397 caractères
+/// coupés à 4096 jetons ; 2 707 caractères donnent 3 083 jetons et 45
+/// corrections malgré « at most 30 » (~4,3 caractères de réponse par
+/// caractère de transcription). 1 500 caractères : ~1,7 k jetons, marge > 2.
+const int kCoachBatchChars = 1500;
 
 const String _summarySystem =
     'Tu es un assistant qui résume des réunions en français. Produis un '
@@ -273,8 +274,9 @@ List<TranscriptSegmentEntity> coachableLines(
 ];
 
 /// Lots de [lines] : chaque requête tient dans [kLlmMaxRequestChars]
-/// (consignes comprises) et au plus [kCoachBatchChars] de texte, chaque phrase dans exactement un lot ; une phrase
-/// plus longue que la place est coupée en morceaux.
+/// (consignes comprises) et au plus [kCoachBatchChars] de texte, chaque
+/// phrase dans exactement un lot ; une phrase plus longue que la place est
+/// coupée en morceaux.
 List<List<CoachLine>> coachBatches(List<TranscriptSegmentEntity> lines) {
   final int room = _coachRoom();
   final List<List<CoachLine>> batches = <List<CoachLine>>[];
