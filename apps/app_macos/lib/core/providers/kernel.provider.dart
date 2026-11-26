@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:core_data/database/app_database.dart';
 import 'package:core_foundation/logging/logger.dart';
 import 'package:ici_transcript/application/services/launch_repair.dart';
+import 'package:ici_transcript/application/services/session_audio.dart';
 import 'package:ici_transcript/application/services/dictation/dictation_preferences.dart';
 import 'package:ici_transcript/application/services/gap_backfill_retry.dart';
 import 'package:core_domain/domain/enum/session_status.enum.dart';
@@ -40,9 +41,13 @@ Future<void> kernel(Ref ref) async {
   // Les dossiers viennent de appDataDirectory() (temporaire sous test).
   // Sessions tuées net (encore `active`) : leurs repères, provisoires
   // compris, seront rattrapés depuis le WAV.
-  final List<String> killed = await _activeSessionIds(ref, log);
-  await _repairAfterCrash(ref, log);
-  unawaited(_retryBackfills(ref, killed, log));
+  // Plus les notes dont l'arrêt n'avait pas fini de traiter (SessionAudio).
+  final List<String> killed = <String>[
+    ...await _activeSessionIds(ref, log),
+    ...SessionAudio(LiveTranscriptionService.recordingsDir).processing(),
+  ];
+  final bool repaired = await _repairAfterCrash(ref, log);
+  unawaited(_retryBackfills(ref, killed, log, repaired: repaired));
 
   // Serveurs laissés par un arrêt brutal : seulement ceux notés par cette
   // app dont le PID a encore la même identité. Ne lève jamais.
@@ -73,8 +78,11 @@ Future<void> _startDictation(Ref ref, Log log) async {
 
 /// Répare ce qu'un arrêt brutal en pleine session a laissé : sessions
 /// restées `active`, WAV dont l'en-tête n'a pas été finalisé. Ne supprime
-/// rien. Un échec est journalisé et ne bloque pas le lancement.
-Future<void> _repairAfterCrash(Ref ref, Log log) async {
+/// rien ici : seul le traitement des sessions tuées ou « en cours de
+/// traitement » (`_retryBackfills`) supprime leur audio, une fois fini ;
+/// l'audio des notes terminées avant n'est jamais touché. Un échec est journalisé et ne bloque pas le lancement.
+Future<bool> _repairAfterCrash(Ref ref, Log log) async {
+  bool repaired = true;
   try {
     // Sessions restées actives : `interrupted`, et un repère ouvert par
     // source à son dernier point durable (rien gardé après).
@@ -84,16 +92,16 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
       recordingsDir: LiveTranscriptionService.recordingsDir,
     ).run();
   } catch (e) {
+    repaired = false;
     log.warning('Réparation des sessions interrompues échouée: $e');
   }
 
-  // Aucune suppression au lancement : les WAV d'un utilisateur existant ont
-  // des mois, une purge automatique les effacerait tous au premier
-  // lancement. RecordingRetention reste sans appelant ; un geste explicite
-  // de l'utilisateur la déclenchera (tranche ultérieure).
+  // Aucune purge au lancement : les WAV des notes terminées avant (des mois)
+  // restent, l'utilisateur les trie lui-même. Seules les sessions tuées ou
+  // « en cours de traitement » perdent leur audio, une fois traitées.
   final String recordingsDir = LiveTranscriptionService.recordingsDir;
   final Directory recordings = Directory(recordingsDir);
-  if (!recordings.existsSync()) return;
+  if (!recordings.existsSync()) return repaired;
   for (final FileSystemEntity entry in recordings.listSync()) {
     if (entry is! File || !entry.path.endsWith('.wav')) continue;
     try {
@@ -102,6 +110,7 @@ Future<void> _repairAfterCrash(Ref ref, Log log) async {
       log.warning('Réparation WAV échouée (${entry.path}): $e');
     }
   }
+  return repaired;
 }
 
 Future<List<String>> _activeSessionIds(Ref ref, Log log) async {
@@ -117,14 +126,26 @@ Future<List<String>> _activeSessionIds(Ref ref, Log log) async {
   }
 }
 
-/// Rattrapages en attente (reprises bornées), plus les sessions tuées net.
-Future<void> _retryBackfills(Ref ref, List<String> killed, Log log) async {
+/// Rattrapages en attente (reprises bornées), plus les sessions tuées net ou
+/// « en cours de traitement ». Leur audio part quand elles ne sont plus en
+/// attente (rattrapées, ou tentatives épuisées) ; jamais si la réparation a
+/// échoué, ni tant que le rattrapage n'a pas atteint le transcripteur.
+Future<void> _retryBackfills(
+  Ref ref,
+  List<String> killed,
+  Log log, {
+  required bool repaired,
+}) async {
   try {
     final GapBackfillRetry retry = ref.read(gapBackfillRetryProvider);
     for (final String id in killed) {
-      await retry.enqueue(id);
+      repaired ? await retry.adopt(id) : await retry.enqueue(id);
     }
     await retry.retryPending();
+    if (!repaired) return;
+    for (final String id in killed) {
+      await retry.finish(id);
+    }
   } catch (e) {
     log.warning('Rattrapage au lancement échoué: $e');
   }

@@ -140,20 +140,14 @@ class DiarizationService {
             .toList(),
       );
       _log.info('Post-session OK : ${r.speakers.length} tours');
-      // Les WAV bruts sont volumineux et sensibles. Ils ne sont conservés que
-      // si le traitement échoue afin de permettre une relance/diagnostic.
-      await _delete(mic);
-      await _delete(sys);
-      await _delete(_dictatedPath(sessionId));
+      // Les WAV sont supprimés par SessionAudio.discard, à la fin du
+      // traitement de la note (réussite ou non).
       return r;
     } catch (e) {
       _log.error('Parsing JSON post-session échoué: $e');
       return null;
     }
   }
-
-  String _dictatedPath(String sessionId) =>
-      '$_recordingsDir/${sessionId}_dictations.json';
 
   /// Chemin du WAV micro à donner à la passe : le WAV lui-même sans dictée,
   /// sinon une copie avec les intervalles dictés en silence (l'enregistrement
