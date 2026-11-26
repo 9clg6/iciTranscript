@@ -22,6 +22,7 @@ import 'package:ici_transcript/features/home/presentation/screens/home/home.scre
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.state.dart';
 import 'package:ici_transcript/features/onboarding/presentation/ollama_setup.view_model.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
+import 'package:core_domain/domain/services/cloud_transcription_cost.dart';
 import 'package:ici_transcript/generated/translations/locale_keys.g.dart';
 
 /// Note d'une réunion : la page entière défile (titre, puces, résumé,
@@ -156,6 +157,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
         state.speakers.map((SpeakerTurn t) => t.speaker).toSet().toList()
           ..sort();
     final String? duration = formatDuration(session.durationSeconds);
+    final double? cost = cloudTranscriptionCostUsd(
+      realtimeMs: session.cloudRealtimeMs,
+      batchMs: session.cloudBatchMs,
+    );
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -185,6 +190,21 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen> {
                   ),
                   if (duration != null)
                     OatsChip(icon: Icons.schedule_outlined, label: duration),
+                  if (cost != null)
+                    Tooltip(
+                      message: LocaleKeys.history_detail_cloud_cost_tooltip
+                          .tr(),
+                      child: OatsChip(
+                        icon: Icons.cloud_outlined,
+                        label: cost < 0.01
+                            ? LocaleKeys.history_detail_cloud_cost_small.tr()
+                            : LocaleKeys.history_detail_cloud_cost.tr(
+                                args: <String>[
+                                  NumberFormat('0.00', 'fr').format(cost),
+                                ],
+                              ),
+                      ),
+                    ),
                   if (speakers.isNotEmpty)
                     Wrap(
                       key: const ValueKey<String>('session-detail-speakers'),

@@ -91,7 +91,7 @@ class TranscriptionEngineSelection {
 
 /// Transcription d'un fichier (rattrapage, dictée) par le moteur utilisé au
 /// moment de l'appel : [cloud] (Mistral batch) ou [local] (voxmlx).
-final class EngineTranscriber implements PcmTranscriber {
+final class EngineTranscriber implements BilledPcmTranscriber {
   /// Cree une instance de [EngineTranscriber].
   EngineTranscriber({
     required this.local,
@@ -103,7 +103,7 @@ final class EngineTranscriber implements PcmTranscriber {
   final PcmTranscriber local;
 
   /// Mistral en ligne.
-  final PcmTranscriber cloud;
+  final BilledPcmTranscriber cloud;
 
   /// Moteur utilisé maintenant.
   final Future<TranscriptionEngine> Function() engine;
@@ -112,4 +112,12 @@ final class EngineTranscriber implements PcmTranscriber {
   Future<List<({int offsetMs, String text})>> transcribe(Uint8List pcm) async =>
       (await engine() == TranscriptionEngine.mistral ? cloud : local)
           .transcribe(pcm);
+
+  /// Local : rien n'est facturé.
+  @override
+  Future<({List<({int offsetMs, String text})> pieces, int billedMs})>
+  transcribeBilled(Uint8List pcm) async =>
+      await engine() == TranscriptionEngine.mistral
+      ? cloud.transcribeBilled(pcm)
+      : (pieces: await local.transcribe(pcm), billedMs: 0);
 }

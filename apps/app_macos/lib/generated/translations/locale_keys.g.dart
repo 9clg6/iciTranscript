@@ -154,6 +154,9 @@ abstract class  LocaleKeys {
   static const history_detail_exported = 'history.detail.exported';
   static const history_detail_export_error = 'history.detail.export_error';
   static const history_detail_no_session = 'history.detail.no_session';
+  static const history_detail_cloud_cost = 'history.detail.cloud_cost';
+  static const history_detail_cloud_cost_small = 'history.detail.cloud_cost_small';
+  static const history_detail_cloud_cost_tooltip = 'history.detail.cloud_cost_tooltip';
   static const history_detail_speaker_me = 'history.detail.speaker_me';
   static const history_detail_speaker = 'history.detail.speaker';
   static const history_detail_summary = 'history.detail.summary';
