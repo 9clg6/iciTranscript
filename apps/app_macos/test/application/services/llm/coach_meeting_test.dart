@@ -365,15 +365,59 @@ void main() {
   });
 
   group('une partie échoue', () {
+    test('réponse illisible : le lot est coupé et renvoyé ; seule la phrase '
+        'que le modèle ne lit jamais reste non analysée, les autres '
+        'corrections restent', () async {
+      final List<TranscriptSegmentEntity> meeting = hourLong();
+      // Phrase fautive : au milieu du 2e lot, toute requête qui la porte
+      // reçoit une réponse illisible, si courte soit-elle.
+      final List<CoachLine> second = coachBatches(coachableLines(meeting))[1];
+      final CoachLine faulty = second[second.length ~/ 2];
+      bool carriesFaulty(LlmChatRequest r) =>
+          requestText(r).contains(faulty.text);
+      final ScriptedLlmProvider llm = ScriptedLlmProvider((
+        LlmChatRequest r,
+        int i,
+      ) {
+        if (carriesFaulty(r)) {
+          return Stream<String>.value('Désolé, je ne peux pas.');
+        }
+        final String line = firstLineOf(r);
+        return Stream<String>.value(
+          answer(<Map<String, String>>[fix(line, '$line (corrigé)')]),
+        );
+      });
+
+      final EnglishFeedbackEntity feedback = await coachMeeting(llm, meeting);
+
+      expect(feedback.unanalyzedSegmentIds, <String>[faulty.id]);
+      final List<LlmChatRequest> answered = llm.requests
+          .where((LlmChatRequest r) => !carriesFaulty(r))
+          .toList();
+      expect(
+        feedback.corrections
+            .map((EnglishCorrectionEntity c) => c.original)
+            .toList(),
+        <String>[for (final LlmChatRequest r in answered) firstLineOf(r)],
+        reason: 'une correction par réponse lisible, aucune perdue',
+      );
+      for (final CoachLine l in second) {
+        if (l.id == faulty.id) continue;
+        expect(
+          answered.any((LlmChatRequest r) => requestText(r).contains(l.text)),
+          isTrue,
+          reason: '« ${l.text} » jamais analysée',
+        );
+      }
+      final int lines = coachableLines(meeting).length;
+      expect(llm.requests.length, lessThanOrEqualTo(2 * lines));
+    });
+
     for (final (String name, Stream<String> Function() failure)
         in <(String, Stream<String> Function())>[
           (
             'injoignable',
             () => Stream<String>.error(const LlmUnreachableException('Claude')),
-          ),
-          (
-            'réponse illisible',
-            () => Stream<String>.value('Désolé, je ne peux pas.'),
           ),
         ]) {
       test('$name : les autres corrections restent, les phrases de cette '

@@ -15,6 +15,17 @@ const int kLlmMaxRequestChars = 10000;
 /// certains modèles, la réflexion compte dans cette borne.
 const int kLlmAnswerMaxTokens = 4096;
 
+/// Corrections au plus par réponse du coach : borne la réponse (≤ 400
+/// caractères chacune) sous [kLlmAnswerMaxTokens], quel que soit le texte.
+const int kCoachMaxCorrections = 30;
+
+/// Transcription au plus par requête du coach : c'est la place de la RÉPONSE
+/// qui limite, pas celle de la requête. Sondes réelles : 9 397 caractères
+/// coupés à 4096 jetons ; 2 707 caractères donnent 3 083 jetons et 45
+/// corrections malgré « at most 30 » (~4,3 caractères de réponse par
+/// caractère de transcription). 1 500 caractères : ~1,7 k jetons, marge > 2.
+const int kCoachBatchChars = 1500;
+
 const String _summarySystem =
     'Tu es un assistant qui résume des réunions en français. Produis un '
     'résumé clair et concis : 1 phrase de contexte, puis 4 à 8 puces '
@@ -32,7 +43,7 @@ const String _mergeSystem =
     'contexte, puis 4 à 8 puces (points clés, décisions, actions). Réponds '
     'uniquement avec le résumé, sans préambule.';
 
-const String _coachSystem =
+final String _coachSystem =
     'You are an English coach. The transcript below is the spoken English '
     'of a non-native speaker during a meeting. Identify the most useful '
     'mistakes and improvements. For each, give the original phrase, a '
@@ -42,6 +53,7 @@ const String _coachSystem =
     '{"overall": string, "corrections": [{"original": string, '
     '"corrected": string, "category": string, "explanation": string}]}. '
     'The "overall" field is a short assessment of the level, in French. '
+    'Give at most $kCoachMaxCorrections corrections, the most useful ones. '
     'Do not invent mistakes: if a sentence is correct, skip it.';
 
 const String _transcriptPrefix = 'Transcription de la réunion :\n\n';
@@ -118,7 +130,7 @@ Future<EnglishFeedbackEntity> coachEnglish(
   LlmProvider llm,
   String micTranscript,
 ) async {
-  final int room = _room(_coachSystem, _coachPrefix);
+  final int room = _coachRoom();
   // ponytail: au-delà de la borne, seule la fin est corrigée (comme avant).
   final String kept = micTranscript.length <= room
       ? micTranscript
@@ -262,10 +274,11 @@ List<TranscriptSegmentEntity> coachableLines(
 ];
 
 /// Lots de [lines] : chaque requête tient dans [kLlmMaxRequestChars]
-/// (consignes comprises), chaque phrase dans exactement un lot ; une phrase
-/// plus longue que la place est coupée en morceaux.
+/// (consignes comprises) et au plus [kCoachBatchChars] de texte, chaque
+/// phrase dans exactement un lot ; une phrase plus longue que la place est
+/// coupée en morceaux.
 List<List<CoachLine>> coachBatches(List<TranscriptSegmentEntity> lines) {
-  final int room = _room(_coachSystem, _coachPrefix);
+  final int room = _coachRoom();
   final List<List<CoachLine>> batches = <List<CoachLine>>[];
   List<CoachLine> current = <CoachLine>[];
   int used = 0;
@@ -351,25 +364,43 @@ Future<EnglishFeedbackEntity> coachMeeting(
   Object? lastError;
   int failed = 0;
   int sent = 0;
-  for (final List<CoachLine> batch in batches) {
+  // Un lot dont la réponse est illisible (coupée) est coupé en deux, récursivement :
+  // une phrase seule en échec reste non analysée. Les autres erreurs ne coupent pas.
+  Future<void> run(List<CoachLine> batch) async {
     if (shouldStop?.call() ?? false) {
       unanalyzed.addAll(batch.map((CoachLine l) => l.id));
-      continue;
+      return;
     }
-    sent++;
     try {
       final EnglishFeedbackEntity part = parseFeedback(
         await llm.streamChat(coachRequest(batch)).join(),
       );
+      sent++;
       corrections.addAll(timedCorrections(part, batch));
       if (overall == null && (part.overall ?? '').isNotEmpty) {
         overall = part.overall;
       }
+    } on LlmMalformedAnswerException catch (e) {
+      if (batch.length > 1) {
+        final int mid = batch.length ~/ 2;
+        await run(batch.sublist(0, mid));
+        await run(batch.sublist(mid));
+        return;
+      }
+      sent++;
+      lastError = e;
+      failed++;
+      unanalyzed.addAll(batch.map((CoachLine l) => l.id));
     } on Object catch (e) {
+      sent++;
       lastError = e;
       failed++;
       unanalyzed.addAll(batch.map((CoachLine l) => l.id));
     }
+  }
+
+  for (final List<CoachLine> batch in batches) {
+    await run(batch);
   }
   if (sent > 0 && failed == sent) throw lastError!;
   return EnglishFeedbackEntity(
@@ -413,6 +444,11 @@ LlmChatRequest _request(String system, String prefix, String text) =>
 /// ligne qui les sépare compris).
 int _room(String system, String prefix) =>
     kLlmMaxRequestChars - system.length - prefix.length - 1;
+
+int _coachRoom() {
+  final int room = _room(_coachSystem, _coachPrefix);
+  return room < kCoachBatchChars ? room : kCoachBatchChars;
+}
 
 bool _fits(String system, String prefix, String text) =>
     text.length <= _room(system, prefix);
