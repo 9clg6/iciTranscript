@@ -20,6 +20,8 @@ extension SessionLocalModelX on SessionLocalModel {
     calendarEventId: calendarEventId,
     calendarEventTitle: calendarEventTitle,
     attendees: _decodeAttendees(attendees),
+    cloudRealtimeMs: cloudRealtimeMs,
+    cloudBatchMs: cloudBatchMs,
   );
 }
 
@@ -48,5 +50,7 @@ extension SessionEntityToLocalX on SessionEntity {
     calendarEventId: calendarEventId,
     calendarEventTitle: calendarEventTitle,
     attendees: attendees.isEmpty ? null : jsonEncode(attendees),
+    cloudRealtimeMs: cloudRealtimeMs,
+    cloudBatchMs: cloudBatchMs,
   );
 }

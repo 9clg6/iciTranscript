@@ -24,7 +24,9 @@ mixin _$SessionLocalModel {
  String get status;/// Identifiant de l'evenement d'agenda lie.
  String? get calendarEventId;/// Titre de l'evenement d'agenda lie.
  String? get calendarEventTitle;/// Noms des participants, tableau JSON (null = aucun).
- String? get attendees;
+ String? get attendees;/// Audio envoye en temps reel a la transcription en ligne (ms).
+ int get cloudRealtimeMs;/// Audio envoye par lot a la transcription en ligne (ms).
+ int get cloudBatchMs;
 /// Create a copy of SessionLocalModel
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -37,16 +39,16 @@ $SessionLocalModelCopyWith<SessionLocalModel> get copyWith => _$SessionLocalMode
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionLocalModel&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&(identical(other.attendees, attendees) || other.attendees == attendees));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SessionLocalModel&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&(identical(other.attendees, attendees) || other.attendees == attendees)&&(identical(other.cloudRealtimeMs, cloudRealtimeMs) || other.cloudRealtimeMs == cloudRealtimeMs)&&(identical(other.cloudBatchMs, cloudBatchMs) || other.cloudBatchMs == cloudBatchMs));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,attendees);
+int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,attendees,cloudRealtimeMs,cloudBatchMs);
 
 @override
 String toString() {
-  return 'SessionLocalModel(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees)';
+  return 'SessionLocalModel(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees, cloudRealtimeMs: $cloudRealtimeMs, cloudBatchMs: $cloudBatchMs)';
 }
 
 
@@ -57,7 +59,7 @@ abstract mixin class $SessionLocalModelCopyWith<$Res>  {
   factory $SessionLocalModelCopyWith(SessionLocalModel value, $Res Function(SessionLocalModel) _then) = _$SessionLocalModelCopyWithImpl;
 @useResult
 $Res call({
- String id, String title, String createdAt, String updatedAt, int? durationSeconds, String status, String? calendarEventId, String? calendarEventTitle, String? attendees
+ String id, String title, String createdAt, String updatedAt, int? durationSeconds, String status, String? calendarEventId, String? calendarEventTitle, String? attendees, int cloudRealtimeMs, int cloudBatchMs
 });
 
 
@@ -74,7 +76,7 @@ class _$SessionLocalModelCopyWithImpl<$Res>
 
 /// Create a copy of SessionLocalModel
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = freezed,Object? cloudRealtimeMs = null,Object? cloudBatchMs = null,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
@@ -85,7 +87,9 @@ as int?,status: null == status ? _self.status : status // ignore: cast_nullable_
 as String,calendarEventId: freezed == calendarEventId ? _self.calendarEventId : calendarEventId // ignore: cast_nullable_to_non_nullable
 as String?,calendarEventTitle: freezed == calendarEventTitle ? _self.calendarEventTitle : calendarEventTitle // ignore: cast_nullable_to_non_nullable
 as String?,attendees: freezed == attendees ? _self.attendees : attendees // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,cloudRealtimeMs: null == cloudRealtimeMs ? _self.cloudRealtimeMs : cloudRealtimeMs // ignore: cast_nullable_to_non_nullable
+as int,cloudBatchMs: null == cloudBatchMs ? _self.cloudBatchMs : cloudBatchMs // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 
@@ -170,10 +174,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title,  String createdAt,  String updatedAt,  int? durationSeconds,  String status,  String? calendarEventId,  String? calendarEventTitle,  String? attendees)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title,  String createdAt,  String updatedAt,  int? durationSeconds,  String status,  String? calendarEventId,  String? calendarEventTitle,  String? attendees,  int cloudRealtimeMs,  int cloudBatchMs)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _SessionLocalModel() when $default != null:
-return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees);case _:
+return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees,_that.cloudRealtimeMs,_that.cloudBatchMs);case _:
   return orElse();
 
 }
@@ -191,10 +195,10 @@ return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durat
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title,  String createdAt,  String updatedAt,  int? durationSeconds,  String status,  String? calendarEventId,  String? calendarEventTitle,  String? attendees)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title,  String createdAt,  String updatedAt,  int? durationSeconds,  String status,  String? calendarEventId,  String? calendarEventTitle,  String? attendees,  int cloudRealtimeMs,  int cloudBatchMs)  $default,) {final _that = this;
 switch (_that) {
 case _SessionLocalModel():
-return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees);case _:
+return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees,_that.cloudRealtimeMs,_that.cloudBatchMs);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -211,10 +215,10 @@ return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durat
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title,  String createdAt,  String updatedAt,  int? durationSeconds,  String status,  String? calendarEventId,  String? calendarEventTitle,  String? attendees)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title,  String createdAt,  String updatedAt,  int? durationSeconds,  String status,  String? calendarEventId,  String? calendarEventTitle,  String? attendees,  int cloudRealtimeMs,  int cloudBatchMs)?  $default,) {final _that = this;
 switch (_that) {
 case _SessionLocalModel() when $default != null:
-return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees);case _:
+return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durationSeconds,_that.status,_that.calendarEventId,_that.calendarEventTitle,_that.attendees,_that.cloudRealtimeMs,_that.cloudBatchMs);case _:
   return null;
 
 }
@@ -226,7 +230,7 @@ return $default(_that.id,_that.title,_that.createdAt,_that.updatedAt,_that.durat
 @JsonSerializable()
 
 class _SessionLocalModel implements SessionLocalModel {
-  const _SessionLocalModel({required this.id, required this.title, required this.createdAt, required this.updatedAt, this.durationSeconds, required this.status, this.calendarEventId, this.calendarEventTitle, this.attendees});
+  const _SessionLocalModel({required this.id, required this.title, required this.createdAt, required this.updatedAt, this.durationSeconds, required this.status, this.calendarEventId, this.calendarEventTitle, this.attendees, this.cloudRealtimeMs = 0, this.cloudBatchMs = 0});
   factory _SessionLocalModel.fromJson(Map<String, dynamic> json) => _$SessionLocalModelFromJson(json);
 
 /// Identifiant unique de la session.
@@ -247,6 +251,10 @@ class _SessionLocalModel implements SessionLocalModel {
 @override final  String? calendarEventTitle;
 /// Noms des participants, tableau JSON (null = aucun).
 @override final  String? attendees;
+/// Audio envoye en temps reel a la transcription en ligne (ms).
+@override@JsonKey() final  int cloudRealtimeMs;
+/// Audio envoye par lot a la transcription en ligne (ms).
+@override@JsonKey() final  int cloudBatchMs;
 
 /// Create a copy of SessionLocalModel
 /// with the given fields replaced by the non-null parameter values.
@@ -261,16 +269,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionLocalModel&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&(identical(other.attendees, attendees) || other.attendees == attendees));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _SessionLocalModel&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt)&&(identical(other.durationSeconds, durationSeconds) || other.durationSeconds == durationSeconds)&&(identical(other.status, status) || other.status == status)&&(identical(other.calendarEventId, calendarEventId) || other.calendarEventId == calendarEventId)&&(identical(other.calendarEventTitle, calendarEventTitle) || other.calendarEventTitle == calendarEventTitle)&&(identical(other.attendees, attendees) || other.attendees == attendees)&&(identical(other.cloudRealtimeMs, cloudRealtimeMs) || other.cloudRealtimeMs == cloudRealtimeMs)&&(identical(other.cloudBatchMs, cloudBatchMs) || other.cloudBatchMs == cloudBatchMs));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,attendees);
+int get hashCode => Object.hash(runtimeType,id,title,createdAt,updatedAt,durationSeconds,status,calendarEventId,calendarEventTitle,attendees,cloudRealtimeMs,cloudBatchMs);
 
 @override
 String toString() {
-  return 'SessionLocalModel(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees)';
+  return 'SessionLocalModel(id: $id, title: $title, createdAt: $createdAt, updatedAt: $updatedAt, durationSeconds: $durationSeconds, status: $status, calendarEventId: $calendarEventId, calendarEventTitle: $calendarEventTitle, attendees: $attendees, cloudRealtimeMs: $cloudRealtimeMs, cloudBatchMs: $cloudBatchMs)';
 }
 
 
@@ -281,7 +289,7 @@ abstract mixin class _$SessionLocalModelCopyWith<$Res> implements $SessionLocalM
   factory _$SessionLocalModelCopyWith(_SessionLocalModel value, $Res Function(_SessionLocalModel) _then) = __$SessionLocalModelCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String title, String createdAt, String updatedAt, int? durationSeconds, String status, String? calendarEventId, String? calendarEventTitle, String? attendees
+ String id, String title, String createdAt, String updatedAt, int? durationSeconds, String status, String? calendarEventId, String? calendarEventTitle, String? attendees, int cloudRealtimeMs, int cloudBatchMs
 });
 
 
@@ -298,7 +306,7 @@ class __$SessionLocalModelCopyWithImpl<$Res>
 
 /// Create a copy of SessionLocalModel
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? title = null,Object? createdAt = null,Object? updatedAt = null,Object? durationSeconds = freezed,Object? status = null,Object? calendarEventId = freezed,Object? calendarEventTitle = freezed,Object? attendees = freezed,Object? cloudRealtimeMs = null,Object? cloudBatchMs = null,}) {
   return _then(_SessionLocalModel(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
@@ -309,7 +317,9 @@ as int?,status: null == status ? _self.status : status // ignore: cast_nullable_
 as String,calendarEventId: freezed == calendarEventId ? _self.calendarEventId : calendarEventId // ignore: cast_nullable_to_non_nullable
 as String?,calendarEventTitle: freezed == calendarEventTitle ? _self.calendarEventTitle : calendarEventTitle // ignore: cast_nullable_to_non_nullable
 as String?,attendees: freezed == attendees ? _self.attendees : attendees // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,cloudRealtimeMs: null == cloudRealtimeMs ? _self.cloudRealtimeMs : cloudRealtimeMs // ignore: cast_nullable_to_non_nullable
+as int,cloudBatchMs: null == cloudBatchMs ? _self.cloudBatchMs : cloudBatchMs // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

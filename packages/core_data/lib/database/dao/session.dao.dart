@@ -37,6 +37,24 @@ class SessionDao extends DatabaseAccessor<AppDatabase> with _$SessionDaoMixin {
         .write(session);
   }
 
+  /// Ajoute aux compteurs en ligne (col = col + ?) ; session absente : rien.
+  Future<void> addCloudUsage(
+    String id, {
+    required int realtimeMs,
+    required int batchMs,
+  }) {
+    return customUpdate(
+      'UPDATE sessions SET cloud_realtime_ms = cloud_realtime_ms + ?, '
+      'cloud_batch_ms = cloud_batch_ms + ? WHERE id = ?',
+      variables: <Variable<Object>>[
+        Variable<int>(realtimeMs),
+        Variable<int>(batchMs),
+        Variable<String>(id),
+      ],
+      updates: <TableInfo<Table, dynamic>>{sessions},
+    );
+  }
+
   /// Supprime une session par son identifiant.
   Future<void> deleteById(String id) {
     return (delete(

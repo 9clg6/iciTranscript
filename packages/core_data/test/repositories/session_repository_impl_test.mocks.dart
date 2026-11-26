@@ -71,6 +71,23 @@ class MockSessionLocalDataSource extends _i1.Mock
           as _i3.Future<void>);
 
   @override
+  _i3.Future<void> addCloudUsage(
+    String? id, {
+    int? realtimeMs = 0,
+    int? batchMs = 0,
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #addCloudUsage,
+              [id],
+              {#realtimeMs: realtimeMs, #batchMs: batchMs},
+            ),
+            returnValue: _i3.Future<void>.value(),
+            returnValueForMissingStub: _i3.Future<void>.value(),
+          )
+          as _i3.Future<void>);
+
+  @override
   _i3.Future<void> delete(String? id) =>
       (super.noSuchMethod(
             Invocation.method(#delete, [id]),

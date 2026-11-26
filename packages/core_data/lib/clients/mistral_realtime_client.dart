@@ -106,6 +106,9 @@ class MistralRealtimeClient extends WebSocketClient {
   Timer? _keepAlive;
   // Secondes sans audio envoyé (comptées par le minuteur de maintien).
   int _quietSeconds = 0;
+  // Octets PCM écrits sur la socket (maintien compris), lus par
+  // [takeSentAudioMs] ; `connect` ne les remet pas à zéro (reconnexion).
+  int _sentBytes = 0;
 
   @override
   Stream<String> get messageStream => _out.stream;
@@ -278,8 +281,19 @@ class MistralRealtimeClient extends WebSocketClient {
     );
   }
 
+  /// Audio réellement écrit sur la socket depuis le dernier appel (PCM16
+  /// 16 kHz mono : 32 octets par ms), puis remise à zéro. Mistral facture
+  /// cet audio.
+  @override
+  int takeSentAudioMs() {
+    final int ms = _sentBytes ~/ 32;
+    _sentBytes = 0;
+    return ms;
+  }
+
   void _sendAudio(Uint8List pcm) {
     _quietSeconds = 0;
+    _sentBytes += pcm.length;
     _raw?.send(
       jsonEncode(<String, String>{
         'type': 'input_audio.append',
@@ -300,11 +314,13 @@ class MistralRealtimeClient extends WebSocketClient {
     if (decoded is! Map<String, dynamic>) return;
     switch (decoded['type']) {
       case 'input_audio_buffer.append':
+        final Object? audio = decoded['audio'];
+        if (audio is String) _sentBytes += base64Decode(audio).length;
         _quietSeconds = 0;
         _raw?.send(
           jsonEncode(<String, Object?>{
             'type': 'input_audio.append',
-            'audio': decoded['audio'],
+            'audio': audio,
           }),
         );
       case 'input_audio_buffer.commit':

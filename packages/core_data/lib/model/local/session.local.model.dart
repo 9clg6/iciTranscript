@@ -34,6 +34,12 @@ abstract class SessionLocalModel with _$SessionLocalModel {
 
     /// Noms des participants, tableau JSON (null = aucun).
     String? attendees,
+
+    /// Audio envoye en temps reel a la transcription en ligne (ms).
+    @Default(0) int cloudRealtimeMs,
+
+    /// Audio envoye par lot a la transcription en ligne (ms).
+    @Default(0) int cloudBatchMs,
   }) = _SessionLocalModel;
 
   /// Cree une instance depuis un JSON.

@@ -41,6 +41,19 @@ final class SessionRepositoryImpl implements SessionRepository {
   }
 
   @override
+  Future<void> addCloudUsage(
+    String sessionId, {
+    int realtimeMs = 0,
+    int batchMs = 0,
+  }) {
+    return _localDataSource.addCloudUsage(
+      sessionId,
+      realtimeMs: realtimeMs,
+      batchMs: batchMs,
+    );
+  }
+
+  @override
   Future<void> delete(String id) {
     return _localDataSource.delete(id);
   }

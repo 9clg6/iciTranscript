@@ -49,6 +49,9 @@ class EngineRoutingClient extends WebSocketClient {
   void send(String message) => _active.send(message);
 
   @override
+  int takeSentAudioMs() => mistral.takeSentAudioMs();
+
+  @override
   Future<void> disconnect() => _active.disconnect();
 
   @override

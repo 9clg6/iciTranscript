@@ -58,6 +58,7 @@ final class TranscriptionRemoteDataSourceImpl
   // de ~1,2 s, une même phrase était coupée en plusieurs lignes.
   /// Silence qui clôt une phrase du direct ; `LaunchRepair` s'en sert aussi.
   static const int silenceToFinalizeMs = 1200;
+
   /// Longueur maximale d'une phrase du direct avant coupe forcée.
   static const int maxUtteranceMs = 30000;
   // Une phrase restée moins longtemps au-dessus du seuil de parole est
@@ -663,6 +664,9 @@ final class TranscriptionRemoteDataSourceImpl
       _lastVoicedMs[source] = 0;
     }
   }
+
+  @override
+  int takeSentAudioMs() => _mic.takeSentAudioMs() + _sys.takeSentAudioMs();
 
   /// Libère les ressources (les deux connexions).
   Future<void> dispose() async {
