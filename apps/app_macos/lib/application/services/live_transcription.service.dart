@@ -370,6 +370,9 @@ final class LiveTranscriptionService {
         rethrow;
       }
       _log.info('WebSocket connecte OK');
+      // Le reste d'audio d'avant cette réunion (dictée, session précédente)
+      // n'est pas à sa charge : on vide le compteur avant tout envoi.
+      _transcriptionRemoteDataSource.takeSentAudioMs();
 
       // 3. Demarrer la capture audio
       _log.info('Demarrage capture audio...');
