@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <rect width="1280" height="640" fill="#F7F7F4"/>
+  <g transform="translate(110 170) scale(0.29)">
+    <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="#FFFFFF" stroke="#E2E2DE" stroke-width="4"/>
+    <g transform="translate(188 188) scale(6.48)">
+      <circle cx="50" cy="44" r="22" fill="none" stroke="#111111" stroke-width="7"/>
+      <path d="M14 76 L86 76" stroke="#111111" stroke-width="4" stroke-linecap="round"/>
+      <path d="M14 88 L60 88" stroke="#C9C9C4" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="74" cy="88" r="4.5" fill="#2F7D4F"/>
+    </g>
+  </g>
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif" fill="#111111">
+    <text x="460" y="285" font-size="120" font-weight="700" letter-spacing="-3">Oats</text>
+    <text x="464" y="350" font-size="36" fill="#3A3A36">Real-time meeting notes for macOS</text>
+    <text x="464" y="400" font-size="28" fill="#6B6B66">On-device by default · Mistral online if you choose</text>
+    <text x="464" y="450" font-size="28" fill="#6B6B66">Transcripts, not recordings</text>
+  </g>
+  <circle cx="474" cy="512" r="7" fill="#2F7D4F"/>
+  <text x="492" y="521" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="24" fill="#6B6B66">Open source · Flutter · Apple Silicon</text>
+</svg>
