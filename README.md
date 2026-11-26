@@ -14,7 +14,7 @@ Oats (formerly **iciTranscript**) captures your microphone and your Mac's system
 
 - **Real-time transcription, two engines** — choose in **Réglages › Moteur de transcription**:
   - **Sur ce Mac** (default): [voxmlx](https://github.com/T0mSIlver/voxmlx) on Apple Silicon MLX, nothing leaves your Mac
-  - **Mistral (en ligne)**: [Voxtral](https://docs.mistral.ai/) realtime, no local model to run, lighter on the Mac; needs a Mistral API key and online sending turned on
+  - **Mistral (en ligne)**: [Voxtral](https://docs.mistral.ai/) realtime, no local transcription model, lighter on the Mac; needs a Mistral API key and online sending turned on (diarization stays on your Mac)
 - **Two audio sources, kept separate** — your microphone and the system audio (calls, videos) are two streams, so the note knows who said what ("Vous" vs. the other side)
 - **No silent loss** — a passage that could not be transcribed live is marked in the note and transcribed again after the meeting; a full disk, a lost connection or a crash is shown, never hidden. Every sentence is in the note or under a visible marker
 - **Notes by day** — every meeting is listed on the home page, grouped by day, with search
@@ -100,9 +100,9 @@ With the Mistral engine, no local server starts: each source streams to `wss://a
 
 ## Privacy
 
-- **Transcripts, not recordings** — during a meeting, each source is also written to a temporary WAV so a missed passage can be transcribed again; these files are deleted as soon as the note is processed. Only the transcript is kept
+- **Transcripts, not recordings** — during a meeting, each source is also written to a temporary WAV so a missed passage can be transcribed again; these files are deleted as soon as the note is processed. Only the transcript is kept. A passage not yet retried (server or network unavailable) keeps its audio until it is; recordings made by versions before this rule are left for you to sort
 - **Local engine (default)**: audio never leaves your Mac
-- **Mistral engine**: the speech of both sources is sent to Mistral while you record. To keep it out of model training, turn it off in admin.mistral.ai › Privacy
+- **Mistral engine**: the speech of both sources is sent to Mistral while you record, and so are the passages transcribed again after a meeting and your dictations. To keep it out of model training, turn off "Data usage for improving our services" in admin.mistral.ai › Privacy
 - Online AI providers (Mistral, Claude, OpenAI, Gemini) are optional and off by default. Nothing is sent to them until you add a key and turn on online sending in Réglages
 - When online sending is on, the transcript text of a note (for a summary or the English coach) and excerpts of your documents are sent to the provider you chose; turn it off to keep everything on your Mac
 - API keys are stored in the macOS Keychain
