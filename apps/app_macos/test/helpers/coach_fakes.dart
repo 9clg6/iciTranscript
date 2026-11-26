@@ -45,25 +45,58 @@ List<TranscriptSegmentEntity> denseMicMeeting(int count) =>
 /// [sentence] (le passage fautif : son début).
 String coachOriginalOf(String sentence) => sentence.substring(0, 40).trim();
 
-String _correction(String sentence) => jsonEncode(<String, String>{
-  'original': coachOriginalOf(sentence),
-  'corrected': '${coachOriginalOf(sentence)}, corrected',
-  'category': 'grammar',
-  'explanation':
-      'Accord du verbe avec le sujet : « the team has », « they say » ; '
-      'vérifiez chaque verbe conjugué.',
-});
+/// Caractères de réponse par caractère de transcription, mesurés sur le
+/// vrai fournisseur (mistral-small-latest, anglais parlé dense, 2026-11-26) :
+/// ~1 450 caractères → 7 306 caractères de réponse (27 corrections) ;
+/// 2 707 → 3 083 jetons (45 corrections, « at most 30 » ignoré). Soit ~5 :
+/// une réponse est coupée au-delà de ~3 200 caractères de transcription.
+const double kMeasuredAnswerCharsPerChar = 5;
+
+/// Locuteur plus dense que la mesure (plus de fautes par phrase) : un lot
+/// de ~1 500 caractères dépasse la réponse, sa moitié tient.
+const double kDenserSpeakerAnswerCharsPerChar = 12;
+
+const String _explanation =
+    'Accord du verbe avec le sujet : « the team has », « they say » ; '
+    'vérifiez chaque verbe conjugué. ';
+const String _filler =
+    'Reprenez la phrase à voix haute en vérifiant chaque verbe. ';
+
+/// Correction de [sentence] longue de ~[ratio] × (sa longueur + saut de
+/// ligne), séparateur compris. ponytail: une seule correction allongée par
+/// phrase (le vrai en donne ~2 de ~270 caractères) : même total, et « une
+/// correction par phrase » reste vérifiable.
+String _correction(String sentence, double ratio) {
+  Map<String, String> of(String explanation) => <String, String>{
+    'original': coachOriginalOf(sentence),
+    'corrected': '${coachOriginalOf(sentence)}, corrected',
+    'category': 'grammar',
+    'explanation': explanation,
+  };
+  final int pad =
+      (ratio * (sentence.length + 1)).round() -
+      2 -
+      jsonEncode(of(_explanation)).length;
+  final String filler = _filler * (pad ~/ _filler.length + 1);
+  return jsonEncode(
+    of('$_explanation${filler.substring(0, pad.clamp(0, filler.length))}'),
+  );
+}
 
 /// Réponse complète (non coupée) du fournisseur factice à [request] : une
-/// correction par phrase de [sentences] présente dans la requête, ~250
-/// caractères chacune, soit ~2,5 caractères de réponse par caractère de
-/// transcription. Ignore toute consigne « at most N » (un petit modèle la
-/// suit mal) : seul un lot assez court tient dans la réponse.
-String fullCoachAnswer(LlmChatRequest request, List<String> sentences) {
+/// correction par phrase de [sentences] présente dans la requête, soit
+/// ~[answerCharsPerChar] caractères de réponse par caractère de
+/// transcription. Ignore toute consigne « at most N » (le vrai l'ignore,
+/// mesuré) : seul un lot assez court tient dans la réponse.
+String fullCoachAnswer(
+  LlmChatRequest request,
+  List<String> sentences, {
+  double answerCharsPerChar = kMeasuredAnswerCharsPerChar,
+}) {
   final String sent = requestText(request);
   final String corrections = <String>[
     for (final String s in sentences)
-      if (sent.contains(s)) _correction(s),
+      if (sent.contains(s)) _correction(s, answerCharsPerChar),
   ].join(', ');
   return '{"overall": "Niveau intermédiaire : à l\'aise à l\'oral, accords '
       'des verbes à revoir.", "corrections": [$corrections]}';
@@ -71,13 +104,25 @@ String fullCoachAnswer(LlmChatRequest request, List<String> sentences) {
 
 /// Fournisseur qui se comporte comme le vrai sur une réunion dense :
 /// [fullCoachAnswer], coupée à [kProviderAnswerCutChars] caractères quand
-/// elle est plus longue (limite de jetons atteinte).
-ScriptedLlmProvider tokenLimitedCoach(List<String> sentences) =>
-    ScriptedLlmProvider((LlmChatRequest r, int i) {
-      final String full = fullCoachAnswer(r, sentences);
-      return Stream<String>.value(
-        full.length <= kProviderAnswerCutChars
-            ? full
-            : full.substring(0, kProviderAnswerCutChars),
-      );
-    });
+/// elle est plus longue (limite de jetons atteinte). Une requête qui porte
+/// [unreadableWith] reçoit toujours une réponse coupée, si courte soit-elle
+/// (phrase que le modèle ne sait pas traiter).
+ScriptedLlmProvider tokenLimitedCoach(
+  List<String> sentences, {
+  double answerCharsPerChar = kMeasuredAnswerCharsPerChar,
+  String? unreadableWith,
+}) => ScriptedLlmProvider((LlmChatRequest r, int i) {
+  final String full = fullCoachAnswer(
+    r,
+    sentences,
+    answerCharsPerChar: answerCharsPerChar,
+  );
+  if (unreadableWith != null && requestText(r).contains(unreadableWith)) {
+    return Stream<String>.value(full.substring(0, full.length ~/ 2));
+  }
+  return Stream<String>.value(
+    full.length <= kProviderAnswerCutChars
+        ? full
+        : full.substring(0, kProviderAnswerCutChars),
+  );
+});

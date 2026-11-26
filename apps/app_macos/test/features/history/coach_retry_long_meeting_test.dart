@@ -139,6 +139,49 @@ void main() {
     },
   );
 
+  test(
+    'locuteur plus dense (chaque lot rend une réponse coupée) : Réessayer '
+    'coupe les lots illisibles en deux et répare la note, sans erreur',
+    () async {
+      final List<TranscriptSegmentEntity> meeting = denseMicMeeting(116);
+      final List<TranscriptSegmentEntity> analyzed = meeting.sublist(0, 26);
+      final List<TranscriptSegmentEntity> unanalyzed = meeting.sublist(26);
+      final (
+        ProviderContainer c,
+        SessionDetailViewModelProvider note,
+      ) = await openNote(
+        meeting,
+        analyzed: analyzed,
+        unanalyzed: unanalyzed,
+        provider: tokenLimitedCoach(<String>[
+          for (final TranscriptSegmentEntity s in meeting) s.text,
+        ], answerCharsPerChar: kDenserSpeakerAnswerCharsPerChar),
+      );
+
+      await c.read(note.notifier).retryUnanalyzed();
+
+      final SessionDetailState s = c.read(note).value!;
+      expect(s.feedbackError, isNull, reason: 'erreur affichée sur la note');
+      expect(
+        s.feedback?.unanalyzedSegmentIds,
+        isEmpty,
+        reason:
+            '${s.feedback?.unanalyzedSegmentIds.length}/${unanalyzed.length} '
+            'phrases non analysées',
+      );
+      expect(
+        s.feedback?.corrections
+            .map((EnglishCorrectionEntity x) => x.original)
+            .toSet(),
+        <String>{
+          for (final TranscriptSegmentEntity x in meeting)
+            coachOriginalOf(x.text),
+        },
+      );
+      expect(llm.requests.length, lessThanOrEqualTo(2 * unanalyzed.length));
+    },
+  );
+
   test('Réessayer ne renvoie que les phrases non analysées', () async {
     final List<TranscriptSegmentEntity> meeting = denseMicMeeting(6);
     final List<TranscriptSegmentEntity> analyzed = <TranscriptSegmentEntity>[

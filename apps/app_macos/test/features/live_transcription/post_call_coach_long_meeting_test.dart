@@ -35,14 +35,26 @@ class _LiveVm extends LiveTranscriptionViewModel {
 /// le vrai ([tokenLimitedCoach]), le retour rangé dans la note couvre
 /// chaque phrase de l'utilisateur, aucune n'est notée non analysée.
 void main() {
-  test('~9 k caractères au micro : le retour rangé a une correction par '
-      'phrase, aucune phrase non analysée', () async {
+  for (final (String speaker, double ratio) in <(String, double)>[
+    ('au ratio mesuré', kMeasuredAnswerCharsPerChar),
+    (
+      'locuteur plus dense (lots illisibles coupés en deux)',
+      kDenserSpeakerAnswerCharsPerChar,
+    ),
+  ]) {
+    _longMeeting(speaker, ratio);
+  }
+}
+
+void _longMeeting(String speaker, double ratio) {
+  test('$speaker, ~9 k caractères au micro : le retour rangé a une '
+      'correction par phrase, aucune phrase non analysée', () async {
     resetPrefs();
     final AppDatabase db = memoryDatabase();
     final List<TranscriptSegmentEntity> meeting = denseMicMeeting(90);
     final ScriptedLlmProvider llm = tokenLimitedCoach(<String>[
       for (final TranscriptSegmentEntity s in meeting) s.text,
-    ]);
+    ], answerCharsPerChar: ratio);
     final ProviderContainer c = ProviderContainer(
       overrides: <Override>[
         ...localModelOverrides(db, InstantOllamaService(installed: true)),
@@ -80,6 +92,7 @@ void main() {
       await c.read(summaryServiceProvider).getSummaryForSession('s1'),
     ).feedback;
     expect(llm.requests, isNotEmpty);
+    expect(llm.requests.length, lessThanOrEqualTo(2 * meeting.length));
     expect(
       stored?.unanalyzedSegmentIds,
       isEmpty,

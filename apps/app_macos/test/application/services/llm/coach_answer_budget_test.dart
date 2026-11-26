@@ -46,32 +46,64 @@ void main() {
   int micChars(List<TranscriptSegmentEntity> meeting) =>
       textsOf(meeting).join('\n').length;
 
-  test('prémisse du fournisseur factice : un lot de la taille d\'aujourd\'hui '
-      'est coupé, un lot de ~3 000 caractères tient avec de la marge', () {
-    final List<String> all = textsOf(denseMicMeeting(200));
-    String answerFor(int chars) {
-      final List<String> batch = <String>[];
-      for (final String s in all) {
-        if (batch.join('\n').length + s.length + 1 > chars) break;
-        batch.add(s);
-      }
-      return fullCoachAnswer(
-        LlmChatRequest(
-          systemPrompt: '',
-          messages: <LlmMessage>[
-            LlmMessage(role: LlmRole.user, content: batch.join('\n')),
-          ],
-          maxTokens: kLlmAnswerMaxTokens,
-        ),
-        all,
-      );
-    }
+  final List<String> all = textsOf(denseMicMeeting(200));
 
-    expect(answerFor(9300).length, greaterThan(kProviderAnswerCutChars));
+  /// Réponse complète du factice à un lot des premières phrases de [all]
+  /// tenant en [chars] caractères.
+  String answerFor(int chars, {double ratio = kMeasuredAnswerCharsPerChar}) {
+    final List<String> batch = <String>[];
+    for (final String s in all) {
+      if (batch.join('\n').length + s.length + 1 > chars) break;
+      batch.add(s);
+    }
+    return fullCoachAnswer(
+      LlmChatRequest(
+        systemPrompt: '',
+        messages: <LlmMessage>[
+          LlmMessage(role: LlmRole.user, content: batch.join('\n')),
+        ],
+        maxTokens: kLlmAnswerMaxTokens,
+      ),
+      all,
+      answerCharsPerChar: ratio,
+    );
+  }
+
+  test('prémisse du fournisseur factice, au ratio mesuré (~5) : ~1 450 '
+      'caractères donnent ~7 300 caractères de réponse ; le lot du coach '
+      'tient ; 3 500 et 9 300 caractères sont coupés', () {
+    expect(answerFor(1450).length, inInclusiveRange(6500, 8200));
     expect(
-      answerFor(3000).length,
-      lessThan(kProviderAnswerCutChars ~/ 2),
-      reason: '3 000 caractères doivent tenir deux fois',
+      answerFor(kCoachBatchChars).length,
+      lessThan(kProviderAnswerCutChars),
+    );
+    expect(
+      answerFor(3500).length,
+      greaterThan(kProviderAnswerCutChars),
+      reason: 'des lots au-delà de ~3 200 caractères feraient couper',
+    );
+    expect(answerFor(9300).length, greaterThan(kProviderAnswerCutChars));
+  });
+
+  test('prémisse du locuteur plus dense (~12) : un lot de 1 500 caractères '
+      'rend une réponse coupée, illisible ; sa moitié et une phrase seule '
+      'se lisent', () {
+    String cut(String full) => full.length <= kProviderAnswerCutChars
+        ? full
+        : full.substring(0, kProviderAnswerCutChars);
+    const double dense = kDenserSpeakerAnswerCharsPerChar;
+
+    expect(
+      () => parseFeedback(cut(answerFor(1500, ratio: dense))),
+      throwsA(isA<LlmMalformedAnswerException>()),
+    );
+    expect(
+      parseFeedback(cut(answerFor(750, ratio: dense))).corrections,
+      isNotEmpty,
+    );
+    expect(
+      parseFeedback(cut(answerFor(110, ratio: dense))).corrections,
+      hasLength(1),
     );
   });
 
@@ -167,8 +199,9 @@ void main() {
       expect(feedback.corrections, hasLength(3));
     });
 
-    test('longue réunion : chaque phrase de l\'utilisateur part dans '
-        'exactement une requête, et dans exactement un lot', () async {
+    test('longue réunion au ratio mesuré : aucune réponse coupée, donc '
+        'chaque phrase de l\'utilisateur part dans exactement une requête, '
+        'et dans exactement un lot', () async {
       final List<TranscriptSegmentEntity> meeting = denseMicMeeting(125);
       final ScriptedLlmProvider llm = tokenLimitedCoach(textsOf(meeting));
 
@@ -188,5 +221,100 @@ void main() {
         for (final TranscriptSegmentEntity s in meeting) s.id,
       ]);
     });
+  });
+
+  /// Besoin : un lot dont la réponse est illisible (coupée, mal formée) et
+  /// qui a plus d'une phrase est coupé en deux, chaque moitié renvoyée (et
+  /// ainsi de suite) : chaque phrase finit analysée. Une phrase seule qui
+  /// échoue encore reste non analysée ; le nombre de requêtes est borné
+  /// (≤ 2 × phrases : arbre binaire complet au pire).
+  group('lot à la réponse illisible : coupé en deux et renvoyé', () {
+    test('locuteur plus dense, ~12,5 k caractères : chaque phrase analysée, '
+        'aucune erreur, requêtes ≤ 2 × phrases', () async {
+      final List<TranscriptSegmentEntity> meeting = denseMicMeeting(125);
+      final ScriptedLlmProvider llm = tokenLimitedCoach(
+        textsOf(meeting),
+        answerCharsPerChar: kDenserSpeakerAnswerCharsPerChar,
+      );
+
+      final EnglishFeedbackEntity feedback = await coachMeeting(llm, meeting);
+
+      expect(
+        feedback.unanalyzedSegmentIds,
+        isEmpty,
+        reason:
+            '${feedback.unanalyzedSegmentIds.length}/${meeting.length} '
+            'phrases non analysées en ${llm.requests.length} requêtes',
+      );
+      expect(
+        feedback.corrections
+            .map((EnglishCorrectionEntity c) => c.original)
+            .toSet(),
+        <String>{for (final String s in textsOf(meeting)) coachOriginalOf(s)},
+      );
+      expect(llm.requests.length, lessThanOrEqualTo(2 * meeting.length));
+      expect(
+        llm.requests.length,
+        lessThanOrEqualTo(3 * coachBatches(meeting).length),
+        reason:
+            'chaque moitié tient : un lot illisible coûte au plus 3 '
+            'requêtes (lui, puis ses deux moitiés), pas une par phrase',
+      );
+    });
+
+    test('une phrase que le modèle ne sait jamais traiter : elle seule reste '
+        'non analysée, les autres de son lot sont corrigées, sans erreur, '
+        'requêtes ≤ 2 × phrases', () async {
+      final List<TranscriptSegmentEntity> meeting = denseMicMeeting(30);
+      final TranscriptSegmentEntity poison = meeting[7];
+      final ScriptedLlmProvider llm = tokenLimitedCoach(
+        textsOf(meeting),
+        unreadableWith: poison.text,
+      );
+
+      final EnglishFeedbackEntity feedback = await coachMeeting(llm, meeting);
+
+      expect(feedback.unanalyzedSegmentIds, <String>[poison.id]);
+      expect(
+        feedback.corrections
+            .map((EnglishCorrectionEntity c) => c.original)
+            .toSet(),
+        <String>{
+          for (final TranscriptSegmentEntity s in meeting)
+            if (s.id != poison.id) coachOriginalOf(s.text),
+        },
+      );
+      expect(llm.requests.length, lessThanOrEqualTo(2 * meeting.length));
+    });
+
+    test('modèle toujours illisible : la passe se termine, requêtes ≤ 2 × '
+        'phrases, l\'erreur « illisible » remonte (tout a échoué)', () async {
+      final List<TranscriptSegmentEntity> meeting = denseMicMeeting(30);
+      final ScriptedLlmProvider llm = ScriptedLlmProvider(
+        (LlmChatRequest r, int i) => Stream<String>.value('{"overall": "Niv'),
+      );
+
+      await expectLater(
+        coachMeeting(llm, meeting),
+        throwsA(isA<LlmMalformedAnswerException>()),
+      );
+      expect(llm.requests.length, lessThanOrEqualTo(2 * meeting.length));
+    });
+
+    for (final (String name, LlmException error) in <(String, LlmException)>[
+      ('injoignable', const LlmUnreachableException('mistral')),
+      ('limite de débit', const LlmRateLimitedException('mistral')),
+    ]) {
+      test('fournisseur $name (pas une réponse illisible) : le lot n\'est pas '
+          'coupé ni renvoyé', () async {
+        final List<TranscriptSegmentEntity> meeting = denseMicMeeting(30);
+        final ScriptedLlmProvider llm = ScriptedLlmProvider(
+          (LlmChatRequest r, int i) => Stream<String>.error(error),
+        );
+
+        await expectLater(coachMeeting(llm, meeting), throwsA(same(error)));
+        expect(llm.requests, hasLength(coachBatches(meeting).length));
+      });
+    }
   });
 }
