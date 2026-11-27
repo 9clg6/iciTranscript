@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ici_transcript/features/shared/presentation/widgets/coach_feedback.widget.dart';
 
+import '../../fixtures/coach_scale_feedback.dart';
 import '../../helpers/localized_app.dart';
 
 /// Coach anglais plus riche (PR 1 : présentation seule).
@@ -348,6 +349,118 @@ void main() {
       );
     });
 
+    group('un groupe replié le reste quand le retour change', () {
+      // Revue PR #40 : l'état replié doit suivre son type, pas sa place.
+      // Même vue, nouveau retour (après « Réessayer » ou un lot suivant).
+      final EnglishFeedbackEntity before = EnglishFeedbackEntity(
+        corrections: <EnglishCorrectionEntity>[
+          fix(
+            'Looking forward to meet you',
+            'Looking forward to meeting you',
+            'expression',
+          ),
+        ],
+      );
+
+      /// Une seule vue, dont le retour change sans la remonter.
+      Future<ValueNotifier<EnglishFeedbackEntity>> pumpLive(
+        WidgetTester tester,
+      ) async {
+        final ValueNotifier<EnglishFeedbackEntity> live =
+            ValueNotifier<EnglishFeedbackEntity>(before);
+        addTearDown(live.dispose);
+        await pumpLocalized(
+          tester,
+          Theme(
+            data: buildOatsTheme(Brightness.light),
+            child: SingleChildScrollView(
+              child: ValueListenableBuilder<EnglishFeedbackEntity>(
+                valueListenable: live,
+                builder:
+                    (
+                      BuildContext context,
+                      EnglishFeedbackEntity f,
+                      Widget? child,
+                    ) => CoachFeedbackView(feedback: f),
+              ),
+            ),
+          ),
+          size: const Size(1280, 2600),
+        );
+        return live;
+      }
+
+      Future<void> collapse(WidgetTester tester, String name) async {
+        await tester.tapAt(globalRect(header(name).evaluate().single).center);
+        await tester.pumpAndSettle();
+        expect(headerData(name).flagsCollection.isExpanded, Tristate.isFalse);
+      }
+
+      testWidgets('un type ajouté AVANT le groupe replié : Expression reste '
+          'repliée, Grammaire arrive ouverte', (WidgetTester tester) async {
+        final ValueNotifier<EnglishFeedbackEntity> live = await pumpLive(
+          tester,
+        );
+        final String e = label('expression');
+        final String g = label('grammar');
+        await collapse(tester, e);
+
+        live.value = EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[
+            ...before.corrections,
+            fix('I am agree with Paul', 'I agree with Paul', 'grammar'),
+          ],
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          headerData(e).flagsCollection.isExpanded,
+          Tristate.isFalse,
+          reason: 'Expression repliée par l\'utilisateur',
+        );
+        expect(
+          find.textContaining('Looking forward to meet you').hitTestable(),
+          findsNothing,
+        );
+        expect(
+          headerData(g).flagsCollection.isExpanded,
+          Tristate.isTrue,
+          reason: 'Grammaire, nouveau, ouvert par défaut',
+        );
+        expect(
+          find.textContaining('I am agree with Paul').hitTestable(),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('témoin : un type ajouté APRÈS le groupe replié, Expression '
+          'reste repliée', (WidgetTester tester) async {
+        final ValueNotifier<EnglishFeedbackEntity> live = await pumpLive(
+          tester,
+        );
+        final String e = label('expression');
+        await collapse(tester, e);
+
+        live.value = EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[
+            ...before.corrections,
+            fix('We must take a choice', 'We must make a choice', 'vocabulary'),
+          ],
+        );
+        await tester.pumpAndSettle();
+
+        expect(headerData(e).flagsCollection.isExpanded, Tristate.isFalse);
+        expect(
+          headerData(label('vocabulary')).flagsCollection.isExpanded,
+          Tristate.isTrue,
+        );
+        expect(
+          find.textContaining('We must take a choice').hitTestable(),
+          findsOneWidget,
+        );
+      });
+    });
+
     testWidgets('l\'heure dans la note reste sur sa correction', (
       WidgetTester tester,
     ) async {
@@ -541,8 +654,47 @@ void main() {
     Finder inSection(Pattern p) =>
         find.descendant(of: section, matching: find.textContaining(p));
 
-    testWidgets('tiré des corrections vocabulaire et expression : la '
-        'tournure corrigée et son explication', (WidgetTester tester) async {
+    /// Tout le texte lu de la section, dans l'ordre de l'arbre.
+    String sectionText(WidgetTester tester) => tester
+        .widgetList<RichText>(
+          find.descendant(of: section, matching: find.byType(RichText)),
+        )
+        .map((RichText r) => r.text.toPlainText())
+        .join('\n');
+
+    /// [term] en mots entiers (casse comprise), à partir de [from].
+    int termAt(String text, String term, int from) {
+      final RegExpMatch? m = RegExp(
+        '(?<![A-Za-z\'])${RegExp.escape(term)}(?![A-Za-z\'])',
+      ).firstMatch(text.substring(from));
+      return m == null ? -1 : m.start + from;
+    }
+
+    /// Chaque terme puis son explication, dans cet ordre, sous la section.
+    void expectItemsInOrder(String text, List<(String, String)> items) {
+      int from = 0;
+      for (final (String term, String explanation) in items) {
+        final int t = termAt(text, term, from);
+        expect(t, isNonNegative, reason: '« $term » après $from : « $text »');
+        final int x = text.indexOf(explanation, t + term.length);
+        expect(
+          x,
+          isNonNegative,
+          reason: 'explication de « $term » après lui : « $text »',
+        );
+        from = x + explanation.length;
+      }
+    }
+
+    // Revue PR #40 (vocabulaire à l'échelle réelle) : le terme d'une
+    // tournure est fait des MOTS AJOUTÉS par la correction (diff mot à mot,
+    // joints par des espaces ; la tournure corrigée entière si rien n'est
+    // ajouté), puis l'explication ; 8 au plus ; sans doublon (casse près) ;
+    // dans l'ordre d'apparition.
+    testWidgets('tiré des corrections vocabulaire et expression : les mots '
+        'ajoutés puis l\'explication, pas la phrase entière', (
+      WidgetTester tester,
+    ) async {
       await pumpCoach(
         tester,
         EnglishFeedbackEntity(
@@ -554,16 +706,16 @@ void main() {
               explanation: 'Verbe sans « am ».',
             ),
             fix(
-              'take a decision',
-              'make a decision',
-              'vocabulary',
-              explanation: 'On dit « make a decision ».',
-            ),
-            fix(
               'Looking forward to meet you',
               'Looking forward to meeting you',
               'expression',
               explanation: '« to » suivi de -ing.',
+            ),
+            fix(
+              'take a decision',
+              'make a decision',
+              'vocabulary',
+              explanation: 'On dit « make a decision ».',
             ),
           ],
         ),
@@ -571,30 +723,86 @@ void main() {
 
       expect(find.text(title), findsOneWidget);
       expect(section, findsOneWidget);
-      expect(inSection('make a decision'), findsWidgets);
-      expect(inSection('On dit « make a decision ».'), findsOneWidget);
-      expect(inSection('Looking forward to meeting you'), findsOneWidget);
-      expect(inSection('« to » suivi de -ing.'), findsOneWidget);
+      final String text = sectionText(tester);
+      expectItemsInOrder(text, <(String, String)>[
+        ('meeting', '« to » suivi de -ing.'),
+        ('make', 'On dit « make a decision ».'),
+      ]);
+      expect(
+        inSection('Looking forward to meeting you'),
+        findsNothing,
+        reason: 'compact : les mots ajoutés, pas la phrase',
+      );
       expect(inSection('I agree with Paul'), findsNothing, reason: 'grammaire');
       expect(inSection('Verbe sans « am ».'), findsNothing);
     });
 
-    testWidgets('une même tournure (casse près) ne revient qu\'une fois', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('plusieurs mots ajoutés : joints par des espaces, qu\'ils se '
+        'suivent ou non', (WidgetTester tester) async {
       await pumpCoach(
         tester,
         EnglishFeedbackEntity(
           corrections: <EnglishCorrectionEntity>[
             fix(
-              'take a decision',
-              'make a decision',
+              'Send me the slides until Friday evening',
+              'Send me the final slides by Friday evening',
+              'expression',
+              explanation: 'Échéance : « by ».',
+            ),
+            fix(
+              'Can we touch base tomorrow',
+              'Can we catch up tomorrow',
               'vocabulary',
+              explanation: 'Faire le point.',
+            ),
+          ],
+        ),
+      );
+
+      expectItemsInOrder(sectionText(tester), <(String, String)>[
+        ('final by', 'Échéance : « by ».'),
+        ('catch up', 'Faire le point.'),
+      ]);
+      expect(inSection('Can we catch up tomorrow'), findsNothing);
+      expect(inSection('Send me the final slides'), findsNothing);
+    });
+
+    testWidgets('rien d\'ajouté (seulement des mots retirés) : la tournure '
+        'corrigée entière', (WidgetTester tester) async {
+      await pumpCoach(
+        tester,
+        EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[
+            fix(
+              'We discussed about the roadmap',
+              'We discussed the roadmap',
+              'expression',
+              explanation: 'Sans « about ».',
+            ),
+          ],
+        ),
+      );
+
+      expectItemsInOrder(sectionText(tester), <(String, String)>[
+        ('We discussed the roadmap', 'Sans « about ».'),
+      ]);
+    });
+
+    testWidgets('un même terme (casse près) ne revient qu\'une fois : le '
+        'premier', (WidgetTester tester) async {
+      await pumpCoach(
+        tester,
+        EnglishFeedbackEntity(
+          corrections: <EnglishCorrectionEntity>[
+            fix(
+              'Do the call now',
+              'Make the call now',
+              'expression',
               explanation: 'Première.',
             ),
             fix(
-              'do a decision',
-              'Make a Decision',
+              'We must take a decision',
+              'We must make a decision',
               'vocabulary',
               explanation: 'Seconde.',
             ),
@@ -602,19 +810,20 @@ void main() {
         ),
       );
 
-      final List<String> texts = tester
-          .widgetList<RichText>(
-            find.descendant(of: section, matching: find.byType(RichText)),
-          )
-          .map((RichText r) => r.text.toPlainText().toLowerCase())
-          .where(
-            (String t) => t.contains('make a decision') && !t.contains('«'),
-          )
-          .toList();
-      expect(texts, hasLength(1), reason: '$texts');
+      final String text = sectionText(tester);
+      expectItemsInOrder(text, <(String, String)>[('Make', 'Première.')]);
+      expect(text, isNot(contains('Seconde.')), reason: text);
+      expect(
+        RegExp(
+          r'(?<![A-Za-z])make(?![A-Za-z])',
+          caseSensitive: false,
+        ).allMatches(text).length,
+        1,
+        reason: text,
+      );
       // Les deux corrections restent dans leur groupe.
-      expect(find.textContaining('take a decision'), findsOneWidget);
-      expect(find.textContaining('do a decision'), findsOneWidget);
+      expect(find.textContaining('We must take a decision'), findsOneWidget);
+      expect(find.textContaining('Do the call now'), findsOneWidget);
     });
 
     testWidgets('une correction identique à l\'original n\'y est pas', (
@@ -630,11 +839,74 @@ void main() {
         ),
       );
 
-      expect(inSection('make a decision'), findsWidgets);
+      expect(termAt(sectionText(tester), 'make', 0), isNonNegative);
       expect(
         inSection(RegExp('on the other hand', caseSensitive: false)),
         findsNothing,
       );
+    });
+
+    test('la note à l\'échelle réelle : 68 corrections (27 / 19 / 16 / 6), '
+        '5 sans heure', () {
+      int count(String category) => kCoachScaleFeedback.corrections
+          .where((EnglishCorrectionEntity c) => c.category == category)
+          .length;
+      expect(kCoachScaleFeedback.corrections, hasLength(68));
+      expect(count('grammar'), 27);
+      expect(count('expression'), 19);
+      expect(count('vocabulary'), 16);
+      expect(count('conjugation'), 6);
+      expect(
+        kCoachScaleFeedback.corrections.where(
+          (EnglishCorrectionEntity c) => c.timestampMs == null,
+        ),
+        hasLength(5),
+      );
+    });
+
+    testWidgets('à l\'échelle réelle (35 tournures) : 8 au plus, dans '
+        'l\'ordre de la réunion, un doublon ne prend pas de place', (
+      WidgetTester tester,
+    ) async {
+      await pumpCoach(tester, kCoachScaleFeedback);
+
+      final String text = sectionText(tester);
+      // Les 8 premiers termes distincts, dans l'ordre de la note
+      // (vocabulaire et expression mêlés) ; « Make » (6e tournure, 11e
+      // correction) doublonne « make » et ne prend pas de place.
+      final List<(String, String)> shown = <(String, String)>[
+        ('lend', '« borrow » = emprunter ; prêter se dit autrement.'),
+        ('seeing', '« look forward to » est suivi de la forme en -ing.'),
+        ('make', 'Une décision se « fait » en anglais.'),
+        (
+          'We discussed the roadmap',
+          '« discuss » se construit sans « about ».',
+        ),
+        ('fun', '« funny » veut dire drôle, pas agréable.'),
+        ('attend', 'Faux ami : « assist » veut dire aider.'),
+        ('tea', 'L\'expression anglaise parle de thé.'),
+        ('schedule', '« planning » n\'est pas un calendrier en anglais.'),
+      ];
+      expectItemsInOrder(text, shown);
+      final Set<String> kept = <String>{
+        for (final (String _, String x) in shown) x,
+      };
+      for (final EnglishCorrectionEntity c in kCoachScaleFeedback.corrections) {
+        if (c.category != 'vocabulary' && c.category != 'expression') continue;
+        if (kept.contains(c.explanation)) continue;
+        expect(
+          text,
+          isNot(contains(c.explanation)),
+          reason: 'au-delà des 8 ou doublon : « ${c.corrected} »',
+        );
+      }
+      for (final String phrase in <String>[
+        'Can you lend me your charger',
+        'I look forward to seeing you there',
+        'This is not my cup of tea',
+      ]) {
+        expect(text, isNot(contains(phrase)), reason: 'compact : $phrase');
+      }
     });
 
     testWidgets('ni vocabulaire ni expression : pas de section', (

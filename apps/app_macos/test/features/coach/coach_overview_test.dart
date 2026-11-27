@@ -99,6 +99,16 @@ void main() {
         explanation: 'Raison.',
       );
 
+  /// Une « correction » dont la meilleure tournure est celle qui a été dite
+  /// (espaces et casse près) : la vue de la note ne la montre ni ne la
+  /// compte ; la page non plus (revue PR #40, une seule règle).
+  EnglishCorrectionEntity same(String category) => EnglishCorrectionEntity(
+    original: 'We are ready to start',
+    corrected: ' we are READY to start ',
+    category: category,
+    explanation: 'Déjà correct.',
+  );
+
   final SessionEntity budget = note('budget', 'Point budget', 10);
   final SessionEntity produit = note('produit', 'Revue produit', 14);
   final SessionEntity design = note('design', 'Atelier design', 18);
@@ -301,6 +311,73 @@ void main() {
     expect(find.text('coach.empty'.tr()), findsNothing);
   });
 
+  group('correction identique à l\'original (même règle que la note)', () {
+    testWidgets('pas comptée dans le nombre de la note', (
+      WidgetTester tester,
+    ) async {
+      stored = <String, String?>{
+        design.id: envelope(
+          EnglishFeedbackEntity(
+            corrections: <EnglishCorrectionEntity>[
+              fix('grammar', 1),
+              same('expression'),
+              fix('vocabulary', 2),
+            ],
+          ),
+        ),
+      };
+      await pumpApp(tester, <SessionEntity>[design]);
+
+      await openCoachPage(tester);
+
+      expect(find.text('Atelier design'), findsOneWidget);
+      expect(find.text('coach.corrections'.plural(2)), findsOneWidget);
+      expect(find.text('coach.corrections'.plural(3)), findsNothing);
+    });
+
+    testWidgets('toutes identiques : « Aucune correction », sous les notes '
+        'corrigées du même jour', (WidgetTester tester) async {
+      SessionEntity at(String id, String title, int hour) => SessionEntity(
+        id: id,
+        title: title,
+        createdAt: DateTime(2026, 11, 18, hour),
+        updatedAt: DateTime(2026, 11, 18, hour),
+        durationSeconds: 1800,
+        status: SessionStatus.completed,
+      );
+      // La note « sans vraie correction » est la plus récente du jour.
+      final SessionEntity identique = at('design', 'Atelier design', 15);
+      final SessionEntity corrigee = at('produit', 'Revue produit', 9);
+      stored = <String, String?>{
+        identique.id: envelope(
+          EnglishFeedbackEntity(
+            corrections: <EnglishCorrectionEntity>[
+              same('grammar'),
+              same('vocabulary'),
+            ],
+          ),
+        ),
+        corrigee.id: envelope(
+          EnglishFeedbackEntity(
+            corrections: <EnglishCorrectionEntity>[fix('grammar')],
+          ),
+        ),
+      };
+      await pumpApp(tester, <SessionEntity>[corrigee, identique]);
+
+      await openCoachPage(tester);
+
+      expect(find.text('coach.no_correction'.tr()), findsOneWidget);
+      expect(find.text('coach.corrections'.plural(2)), findsNothing);
+      expect(find.text('coach.corrections'.plural(1)), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Revue produit')).dy,
+        lessThan(tester.getTopLeft(find.text('Atelier design')).dy),
+        reason: 'dans un jour, les notes corrigées d\'abord',
+      );
+    });
+  });
+
   testWidgets('note sans phrase anglaise de l\'utilisateur (passe faite) : '
       'figure avec « rien en anglais à analyser », pas « Aucune correction »', (
     WidgetTester tester,
@@ -447,6 +524,37 @@ void main() {
       expect(find.text('coach.category.grammar'.tr()), findsOneWidget);
       expect(find.text('coach.recurring.notes'.plural(3)), findsOneWidget);
       expect(find.text('coach.recurring.notes'.plural(2)), findsNothing);
+    });
+
+    testWidgets('une note où la catégorie n\'a qu\'une correction identique '
+        'ne compte pas : 2 notes, pas de section', (WidgetTester tester) async {
+      stored = <String, String?>{
+        budget.id: envelope(
+          EnglishFeedbackEntity(
+            corrections: <EnglishCorrectionEntity>[fix('grammar', 1)],
+          ),
+        ),
+        produit.id: envelope(
+          EnglishFeedbackEntity(
+            corrections: <EnglishCorrectionEntity>[fix('grammar', 2)],
+          ),
+        ),
+        design.id: envelope(
+          EnglishFeedbackEntity(
+            corrections: <EnglishCorrectionEntity>[
+              same('grammar'),
+              fix('vocabulary', 3),
+            ],
+          ),
+        ),
+      };
+      await pumpApp(tester, <SessionEntity>[budget, produit, design]);
+
+      await openCoachPage(tester);
+
+      expect(find.text('Atelier design'), findsOneWidget);
+      expect(find.text('coach.recurring.title'.tr()), findsNothing);
+      expect(find.text('coach.recurring.notes'.plural(3)), findsNothing);
     });
 
     testWidgets('aucune catégorie dans 3 notes : pas de section', (
