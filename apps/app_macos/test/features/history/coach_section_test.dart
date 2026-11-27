@@ -575,5 +575,60 @@ void main() {
       expect(find.textContaining('« agree » est un verbe.'), findsOneWidget);
       expect(unanalyzed(), findsNothing);
     });
+
+    testWidgets('note déjà rangée, rouverte : bilan par type et vocabulaire '
+        'à retenir, sans relancer le coach', (WidgetTester tester) async {
+      Map<String, String> fix(String o, String c, String category) =>
+          <String, String>{
+            'original': o,
+            'corrected': c,
+            'category': category,
+            'explanation': 'Explication courte.',
+          };
+      await seed(
+        tester,
+        segments: meeting,
+        rawStored: jsonEncode(<String, Object?>{
+          'summary': 'Résumé.',
+          'feedback': <String, Object?>{
+            'overall': 'Bon niveau.',
+            'corrections': <Map<String, String>>[
+              fix('I am agree', 'I agree', 'grammar'),
+              fix('take a decision', 'make a decision', 'vocabulary'),
+              fix('He have sent', 'He has sent', 'grammar'),
+            ],
+          },
+          'micText': null,
+          'speakers': <Object>[],
+        }),
+        replyFor: (_) => ok(feedbackJson(<(String, String)>[])),
+      );
+
+      await open(tester);
+
+      final String recap = tester
+          .widgetList<RichText>(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('coach-recap')),
+              matching: find.byType(RichText),
+            ),
+          )
+          .map((RichText r) => r.text.toPlainText())
+          .join(' ');
+      expect(
+        recap,
+        matches(
+          RegExp('${coachCategoryLabel('grammar')}[^0-9]*(?<!\\d)2(?!\\d)'),
+        ),
+      );
+      expect(
+        recap,
+        matches(
+          RegExp('${coachCategoryLabel('vocabulary')}[^0-9]*(?<!\\d)1(?!\\d)'),
+        ),
+      );
+      expect(find.text('⟦Vocabulaire à retenir⟧'), findsOneWidget);
+      expect(http.requests, isEmpty);
+    });
   });
 }

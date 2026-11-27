@@ -1,3 +1,4 @@
+import 'package:core_domain/domain/entities/english_feedback.entity.dart';
 import 'package:core_presentation/core_presentation.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -84,7 +85,7 @@ class CoachOverviewScreen extends ConsumerWidget {
           ),
         );
       }
-      final int count = n.feedback.corrections.length;
+      final int count = n.feedback.meaningfulCorrections.length;
       days.add(
         OatsListRow(
           title: n.session.title,

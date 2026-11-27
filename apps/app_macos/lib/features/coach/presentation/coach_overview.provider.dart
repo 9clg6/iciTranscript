@@ -58,8 +58,8 @@ CoachOverview buildCoachOverview(List<CoachNote> notes) {
         b.session.createdAt,
       ).compareTo(dayOf(a.session.createdAt));
       if (byDay != 0) return byDay;
-      final bool aHas = a.feedback.corrections.isNotEmpty;
-      final bool bHas = b.feedback.corrections.isNotEmpty;
+      final bool aHas = a.feedback.meaningfulCorrections.isNotEmpty;
+      final bool bHas = b.feedback.meaningfulCorrections.isNotEmpty;
       if (aHas != bHas) return aHas ? -1 : 1;
       return b.session.createdAt.compareTo(a.session.createdAt);
     });
@@ -69,7 +69,7 @@ CoachOverview buildCoachOverview(List<CoachNote> notes) {
   final Map<String, String> shown = <String, String>{};
   for (final CoachNote n in notes) {
     final Map<String, String> categories = <String, String>{
-      for (final EnglishCorrectionEntity c in n.feedback.corrections)
+      for (final EnglishCorrectionEntity c in n.feedback.meaningfulCorrections)
         coachCategoryKey(c.category) ?? c.category.trim().toLowerCase():
             c.category,
     };
