@@ -241,11 +241,13 @@ class _CorrectionRow extends StatelessWidget {
       TextSpan(
         style: base,
         children: <InlineSpan>[
-          for (int i = 0; i < side.length; i++)
+          for (int i = 0; i < side.length; i++) ...<InlineSpan>[
+            if (i > 0) const TextSpan(text: ' '),
             TextSpan(
-              text: i < side.length - 1 ? '${side[i].text} ' : side[i].text,
+              text: side[i].text,
               style: side[i].kind == own ? highlight : null,
             ),
+          ],
         ],
       ),
     );
