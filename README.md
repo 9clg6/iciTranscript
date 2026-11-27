@@ -8,6 +8,16 @@
 
 Oats (formerly **iciTranscript**) captures your microphone and your Mac's system audio, transcribes both in real time, and keeps a complete transcript of every meeting. Transcription runs on your Mac with MLX models, or online with Mistral Voxtral when you pick it. Summaries and an English coach are optional. Oats keeps transcripts, not recordings.
 
+<p align="center">
+  <img src="design/screenshots/live.png" alt="A live meeting: the transcript on the left, a detected question and its suggested answer, with document sources, on the right">
+</p>
+
+| Home: upcoming meetings and notes | Note: summary and questions asked | English coach |
+|---|---|---|
+| ![Home page with upcoming calendar events and notes grouped by day](design/screenshots/home.png) | ![Note with a summary, decisions, next steps and answered questions](design/screenshots/note.png) | ![English coach corrections with explanations](design/screenshots/coach.png) |
+
+> The app interface is in French. Screenshots show made-up demo data.
+
 ---
 
 ## Features
@@ -16,12 +26,15 @@ Oats (formerly **iciTranscript**) captures your microphone and your Mac's system
   - **Sur ce Mac** (default): [voxmlx](https://github.com/T0mSIlver/voxmlx) on Apple Silicon MLX, nothing leaves your Mac
   - **Mistral (en ligne)**: [Voxtral](https://docs.mistral.ai/) realtime, no local transcription model, lighter on the Mac; needs a Mistral API key and online sending turned on (diarization stays on your Mac). Each note shows the estimated price of its Mistral transcription ("≈ 0,55 $"), from the audio actually sent
 - **Two audio sources, kept separate** — your microphone and the system audio (calls, videos) are two streams, so the note knows who said what ("Vous" vs. the other side)
+- **Live questions and suggested answers** — questions from the other side are detected during the meeting and answered from the conversation and your documents, with sources. With an online provider the answer comes by itself; with the local model you ask for it
+- **Calendar and call detection** — connect your macOS calendar to see upcoming meetings, link a note to an event, and get a prompt to start a note when a meeting begins or a call app (Zoom, Teams, Slack, a browser…) uses the microphone (call detection needs macOS 14). Notes can start automatically for calendar events
+- **Live translation** — translate sentences as they arrive (for example EN → FR), on your Mac with [Argos Translate](https://github.com/argosopentech/argos-translate); language packs are downloaded on first use
 - **No silent loss** — a passage that could not be transcribed live is marked in the note and transcribed again after the meeting; a full disk, a lost connection or a crash is shown, never hidden. Every sentence is in the note or under a visible marker
 - **Notes by day** — every meeting is listed on the home page, grouped by day, with search
 - **Speaker diarization** — after a meeting, remote participants are separated and labelled, up to 8 speakers, with NVIDIA Nemotron 3 Diarization on MLX ([nemotron-diar-mlx](https://github.com/9clg6/nemotron-diar-mlx)); the model (~400 MB) is downloaded on first use
 - **Dictation** — hold a shortcut (for example ⌥⌘ alone) and speak: the text is pasted into the app in front, or copied to the clipboard
 - **Menu bar panel** — note state and time, start / pause / stop, the last transcript lines and the current question, without opening the window; closing the window keeps a recording going
-- **Summaries and English coach (optional)** — a local [Mistral](https://mistral.ai) model via Ollama, installed from **Réglages › Modèle local** (Ollama ~106 MB + model ~4 GB), or an online provider. Long meetings are summarised in full, part by part
+- **Summaries and English coach (optional)** — a local [Mistral](https://mistral.ai) model via Ollama, installed from **Réglages › Modèle local** (Ollama ~106 MB + model ~4 GB), or an online provider. Long meetings are summarised in full, part by part. The coach corrects your English with an explanation, lists recurring mistakes across notes, and can run live during a meeting (online provider only)
 - **Online providers (optional, off by default)** — Mistral, Claude, OpenAI or Gemini with your own API key (stored in the macOS Keychain), once you turn on online sending in **Réglages**
 - **Documents** — add .txt, .md or .pdf files as sources for answers during your meetings; their text is indexed on your Mac
 - **Export** — copy a transcript or export it as Markdown to `~/Downloads/`
@@ -43,7 +56,7 @@ Oats (formerly **iciTranscript**) captures your microphone and your Mac's system
 
 ## Installation
 
-1. **Download** `Oats-vX.Y.Z.dmg` from [GitHub Releases](../../releases)
+1. **Get the DMG** — no Oats build is published yet (the files in [GitHub Releases](../../releases) are the older iciTranscript app). Build it from source with `make dmg` (see [Development](#development))
 2. **Drag** Oats into your Applications folder
 3. **Right-click › Open** on first launch (Gatekeeper warning — the app is ad-hoc signed)
 4. Grant **Microphone** and **Screen Recording** permissions when prompted (and **Accessibility** if you want dictation to paste)
@@ -83,6 +96,7 @@ packages/
   core_foundation/     — Logger, config, shared utilities
   core_presentation/   — Oats design tokens, theme and shared widgets
 design/logo/           — App, small and menu bar icons (SVG)
+design/screenshots/    — README screenshots (rendered by tool/render_screens.dart)
 ```
 
 ### Architecture
@@ -104,7 +118,7 @@ With the Mistral engine, no local server starts: each source streams to `wss://a
 - **Local engine (default)**: audio never leaves your Mac
 - **Mistral engine**: the speech of both sources is sent to Mistral while you record, and so are the passages transcribed again after a meeting and your dictations. To keep it out of model training, turn off "Data usage for improving our services" in admin.mistral.ai › Privacy
 - Online AI providers (Mistral, Claude, OpenAI, Gemini) are optional and off by default. Nothing is sent to them until you add a key and turn on online sending in Réglages
-- When online sending is on, the transcript text of a note (for a summary or the English coach) and excerpts of your documents are sent to the provider you chose; turn it off to keep everything on your Mac
+- When online sending is on, the transcript text (for a summary, the English coach or live answers) and excerpts of your documents are sent to the provider you chose; turn it off to keep everything on your Mac
 - API keys are stored in the macOS Keychain
 - No analytics, no crash reporting, no telemetry
 - Notes are stored locally in `~/Library/Application Support/IciTranscript/`
