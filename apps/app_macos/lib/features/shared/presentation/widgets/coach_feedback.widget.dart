@@ -26,12 +26,10 @@ class CoachFeedbackView extends StatelessWidget {
   Widget build(BuildContext context) {
     final Oats o = context.oats;
     final String? overall = feedback.overall;
-    final List<EnglishCorrectionEntity> corrections = <EnglishCorrectionEntity>[
-      for (final EnglishCorrectionEntity c in feedback.corrections)
-        if (!_isIdentical(c)) c,
-    ];
+    final List<EnglishCorrectionEntity> corrections =
+        feedback.meaningfulCorrections;
     final List<_CoachGroup> groups = _groupByCategory(corrections);
-    final List<EnglishCorrectionEntity> vocabulary = _vocabulary(groups);
+    final vocabulary = _vocabulary(corrections);
 
     final bool unanalyzed = feedback.unanalyzedSegmentIds.isNotEmpty;
 
@@ -66,7 +64,8 @@ class CoachFeedbackView extends StatelessWidget {
         if (corrections.isNotEmpty) ...<Widget>[
           _Recap(key: const ValueKey<String>('coach-recap'), groups: groups),
           const SizedBox(height: OatsSpace.md),
-          for (final _CoachGroup g in groups) _CollapsibleGroup(group: g),
+          for (final _CoachGroup g in groups)
+            _CollapsibleGroup(key: ValueKey<String>(g.key), group: g),
         ],
         if (vocabulary.isNotEmpty) ...<Widget>[
           const SizedBox(height: OatsSpace.lg),
@@ -79,10 +78,6 @@ class CoachFeedbackView extends StatelessWidget {
     );
   }
 }
-
-/// Une correction dont la meilleure tournure est celle qui a été dite.
-bool _isIdentical(EnglishCorrectionEntity c) =>
-    c.original.trim().toLowerCase() == c.corrected.trim().toLowerCase();
 
 /// Les corrections d'un même type, sous son libellé.
 class _CoachGroup {
@@ -125,18 +120,35 @@ List<_CoachGroup> _groupByCategory(List<EnglishCorrectionEntity> corrections) {
   ];
 }
 
-/// Tournures à retenir : corrections vocabulaire et expression, sans doublon
-/// (casse près).
-List<EnglishCorrectionEntity> _vocabulary(List<_CoachGroup> groups) {
+/// Tournures à retenir, dans l'ordre de la note : corrections vocabulaire
+/// et expression ; terme = mots ajoutés (sinon le corrigé entier), sans
+/// doublon (casse près), puis les [kVocabularyMax] premiers.
+List<({String term, String explanation})> _vocabulary(
+  List<EnglishCorrectionEntity> corrections,
+) {
   final Set<String> seen = <String>{};
-  return <EnglishCorrectionEntity>[
-    for (final _CoachGroup g in groups)
-      if (g.key == LocaleKeys.coach_category_vocabulary ||
-          g.key == LocaleKeys.coach_category_expression)
-        for (final EnglishCorrectionEntity c in g.items)
-          if (seen.add(c.corrected.trim().toLowerCase())) c,
-  ];
+  final List<({String term, String explanation})> out =
+      <({String term, String explanation})>[];
+  for (final EnglishCorrectionEntity c in corrections) {
+    final String? key = coachCategoryKey(c.category);
+    if (key != LocaleKeys.coach_category_vocabulary &&
+        key != LocaleKeys.coach_category_expression) {
+      continue;
+    }
+    final String added = <String>[
+      for (final CoachDiffToken t in coachWordDiff(c.original, c.corrected))
+        if (t.kind == CoachDiffKind.added) t.text,
+    ].join(' ');
+    final String term = added.isEmpty ? c.corrected : added;
+    if (seen.add(term.trim().toLowerCase())) {
+      out.add((term: term, explanation: c.explanation));
+    }
+  }
+  return out.take(kVocabularyMax).toList();
 }
+
+/// Nombre maximal de termes sous « Vocabulaire à retenir ».
+const int kVocabularyMax = 8;
 
 class _Recap extends StatelessWidget {
   const _Recap({required this.groups, super.key});
@@ -166,7 +178,7 @@ class _Recap extends StatelessWidget {
 }
 
 class _CollapsibleGroup extends StatefulWidget {
-  const _CollapsibleGroup({required this.group});
+  const _CollapsibleGroup({required this.group, super.key});
 
   final _CoachGroup group;
 
@@ -302,7 +314,7 @@ class _CorrectionRow extends StatelessWidget {
 class _VocabularySection extends StatelessWidget {
   const _VocabularySection({required this.items, super.key});
 
-  final List<EnglishCorrectionEntity> items;
+  final List<({String term, String explanation})> items;
 
   @override
   Widget build(BuildContext context) {
@@ -311,15 +323,15 @@ class _VocabularySection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(LocaleKeys.coach_vocabulary_title.tr(), style: o.bodyStrong),
-        for (final EnglishCorrectionEntity c in items)
+        for (final ({String term, String explanation}) v in items)
           Padding(
             padding: const EdgeInsets.only(top: OatsSpace.sm),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(c.corrected, style: o.bodyStrong),
-                if (c.explanation.isNotEmpty)
-                  Text(c.explanation, style: o.small),
+                Text(v.term, style: o.bodyStrong),
+                if (v.explanation.isNotEmpty)
+                  Text(v.explanation, style: o.small),
               ],
             ),
           ),

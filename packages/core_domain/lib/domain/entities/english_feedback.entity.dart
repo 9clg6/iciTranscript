@@ -57,3 +57,21 @@ abstract class EnglishFeedbackEntity with _$EnglishFeedbackEntity {
   factory EnglishFeedbackEntity.fromJson(Map<String, dynamic> json) =>
       _$EnglishFeedbackEntityFromJson(json);
 }
+
+/// La règle « identique » : une correction dont la meilleure tournure est
+/// celle qui a été dite (espaces et casse près) n'apprend rien.
+extension EnglishCorrectionIdentical on EnglishCorrectionEntity {
+  /// Vrai si [corrected] n'est que [original] (trim, casse ignorée).
+  bool get isIdentical =>
+      original.trim().toLowerCase() == corrected.trim().toLowerCase();
+}
+
+/// Les corrections qui comptent, partout (note, page du coach).
+extension EnglishFeedbackMeaningful on EnglishFeedbackEntity {
+  /// [corrections] sans les identiques, dans l'ordre.
+  List<EnglishCorrectionEntity> get meaningfulCorrections =>
+      <EnglishCorrectionEntity>[
+        for (final EnglishCorrectionEntity c in corrections)
+          if (!c.isIdentical) c,
+      ];
+}
